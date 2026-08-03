@@ -1,18 +1,24 @@
 <!--
 Sync Impact Report
-Version change: TEMPLATE → 1.0.0
-Modified principles: N/A (initial ratification, all principles newly defined)
+Version change: 1.0.0 → 1.1.0
+Modified principles: none renamed; VII (Simplicidad y Datos Mínimos Necesarios) is now
+  read alongside the new Express constraint below (no redefinition, just a concrete
+  framework pick within the existing simplicity bar).
 Added sections:
-  - Core Principles (I–VII)
-  - Restricciones Técnicas y de Integración
-  - Flujo de Desarrollo y Puertas de Calidad
-  - Governance
-Removed sections: none (template placeholders replaced)
+  - Restricciones Técnicas y de Integración: nuevo ítem "Framework backend" (Express.js
+    obligatorio para todo backend HTTP del proyecto)
+Removed sections: none
 Templates requiring updates:
   - .specify/templates/plan-template.md ✅ no changes needed (Constitution Check gate is derived dynamically from this file)
   - .specify/templates/spec-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/tasks-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/checklist-template.md ✅ no changes needed
+  - specs/001-chofer-recorrido/plan.md ⚠ pending manual update (Technical Context /
+    Constitution Check referenced "node:http nativo, sin framework"; debe pasar a Express)
+  - specs/001-chofer-recorrido/research.md ⚠ pending manual update (Decision §2 debe
+    reflejar Express como constraint de constitución, no como elección de research)
+  - specs/001-chofer-recorrido/tasks.md ⚠ pending manual update (T002, T008 mencionan
+    "sin framework" / falta dependencia express)
 Follow-up TODOs: none
 -->
 
@@ -113,6 +119,12 @@ costo de mantenimiento y menor riesgo de privacidad/seguridad.
 - **Responsive por rol**: el frontend del chofer se diseña mobile-first; el
   frontend de Central se diseña para uso de escritorio dentro de un frame
   embebido, no mobile-first.
+- **Framework backend**: todo backend HTTP del proyecto (Chofer, Central y
+  cualquier servicio que se agregue) DEBE construirse sobre Express.js. No se
+  introducen frameworks adicionales (NestJS, Fastify, etc.) sin enmendar esta
+  constitución; tampoco se implementan servidores HTTP a mano sobre `node:http`
+  para evitar divergencia de convenciones (manejo de rutas, middleware, errores)
+  entre features y equipos.
 
 ## Flujo de Desarrollo y Puertas de Calidad
 
@@ -148,4 +160,4 @@ semver:
 "Constitution Check" antes de la Fase 0 y volver a repasarla tras la Fase 1
 de diseño.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-03
+**Version**: 1.1.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-03
