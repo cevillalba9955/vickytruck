@@ -36,7 +36,7 @@ Según plan.md (Web application — Option 2): `backend/src/`, `backend/tests/`,
 - [ ] T001 Crear estructura de directorios `backend/src/{db,routes}` y
       `backend/tests/{contract,integration}` per plan.md
 - [ ] T002 [P] Inicializar proyecto Node.js del backend: `backend/package.json`
-      (`"type": "module"`, engines Node ≥20.12) con dependencia `oracledb`
+      (`"type": "module"`, engines Node ≥20.12) con dependencias `express` y `oracledb`
 - [ ] T003 [P] Crear estructura de directorios `frontend/src/{components,services}` y
       `frontend/tests/components` per plan.md
 - [ ] T004 [P] Inicializar proyecto frontend con Vite + React 18 en `frontend/`
@@ -60,8 +60,8 @@ poder implementarse
 - [ ] T007 Implementar repositorio de recorrido (resolver por token, listar puntos,
       actualizar estado de un punto, calcular progreso derivado) en
       `backend/src/db/recorridoRepository.js` (depende de T006)
-- [ ] T008 Implementar esqueleto del servidor HTTP (`node:http`, sin framework) con
-      routing básico por método+path, sin lógica de negocio todavía, en
+- [ ] T008 Implementar esqueleto del servidor HTTP con **Express** (app, middlewares
+      base de JSON y manejo de errores), sin lógica de negocio todavía, en
       `backend/src/server.js` (depende de T006)
 - [ ] T009 [P] Implementar cliente API del frontend (fetch wrapper, base URL, parseo de
       `{ "error": "<código>" }`) en `frontend/src/services/api.js`

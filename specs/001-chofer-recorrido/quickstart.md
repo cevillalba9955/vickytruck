@@ -18,7 +18,7 @@ que `backend/` y `frontend/` (ver Project Structure en plan.md) ya existen.
 # Backend
 cd backend
 npm install
-npm start   # levanta el servidor node:http en el puerto configurado
+npm start   # levanta el servidor Express en el puerto configurado
 
 # Frontend (en otra terminal)
 cd frontend

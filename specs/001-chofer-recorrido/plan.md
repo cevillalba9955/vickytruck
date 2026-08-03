@@ -22,9 +22,8 @@ son responsabilidad de features separadas (Central), fuera de este alcance.
 (componentes funcionales con hooks).
 
 **Primary Dependencies**:
-- Backend: `oracledb` (driver oficial de Oracle) + módulo `node:http` nativo, sin
-  framework (Express/Fastify) — mismo criterio minimalista que otros proyectos Oracle del
-  autor (una sola dependencia runtime).
+- Backend: `oracledb` (driver oficial de Oracle) + `express` (framework HTTP obligatorio
+  por constitución — Restricciones Técnicas y de Integración, v1.1.0).
 - Frontend: `react`, `react-dom`, `vite` (dev server/build), `vitest` +
   `@testing-library/react` + `@testing-library/jest-dom` para tests de componentes
   (devDependencies).
@@ -70,7 +69,7 @@ de fletes activos simultáneos), sin requisitos de alta escala.
 | IV. Oracle como fuente única de verdad | PASS — todo estado (puntos, eventos, token) vive en Oracle vía `oracledb`; sin base de datos adicional. |
 | V. Trazabilidad en tiempo (casi) real | PASS (lado chofer) — cada evento se persiste con timestamp de servidor apenas hay conectividad; la visibilidad en Central depende de esa feature, no de esta. |
 | VI. Mensajería interna | N/A en esta feature — explícitamente fuera de alcance (ver Assumptions del spec). |
-| VII. Simplicidad y datos mínimos | PASS — sin framework de backend, sin sistema de autenticación, GPS solo durante recorrido activo. |
+| VII. Simplicidad y datos mínimos | PASS — Express es el único framework backend permitido (Restricciones Técnicas y de Integración), sin dependencias adicionales; sin sistema de autenticación; GPS solo durante recorrido activo. |
 
 No hay violaciones que requieran justificación en Complexity Tracking.
 
@@ -95,7 +94,7 @@ backend/
 ├── src/
 │   ├── db/              # pool oracledb + queries (recorrido, punto, evento)
 │   ├── routes/          # handlers HTTP finos (recorrido.js)
-│   └── server.js        # node:http, sin framework
+│   └── server.js        # Express (app.js + arranque del servidor)
 └── tests/
     ├── contract/        # contrato de cada endpoint
     └── integration/      # flujo completo: resolver token -> marcar eventos

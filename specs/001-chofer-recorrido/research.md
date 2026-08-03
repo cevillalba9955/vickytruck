@@ -14,21 +14,27 @@ estados independientes).
 convención ya validada por el autor y complica el manejo de estado de hasta 10 puntos con
 reintentos offline sin agregar una capa de reactividad propia.
 
-## 2. Backend: Node.js con `node:http` nativo + `oracledb`
+## 2. Backend: Node.js con Express + `oracledb`
 
-**Decision**: API HTTP fina en Node.js (≥20.12) usando el módulo `node:http` incorporado,
-sin framework, más el driver oficial `oracledb` para acceso directo a Oracle.
+**Decision**: API HTTP fina en Node.js (≥20.12) usando **Express** como framework HTTP,
+más el driver oficial `oracledb` para acceso directo a Oracle.
 
-**Rationale**: mismo patrón "API HTTP fina" que `rs956/specs/007-ui-calendario-mensual`
-(backend sin Express/Fastify) y mismo driver Oracle ya usado en ese repositorio para
-acceso a Oracle. Con solo 2-3 endpoints (resolver token, marcar arribo, marcar descarga),
-un framework HTTP agrega dependencia sin beneficio proporcional (Principio VII).
+**Rationale**: Express es obligatorio para todo backend HTTP del proyecto según la
+Constitución v1.1.0 ("Restricciones Técnicas y de Integración" → Framework backend), para
+estandarizar ruteo, middleware y manejo de errores entre esta feature y futuras (Central,
+etc.). Se mantiene el mismo driver `oracledb` ya usado en otros proyectos Oracle del
+autor (p. ej. rs956) para el acceso a datos.
+
+*(Nota histórica: la versión anterior de esta decisión optaba por `node:http` nativo sin
+framework, siguiendo el patrón de `rs956/specs/007-ui-calendario-mensual`. Se actualiza
+tras la enmienda de la constitución que fija Express como framework obligatorio.)*
 
 **Alternatives considered**: Exponer los endpoints directamente vía Oracle REST Data
 Services (ORDS) desde la misma instancia de APEX. Se descarta para esta feature porque la
 lógica de negocio (impedir marcar descarga sin arribo previo, tolerancia a reintentos
-duplicados) es más simple de expresar y testear en código Node que en PL/SQL vía ORDS. No
-se descarta reevaluarlo si la feature de Central termina exponiendo un ORDS reutilizable.
+duplicados) es más simple de expresar y testear en código Node/Express que en PL/SQL vía
+ORDS. No se descarta reevaluarlo si la feature de Central termina exponiendo un ORDS
+reutilizable.
 
 ## 3. Identificación del chofer: token opaco en la URL
 
