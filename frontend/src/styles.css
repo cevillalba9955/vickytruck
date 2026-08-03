@@ -1,0 +1,83 @@
+/* Mobile-first: pensado para uso con una sola mano en la cabina (Principio I). */
+
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 18px;
+}
+
+body {
+  margin: 0;
+  padding: env(safe-area-inset-top, 0) 0.75rem env(safe-area-inset-bottom, 0);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.progress-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  opacity: 0.85;
+}
+
+.route-view__lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.route-view__finalizado {
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, green 20%, transparent);
+  font-weight: 600;
+}
+
+.delivery-point-card {
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.delivery-point-card__header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.delivery-point-card__ubicacion {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+}
+
+.delivery-point-card__acciones button {
+  /* Controles táctiles grandes (Principio I): mínimo ~44px de alto recomendado. */
+  width: 100%;
+  min-height: 3rem;
+  font-size: 1.05rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: #1a73e8;
+  color: white;
+}
+
+.delivery-point-card__acciones button:disabled {
+  opacity: 0.6;
+}
+
+.delivery-point-card__ok {
+  display: inline-block;
+  font-weight: 600;
+  color: green;
+}
