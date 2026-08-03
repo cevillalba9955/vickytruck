@@ -1,8 +1,10 @@
+import oracledb from "oracledb";
 import { withConnection } from "./pool.js";
 
-// Los nombres de tabla vienen de configuración (operador del servidor), no de
-// input de usuario, pero igual se validan como identificador SQL simple
-// (con soporte a `esquema.tabla`) antes de interpolarlos en las queries.
+// Los nombres de tabla/vista/package vienen de configuración (operador del
+// servidor), no de input de usuario, pero igual se validan como identificador
+// SQL simple (con soporte a `esquema.objeto`) antes de interpolarlos en las
+// queries/bloques PL/SQL.
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
 
 function tablaRecorridos() {
@@ -17,6 +19,18 @@ function tablaPuntos() {
   const nombre = process.env.ORACLE_TABLA_PUNTOS || "PUNTOS_ENTREGA";
   if (!IDENTIFIER_RE.test(nombre)) {
     throw new Error(`ORACLE_TABLA_PUNTOS inválido: ${nombre}`);
+  }
+  return nombre;
+}
+
+// Package PL/SQL que hace de única vía de escritura sobre los puntos de
+// entrega (las vistas V_RECORRIDOS/V_PUNTOS_ENTREGA son de solo lectura,
+// generadas — ver backend/sql/recorrido_api.pks.sql para el contrato acordado
+// el 2026-08-03).
+function paqueteRecorridoApi() {
+  const nombre = process.env.ORACLE_PACKAGE_RECORRIDO_API || "RECORRIDO_API";
+  if (!IDENTIFIER_RE.test(nombre)) {
+    throw new Error(`ORACLE_PACKAGE_RECORRIDO_API inválido: ${nombre}`);
   }
   return nombre;
 }
@@ -45,8 +59,9 @@ function calcularProgreso(puntos) {
 
 /**
  * Repositorio de recorridos respaldado por Oracle (Principio IV: única fuente
- * de verdad). Ver research.md §6 para la semántica de idempotencia de las
- * transiciones de estado.
+ * de verdad). Lecturas: vistas V_RECORRIDOS/V_PUNTOS_ENTREGA (solo lectura).
+ * Escrituras: package PL/SQL RECORRIDO_API (las vistas no son actualizables).
+ * Ver research.md §6 para la semántica de idempotencia de las transiciones.
  */
 export function createOracleRecorridoRepository() {
   return {
@@ -77,92 +92,66 @@ export function createOracleRecorridoRepository() {
     },
 
     async marcarArribo(token, puntoId, ubicacion = {}) {
-      return transicionarPunto({
-        token,
-        puntoId,
-        ubicacion,
-        estadoOrigen: "pendiente",
-        estadoDestino: "arribado",
-        estadoIdempotente: "arribado",
-        columnaTimestamp: "arribo_en",
-        columnaLat: "arribo_lat",
-        columnaLon: "arribo_lon",
-      });
+      return invocarProcedimiento("marcar_arribo", token, puntoId, ubicacion);
     },
 
     async marcarDescarga(token, puntoId, ubicacion = {}) {
-      return transicionarPunto({
-        token,
-        puntoId,
-        ubicacion,
-        estadoOrigen: "arribado",
-        estadoDestino: "completado",
-        estadoIdempotente: "completado",
-        columnaTimestamp: "descarga_en",
-        columnaLat: "descarga_lat",
-        columnaLon: "descarga_lon",
-      });
+      return invocarProcedimiento("marcar_descarga", token, puntoId, ubicacion);
     },
   };
 }
 
-// Aplica una transición de estado sobre un punto, con la semántica idempotente
-// de research.md §6: repetir la misma transición ya aplicada es "ok", no error.
-async function transicionarPunto({
-  token,
-  puntoId,
-  ubicacion,
-  estadoOrigen,
-  estadoDestino,
-  estadoIdempotente,
-  columnaTimestamp,
-  columnaLat,
-  columnaLon,
-}) {
-  return withConnection(async (connection) => {
-    const recorridoResult = await connection.execute(
-      `SELECT id FROM ${tablaRecorridos()} WHERE token = :token`,
-      { token },
-    );
-    const recorridoRow = recorridoResult.rows[0];
-    if (!recorridoRow) return { outcome: "invalid_token" };
+const RESULTADOS = {
+  OK: "ok",
+  INVALID_TOKEN: "invalid_token",
+  NOT_FOUND: "not_found",
+  CONFLICT: "conflict",
+};
 
-    const updateResult = await connection.execute(
-      `UPDATE ${tablaPuntos()}
-       SET estado = :estadoDestino, ${columnaTimestamp} = SYSTIMESTAMP,
-           ${columnaLat} = :lat, ${columnaLon} = :lon
-       WHERE id = :puntoId AND recorrido_id = :recorridoId AND estado = :estadoOrigen`,
+// Invoca RECORRIDO_API.marcar_arribo / marcar_descarga (backend/sql/recorrido_api.pks.sql).
+// El package valida token + pertenencia del punto y aplica la transición de
+// forma atómica; acá solo interpretamos el resultado y, si corresponde,
+// releemos el punto completo desde la vista para la respuesta HTTP.
+async function invocarProcedimiento(procedimiento, token, puntoId, ubicacion) {
+  return withConnection(async (connection) => {
+    const result = await connection.execute(
+      `BEGIN ${paqueteRecorridoApi()}.${procedimiento}(
+         :token, :puntoId, :lat, :lon, :resultado, :estado, :eventoEn
+       ); END;`,
       {
-        estadoDestino,
+        token,
+        puntoId: Number(puntoId),
         lat: ubicacion.lat ?? null,
         lon: ubicacion.lon ?? null,
-        puntoId,
-        recorridoId: recorridoRow.ID,
-        estadoOrigen,
+        resultado: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 40 },
+        estado: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 40 },
+        eventoEn: { dir: oracledb.BIND_OUT, type: oracledb.DATE },
       },
     );
+    await connection.commit();
 
-    if (updateResult.rowsAffected === 1) {
-      await connection.commit();
-      const punto = await leerPunto(connection, recorridoRow.ID, puntoId);
-      return { outcome: "ok", punto };
+    const crudo = (result.outBinds.resultado || "").trim().toUpperCase();
+    const outcome = RESULTADOS[crudo] ?? "not_found";
+
+    if (outcome === "invalid_token" || outcome === "not_found") {
+      return { outcome };
     }
 
-    const puntoActual = await leerPunto(connection, recorridoRow.ID, puntoId);
-    if (!puntoActual) return { outcome: "not_found" };
-    if (puntoActual.estado === estadoIdempotente) {
-      return { outcome: "ok", punto: puntoActual };
-    }
-    return { outcome: "conflict", punto: puntoActual };
+    // 'ok' o 'conflict': releer el punto completo (arriboEn Y descargaEn)
+    // desde la vista, ya que el package solo informa el timestamp del evento
+    // que él mismo procesó.
+    const punto = await leerPuntoDesdeVista(connection, puntoId);
+    if (!punto) return { outcome: "not_found" };
+    return { outcome, punto };
   });
 }
 
-async function leerPunto(connection, recorridoId, puntoId) {
+async function leerPuntoDesdeVista(connection, puntoId) {
   const result = await connection.execute(
     `SELECT id, orden, latitud, longitud, estado, arribo_en, descarga_en
      FROM ${tablaPuntos()}
-     WHERE id = :puntoId AND recorrido_id = :recorridoId`,
-    { puntoId, recorridoId },
+     WHERE id = :puntoId`,
+    { puntoId: Number(puntoId) },
   );
   const row = result.rows[0];
   return row ? mapPuntoRow(row) : null;

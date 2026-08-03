@@ -4,6 +4,13 @@ Todas las entidades viven en Oracle (Principio IV); este documento describe su f
 lógica, no el DDL final (que depende de las tablas ya precargadas por la feature de
 Central — se documenta aquí el contrato mínimo que este backend necesita leer/escribir).
 
+**Lectura vs escritura (confirmado contra la instancia real, 2026-08-03)**: este backend
+lee `V_RECORRIDOS`/`V_PUNTOS_ENTREGA`, que son vistas generadas de solo lectura, y escribe
+exclusivamente a través del package PL/SQL `RECORRIDO_API`
+(`backend/sql/recorrido_api.pks.sql` — ver research.md §7). Los campos de esta sección
+describen lo que el backend lee/necesita, no necesariamente el nombre de las tablas base
+reales detrás de las vistas.
+
 ## Recorrido
 
 Representa el conjunto ordenado de hasta 10 puntos de entrega asignado a un flete.

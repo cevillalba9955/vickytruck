@@ -92,3 +92,29 @@ violando el requisito de no duplicar ni perder eventos (FR-010).
 por el cliente por cada evento. Se descarta por ahora por ser complejidad adicional no
 justificada: el propio par (punto, tipo de evento, estado destino) ya es suficiente clave
 natural de idempotencia dado que cada punto solo transiciona una vez por tipo de evento.
+
+## 7. Lecturas por vistas, escrituras por package PL/SQL (descubierto en integración real)
+
+**Decision**: al conectar contra la instancia Oracle real (2026-08-03), se confirmó que
+`V_RECORRIDOS`/`V_PUNTOS_ENTREGA` son **vistas generadas** (no tablas), ajustadas por el
+propietario del esquema a las columnas que este backend necesita para leer. Las vistas no
+son actualizables, así que las escrituras (marcar arribo/descarga) no pueden hacerse con
+`UPDATE` directo sobre ellas. Se acordó un package PL/SQL, `RECORRIDO_API` (ver
+`backend/sql/recorrido_api.pks.sql`), con procedures `marcar_arribo`/`marcar_descarga` que
+reciben `p_token`/`p_punto_id`/`p_lat`/`p_lon` y devuelven `p_resultado`
+(`OK`/`INVALID_TOKEN`/`NOT_FOUND`/`CONFLICT`), `p_estado` y `p_evento_en` por parámetros
+OUT. El package valida token + pertenencia del punto y aplica la transición de forma
+atómica; el backend Node solo interpreta el resultado y, si hace falta el punto completo
+para la respuesta HTTP, vuelve a leerlo desde la vista (que sí tiene ambos timestamps,
+arribo y descarga).
+
+**Rationale**: mantiene el modelo mental simple (lecturas = vistas, escrituras = package)
+sin que el backend Node necesite conocer las tablas base reales ni su esquema exacto; la
+persona dueña del esquema Oracle controla la implementación del package sin acoplarse a
+los nombres de columna que ve el backend.
+
+**Alternatives considered**: pedir que las vistas se reemplacen por tablas reales
+directamente accesibles — descartado porque el propietario del esquema ya había generado
+las vistas ajustadas específicamente para este backend antes de esta conversación, y
+cambiar de vistas a tablas reales habría expuesto columnas/estructura interna que el
+propietario prefiere encapsular.
