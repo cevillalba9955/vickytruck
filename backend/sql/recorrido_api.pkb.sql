@@ -13,10 +13,8 @@
 
 CREATE OR REPLACE PACKAGE BODY VIC.RECORRIDO_API AS
 
-  -- TODO: reemplazar por la tabla real detrás de V_RECORRIDOS.
-  c_tabla_recorridos CONSTANT VARCHAR2(61) := 'TABLA_BASE_RECORRIDOS';
-  -- TODO: reemplazar por la tabla real detrás de V_PUNTOS_ENTREGA.
-  c_tabla_puntos     CONSTANT VARCHAR2(61) := 'TABLA_BASE_PUNTOS_ENTREGA';
+  c_tabla_recorridos CONSTANT VARCHAR2(61) := 'V_RECORRIDOS';
+  c_tabla_puntos     CONSTANT VARCHAR2(61) := 'T_PUNTOS_ENTREGA';
 
   PROCEDURE transicionar(
     p_token          IN  VARCHAR2,

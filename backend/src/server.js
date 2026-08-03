@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import express from "express";
 import { createRecorridoRouter } from "./routes/recorrido.js";
 import { createOracleRecorridoRepository } from "./db/recorridoRepository.js";
@@ -23,7 +24,11 @@ export function createApp(repository) {
 
 // Solo arranca el servidor real (con Oracle) cuando este módulo se ejecuta
 // directamente — permite importar createApp() en tests sin abrir el pool.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Comparación vía pathToFileURL (no `file://${process.argv[1]}`): en Windows
+// process.argv[1] usa backslashes y el drive letter, que no matchean con
+// import.meta.url por simple concatenación de string.
+const esModuloPrincipal = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (esModuloPrincipal) {
   const repository = createOracleRecorridoRepository();
   const app = createApp(repository);
   const port = Number(process.env.PORT || 3001);
