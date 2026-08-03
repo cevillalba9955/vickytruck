@@ -219,7 +219,7 @@ quickstart.md).
       y reintento automático, FR-010)
 - [ ] T037 Ejecutar manualmente el Escenario de validación 5 de quickstart.md (sin GPS
       disponible, FR-006)
-- [ ] T038 Ejecutar manualmente los Escenarios 1-3 de quickstart.md de punta a punta
+- [X] T038 Ejecutar manualmente los Escenarios 1-3 de quickstart.md de punta a punta
 
 ---
 

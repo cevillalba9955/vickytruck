@@ -1,15 +1,17 @@
--- Package BODY: RECORRIDO_API — plantilla de referencia.
+-- Package BODY: RECORRIDO_API — validado end-to-end contra Oracle real
+-- (2026-08-03, ver research.md §7 de la feature 001-chofer-recorrido).
 --
--- ¡AJUSTAR ANTES DE COMPILAR! Los dos constantes de abajo apuntan a nombres
--- placeholder: reemplazalos por las tablas BASE reales detrás de
--- V_RECORRIDOS y V_PUNTOS_ENTREGA (las vistas generadas no son
--- actualizables, por eso el package escribe contra la tabla base, no la
--- vista). Si la tabla base tiene columnas con otros nombres, ajustá también
--- las referencias a token/estado/orden/recorrido_id más abajo.
+-- Nombres reales confirmados en este entorno:
+--   - c_tabla_recorridos: V_RECORRIDOS (vista; se lee el token/id desde acá)
+--   - c_tabla_puntos:     T_PUNTOS_ENTREGA (tabla base real detrás de
+--                         V_PUNTOS_ENTREGA, que no es actualizable)
+--   - la columna que vincula un punto con su recorrido en T_PUNTOS_ENTREGA se
+--     llama FLT_VIAJE_ID (no RECORRIDO_ID como asumía la plantilla original)
 --
--- La lógica de transición (idempotencia, condición WHERE con estado_origen)
--- ya está resuelta acá — es la misma semántica que research.md §6 del
--- backend Node; solo hace falta apuntarla a las tablas reales.
+-- Requiere GRANT EXECUTE ON VIC.RECORRIDO_API al usuario que conecta desde el
+-- backend Node, y que ese backend califique el nombre con el esquema
+-- (ORACLE_PACKAGE_RECORRIDO_API=VIC.RECORRIDO_API) — sin el prefijo, Oracle no
+-- resuelve el paquete aunque el GRANT ya esté otorgado (PLS-00201).
 
 CREATE OR REPLACE PACKAGE BODY VIC.RECORRIDO_API AS
 
@@ -49,7 +51,7 @@ CREATE OR REPLACE PACKAGE BODY VIC.RECORRIDO_API AS
       'UPDATE ' || c_tabla_puntos ||
       ' SET estado = :1, ' || p_col_timestamp || ' = SYSTIMESTAMP, ' ||
       p_col_lat || ' = :2, ' || p_col_lon || ' = :3' ||
-      ' WHERE id = :4 AND recorrido_id = :5 AND estado = :6'
+      ' WHERE id = :4 AND flt_viaje_id = :5 AND estado = :6'
       USING p_estado_destino, p_lat, p_lon, p_punto_id, v_recorrido_id, p_estado_origen;
 
     v_filas := SQL%ROWCOUNT;
@@ -70,7 +72,7 @@ CREATE OR REPLACE PACKAGE BODY VIC.RECORRIDO_API AS
     BEGIN
       EXECUTE IMMEDIATE
         'SELECT estado, ' || p_col_timestamp || ' FROM ' || c_tabla_puntos ||
-        ' WHERE id = :1 AND recorrido_id = :2'
+        ' WHERE id = :1 AND flt_viaje_id = :2'
         INTO p_estado, p_evento_en
         USING p_punto_id, v_recorrido_id;
     EXCEPTION

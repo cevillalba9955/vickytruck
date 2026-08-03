@@ -118,3 +118,19 @@ directamente accesibles — descartado porque el propietario del esquema ya hab�
 las vistas ajustadas específicamente para este backend antes de esta conversación, y
 cambiar de vistas a tablas reales habría expuesto columnas/estructura interna que el
 propietario prefiere encapsular.
+
+**Validado end-to-end contra Oracle real (2026-08-03)**: con el package `VIC.RECORRIDO_API`
+compilado (spec + body) y `ORACLE_PACKAGE_RECORRIDO_API=VIC.RECORRIDO_API` (calificado con
+esquema — ver nota en `.env.example`), se probó el flujo completo sobre un recorrido de
+prueba real (id 3715, 2 puntos): GET inicial, marcar arribo (200, aplica), repetir arribo
+(200, idempotente), marcar descarga sobre el otro punto sin arribo previo (409,
+`transicion_invalida`), descarga tras arribo (200), y cierre completo de los 2 puntos
+(`progreso: { pendientes: 0, arribados: 0, completados: 2 }`). Todo coincidió con el
+contrato de `contracts/chofer-api.md`.
+
+En el camino se encontraron y corrigieron dos problemas de calificación de esquema — el
+usuario Oracle que conecta (`VICKYTRUCK`) no resuelve nombres sin prefijo cuando el objeto
+es propiedad de otro esquema (`VIC`), incluso con el GRANT ya otorgado (hay que escribir
+`VIC.objeto`, no alcanza con el GRANT) — y un error de columna: la tabla base detrás de
+`V_PUNTOS_ENTREGA` no tiene una columna `RECORRIDO_ID` como asumía la plantilla del body;
+la columna real de esa relación es `FLT_VIAJE_ID`.
