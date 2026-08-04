@@ -5,14 +5,15 @@ import { createCentralRouter } from "./routes/central.js";
 import { createOracleRecorridoRepository } from "./db/recorridoRepository.js";
 import { createOracleCentralRepository } from "./db/centralRepository.js";
 
-// `centralRepository` es opcional para no romper los tests existentes de
-// 001-chofer-recorrido que llaman a createApp(repository) con un solo
-// argumento (nunca ejercitan las rutas /api/central).
-export function createApp(repository, centralRepository) {
+// `centralRepository` y `ubicacionStore` son opcionales para no romper los
+// tests existentes de 001-chofer-recorrido que llaman a createApp(repository)
+// con un solo argumento (nunca ejercitan las rutas /api/central ni necesitan
+// una instancia aislada de la posición en memoria).
+export function createApp(repository, centralRepository, ubicacionStore) {
   const app = express();
   app.use(express.json());
 
-  app.use("/api/recorridos", createRecorridoRouter(repository));
+  app.use("/api/recorridos", createRecorridoRouter(repository, ubicacionStore));
   app.use("/api/central", createCentralRouter(centralRepository));
 
   app.use((req, res) => {

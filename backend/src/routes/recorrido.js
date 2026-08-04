@@ -1,4 +1,9 @@
 import { Router } from "express";
+import { ubicacionEnMemoriaCompartida } from "../state/ubicacionEnMemoria.js";
+
+function intervaloReporteUbicacionMs() {
+  return Number(process.env.UBICACION_REPORTE_INTERVALO_MS || 60000);
+}
 
 function serializePunto(punto, totalPuntos) {
   return {
@@ -19,7 +24,7 @@ function serializePunto(punto, totalPuntos) {
  * memoria, sin depender de una conexión Oracle real (ver
  * backend/tests/contract).
  */
-export function createRecorridoRouter(repository) {
+export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMemoriaCompartida) {
   const router = Router();
 
   // GET /api/recorridos/:token — FR-002, FR-003, FR-008, FR-012
@@ -30,7 +35,7 @@ export function createRecorridoRouter(repository) {
         return res.status(404).json({ error: "enlace_invalido" });
       }
       res.json({
-        recorrido: { estado: recorrido.estado },
+        recorrido: { estado: recorrido.estado, intervaloUbicacionMs: intervaloReporteUbicacionMs() },
         progreso: recorrido.progreso,
         puntos: recorrido.puntos.map((p) => serializePunto(p, recorrido.puntos.length)),
       });
@@ -62,6 +67,27 @@ export function createRecorridoRouter(repository) {
         lon,
       });
       responderTransicion(res, resultado);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /api/recorridos/:token/ubicacion — FR-014, FR-015 de 001-chofer-recorrido.
+  // Reporte periódico de ubicación instantánea mientras el recorrido está
+  // activo; se guarda solo en memoria (nunca en Oracle, research.md §8 de
+  // 002-panel-control-central).
+  router.post("/:token/ubicacion", async (req, res, next) => {
+    try {
+      const { lat, lon } = req.body || {};
+      if (lat == null || lon == null) {
+        return res.status(400).json({ error: "ubicacion_invalida" });
+      }
+      const recorrido = await repository.obtenerPorToken(req.params.token);
+      if (!recorrido) {
+        return res.status(404).json({ error: "enlace_invalido" });
+      }
+      ubicacionStore.registrar(recorrido.id, { lat, lon, en: new Date().toISOString() });
+      res.status(200).json({ ok: true });
     } catch (err) {
       next(err);
     }

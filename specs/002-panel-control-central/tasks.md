@@ -298,6 +298,84 @@ quickstart.md, paso 3).
 
 ---
 
+## Phase 9: Ubicación en tiempo real — memoria compartida con respaldo en Oracle (revisión de Historia 1 tras clarificación)
+
+**Contexto**: una clarificación posterior a la implementación original (ver Clarifications
+de spec.md, sesión "fuente de la posición en tiempo real", y research.md §8) estableció
+que `V_FLETES` es puramente estático — nunca tuvo ni tendrá columnas de ubicación. La
+implementación original de `listarActivos()` (T012) asumía lo contrario. Esta fase
+corrige esa implementación y agrega el reporte periódico del lado del chofer que la hace
+posible (FR-014 a FR-017 de 001-chofer-recorrido).
+
+**Goal**: la última ubicación conocida de un flete (Historia 1, FR-001, FR-016, FR-017)
+sale de una posición en memoria reportada periódicamente por el chofer; si no hay dato en
+memoria, cae al respaldo del último evento arribo/descarga ya persistido en Oracle; si no
+hay ninguna de las dos, se indica explícitamente que no hay datos.
+
+**Independent Test**: (a) reportar una posición vía el nuevo endpoint del chofer y
+verificar que `GET /api/central/recorridos/activos` la refleja; (b) sin haber reportado
+ninguna posición en memoria pero con un evento arribo/descarga ya persistido, verificar
+que se usa ese respaldo; (c) sin memoria ni evento, verificar que se indica "sin datos";
+en los tres casos, el mismo umbral `UBICACION_STALE_MS` determina "reciente" (FR-017).
+
+### Tests for Phase 9
+
+- [X] T047 [P] Crear el directorio `backend/tests/unit/` y actualizar el script `test`
+      de `backend/package.json` para incluir `tests/unit/*.test.js` en el glob de
+      `node --test`
+- [X] T048 [P] [US1] Unit test para `ubicacionEnMemoria.js` (registrar y obtener por
+      `recorridoId`; devuelve `undefined` si nunca se registró una posición para ese
+      recorrido) en `backend/tests/unit/ubicacion-en-memoria.test.js` (depende de T047)
+- [X] T049 [P] [US1] Unit test para la función pura `resolverUbicacion` (prioridad
+      memoria → respaldo Oracle → sin datos; mismo umbral de "reciente" para cualquiera
+      de las dos fuentes, FR-016, FR-017) en `backend/tests/unit/resolver-ubicacion.test.js`
+      (depende de T047)
+- [X] T050 [P] [US1] Contract test para `POST /api/recorridos/:token/ubicacion` (200
+      registra la posición reportada; 404 con token inválido, FR-014 de
+      001-chofer-recorrido) en `backend/tests/contract/post-ubicacion.test.js`
+- [X] T051 [P] [US1] Integration test: la composición
+      `ubicacionEnMemoria` + `resolverUbicacion` (las mismas piezas que usa
+      `centralRepository.listarActivos()`) refleja la posición en memoria cuando existe,
+      cae al respaldo del último evento Oracle cuando no hay dato en memoria, e indica
+      "sin datos" cuando no hay ninguna de las dos (research.md §8) en
+      `backend/tests/integration/ubicacion-tiempo-real.test.js`
+
+### Implementation for Phase 9
+
+- [X] T052 [US1] Crear el módulo compartido en memoria `registrar(recorridoId, { lat,
+      lon, en })` / `obtener(recorridoId)` (Map, sin persistencia — se pierde ante un
+      reinicio del proceso, aceptado por FR-017 de 001-chofer-recorrido) en
+      `backend/src/state/ubicacionEnMemoria.js` (depende de T048)
+- [X] T053 [US1] Implementar la función pura `resolverUbicacion({ enMemoria,
+      respaldoOracle, staleMs, ahora })` y `obtenerRespaldoDesdeEventos(puntos)` (sin
+      I/O: solo combina las fuentes y aplica el umbral) en
+      `backend/src/db/ubicacionResolver.js` (depende de T049)
+- [X] T054 [US1] Implementar el endpoint `POST /api/recorridos/:token/ubicacion` en
+      `backend/src/routes/recorrido.js`: resuelve el recorrido vía
+      `repository.obtenerPorToken(token)` y registra `{ lat, lon, en: ahora }` en
+      `ubicacionEnMemoria` con el `recorridoId` resuelto; 400 sin lat/lon; 404 si el
+      token es inválido (depende de T050, T052)
+- [X] T055 [US1] Ampliar `mapPuntoRow`/`leerPuntosDelRecorrido` en
+      `backend/src/db/centralRepository.js` para seleccionar y exponer `arribo_lat`,
+      `arribo_lon`, `descarga_lat`, `descarga_lon` (columnas que `RECORRIDO_API` ya
+      escribe, pero que ninguna lectura Node exponía hasta ahora) — necesario para el
+      respaldo de FR-016 (depende de T051; comparte archivo con T028)
+- [X] T056 [US1] Actualizar `listarActivos()` en `backend/src/db/centralRepository.js`:
+      quitar la lectura de `ultima_ubicacion_lat/lon/en` desde `V_FLETES` (el JOIN queda
+      reducido a `id`/`nombre`); para cada recorrido activo, calcular el respaldo Oracle
+      a partir de sus puntos (T055) y combinarlo con `ubicacionEnMemoria.obtener(id)` vía
+      `resolverUbicacion` (T053) (depende de T052, T053, T055; comparte archivo con T012)
+- [X] T057 [P] Actualizar `backend/.env.example`: quitar el comentario de
+      `ORACLE_TABLA_FLETES` que asumía columnas de ubicación en `V_FLETES`, y documentar
+      que esa vista es puramente estática (research.md §8) (depende de T056)
+
+**Checkpoint**: Historia 1 refleja la posición en tiempo real vía memoria + respaldo
+Oracle, sin depender de columnas inexistentes en `V_FLETES`; T012 y T017 (tests
+originales de Historia 1) siguen pasando sin modificarse, ya que el contrato HTTP de
+`GET /api/central/recorridos/activos` no cambia de forma (research.md §8).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -309,6 +387,10 @@ quickstart.md, paso 3).
     US3 → US4 → US5)
 - **Polish (Phase 8)**: depende de que las historias que se quieran entregar estén
   completas
+- **Phase 9 (revisión de ubicación en tiempo real)**: depende de Foundational (Phase 2)
+  y de que Phase 3 (US1) ya exista, ya que modifica `listarActivos()` (T012). No
+  depende de Phase 8 (Polish); puede hacerse en paralelo con US2-US5 si hay capacidad,
+  aunque conviene cerrarla antes de dar por completa la Historia 1 en producción
 
 ### User Story Dependencies
 
@@ -370,16 +452,23 @@ Task: "polling helper en central/src/services/polling.js"
 5. US4 → probar → demo (reasignación ante imprevistos)
 6. US5 → probar → demo (historial de auditoría)
 7. Phase 8 (Polish) → validación manual completa vía quickstart.md
+8. Phase 9 (revisión de ubicación en tiempo real) → probar → demo (Historia 1 con datos
+   reales de posición, sin depender de `V_FLETES`)
 
 ---
 
 ## Notes
 
 - [P] = archivos distintos, sin dependencias pendientes
-- Las tareas T012/T021/T022/T028/T034/T038 comparten
+- Las tareas T012/T021/T022/T028/T034/T038/T055/T056 comparten
   `backend/src/db/centralRepository.js`; las tareas T013/T024/T029/T035/T039 comparten
   `backend/src/routes/central.js`: no son [P] entre sí dentro de cada archivo, deben
   implementarse en secuencia
+- La Phase 9 corrige una asunción incorrecta de la implementación original de Historia 1
+  (T012 asumía ubicación en `V_FLETES`); T054 además modifica
+  `backend/src/routes/recorrido.js`, que pertenece nominalmente a 001-chofer-recorrido
+  pero vive en el mismo `backend/` compartido — no se genera un tasks.md separado para
+  001 porque esta corrección es indivisible de FR-016/FR-017 de esta feature (002)
 - Verificar que los tests fallan antes de implementar (si se sigue TDD estricto)
 - Cada historia de usuario debe quedar completable y testeable de forma independiente
 - Detenerse en cada checkpoint para validar la historia antes de continuar

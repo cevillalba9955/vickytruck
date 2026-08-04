@@ -80,10 +80,11 @@ operador); se reconsideraría si una futura feature lo requiere.
 
 ## 5. Esquema de datos para "fletes" y "asignación": nombres asumidos, a confirmar contra la instancia real
 
-**Decision**: se asume, siguiendo la convención ya validada en 001-chofer-recorrido
-(lecturas por vistas `V_*`, escrituras por package PL/SQL), que existen o se agregarán:
-- Una vista de solo lectura `V_FLETES` con el listado de fletes y su última ubicación
-  conocida reportada.
+**Decision** (revisada — ver §8 tras clarificación sobre la fuente de ubicación): se
+asume, siguiendo la convención ya validada en 001-chofer-recorrido (lecturas por vistas
+`V_*`, escrituras por package PL/SQL), que existen o se agregarán:
+- Una vista de solo lectura `V_FLETES` con el listado de fletes — **confirmado
+  puramente estático** (identificador, nombre; sin columnas de ubicación, ver §8).
 - La vista `V_RECORRIDOS` (ya existente) se extiende con columnas de asignación:
   `FLETE_ID` (nullable — `NULL` cuando no está asignado) y metadatos de la asignación
   vigente.
@@ -138,3 +139,56 @@ código si la operación real lo requiere.
 **Alternatives considered**: calcular el umbral dinámicamente según el intervalo de
 reporte esperado del dispositivo. Se descarta por ahora por complejidad no justificada
 (Principio VII); un valor fijo configurable ya resuelve el requisito.
+
+## 8. Fuente de la última ubicación conocida: memoria compartida del backend, con respaldo en Oracle (revisado tras clarificación de spec.md)
+
+**Decision**: se confirmó (sesión de clarificación "fuente de la posición en tiempo
+real" de spec.md) que `V_FLETES` es y seguirá siendo puramente estático — nunca tendrá
+columnas de ubicación. La última ubicación conocida de un flete (FR-001, FR-016) se
+obtiene en este orden:
+
+1. **Posición en memoria del backend**: una estructura en memoria del proceso Node
+   compartido entre `recorrido.js` (chofer, 001) y `central.js` (Central, esta feature),
+   poblada por el reporte periódico de ubicación instantánea que el chofer envía
+   mientras su recorrido está activo (FR-014 a FR-017 de 001-chofer-recorrido). Como
+   ambos routers corren en el mismo proceso Express, `centralRepository.js` puede leer
+   esta estructura directamente (import de módulo), sin llamada de red ni ida a Oracle.
+2. **Respaldo en Oracle**: si no hay una posición en memoria para ese flete (por ejemplo,
+   el backend se reinició y todavía no llegó un nuevo reporte), se usa la ubicación del
+   último evento "arribo" o "descarga" ya persistido en Oracle para el recorrido activo
+   de ese flete (`arriboLat/Lon` o `descargaLat/Lon` de `PuntoEntrega`, ya leídos hoy por
+   `centralRepository.obtenerDetalle`/`leerPuntosDelRecorrido`).
+3. Si no existe ninguna de las dos, se indica explícitamente que no hay ubicación
+   disponible (sin inventar un dato ni dejar el campo ambiguo).
+
+El mismo umbral de antigüedad (`UBICACION_STALE_MS`, ver §7) se aplica sin distinguir el
+origen del dato — sea de memoria o del respaldo en Oracle.
+
+**Rationale**: mantiene el requisito de trazabilidad casi en tiempo real (Principio V)
+sin necesitar que Oracle sea la fuente de un dato de alta frecuencia y no autoritativo
+(la posición en tránsito nunca fue pensada como "reportada" en el sentido del Principio
+IV, que habla de recorridos/asignaciones/estados/ubicaciones **persistidos**; la
+posición instantánea es, por diseño, efímera — ver Clarifications de
+001-chofer-recorrido). El respaldo en Oracle evita que un simple reinicio del backend
+deje a Central sin ninguna ubicación que mostrar, reutilizando datos que igual ya se
+persisten por FR-006 de 001-chofer-recorrido, sin sumar infraestructura nueva
+(Principio VII).
+
+**Alternatives considered**:
+- Guardar también la posición en tránsito en Oracle (ej. cada N segundos). Descartado
+  explícitamente por el usuario en la sesión de clarificación de 001-chofer-recorrido:
+  se prefiere mantenerla efímera en memoria para no generar escritura de alta frecuencia
+  contra Oracle ni un historial de posiciones no necesario para el alcance actual.
+  Solo el respaldo derivado de los eventos ya persistidos (arribo/descarga) se usa como
+  aproximación cuando no hay dato en memoria — no se agrega una escritura periódica
+  nueva a Oracle.
+- Mostrar siempre "sin datos" cuando no hay posición en memoria (sin respaldo). Se
+  descarta porque degrada la experiencia de monitoreo ante cualquier reinicio del
+  backend, cuando ya existe un dato razonable (el último evento) para mostrar mientras
+  llega el próximo reporte.
+
+**Dependencia con 001-chofer-recorrido**: esta decisión requiere que 001-chofer-recorrido
+implemente el reporte periódico de ubicación instantánea y el módulo en memoria
+compartido (FR-014 a FR-017 de esa spec, agregados en una clarificación posterior a la
+implementación original de esa feature). Hasta que ese módulo exista, `centralRepository`
+puede operar solo con el respaldo de Oracle (paso 2) sin romper el contrato de esta API.

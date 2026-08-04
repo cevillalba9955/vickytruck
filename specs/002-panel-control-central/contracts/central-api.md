@@ -12,6 +12,12 @@ Lista los recorridos actualmente `activo` con su flete asignado, progreso y últ
 ubicación conocida (Historia 1, FR-001, FR-002). Pensado para ser sondeado (polling) cada
 pocos segundos por el frontend.
 
+`ultimaUbicacion` NO sale de Oracle en el caso normal: sale de la posición en memoria del
+backend compartido con 001-chofer-recorrido; solo si no hay dato en memoria se usa como
+respaldo la última ubicación de un evento arribo/descarga ya persistido en Oracle
+(FR-016, research.md §8). `reciente` aplica el mismo umbral configurado sin importar cuál
+de las dos fuentes se haya usado.
+
 **200 OK**
 ```json
 {
@@ -140,3 +146,7 @@ componente de línea de tiempo en el frontend.
   fletes (fuera de alcance — Clarifications de spec.md).
 - `GET /api/central/recorridos/activos` es de solo lectura y segura de sondear (polling)
   repetidamente; no tiene efectos secundarios.
+- Esta API asume que corre en el mismo proceso backend que expone el reporte periódico
+  de ubicación de 001-chofer-recorrido (FR-014 a FR-017 de esa spec): la lectura de
+  `ultimaUbicacion` no es una llamada de red adicional, sino acceso directo a un módulo
+  en memoria compartido dentro del mismo proceso Express (research.md §8).

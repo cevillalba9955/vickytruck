@@ -5,10 +5,12 @@ import { createApp } from "../../src/server.js";
  * contrato/integración. `centralRepository` es opcional (los tests de
  * 001-chofer-recorrido solo pasan `recorridoRepository` y nunca ejercitan
  * `/api/central`); `centralBaseUrl` queda disponible para los tests de
- * 002-panel-control-central.
+ * 002-panel-control-central. `ubicacionStore` es opcional: permite pasar una
+ * instancia aislada (`createUbicacionEnMemoria()`) para no compartir estado
+ * con otros tests vía el singleton compartido.
  */
-export async function iniciarServidorDePrueba(recorridoRepository, centralRepository) {
-  const app = createApp(recorridoRepository, centralRepository);
+export async function iniciarServidorDePrueba(recorridoRepository, centralRepository, ubicacionStore) {
+  const app = createApp(recorridoRepository, centralRepository, ubicacionStore);
   const server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   const { port } = server.address();

@@ -15,6 +15,10 @@
 - Q: ¿El chofer debe marcar arribo/descarga en orden estricto, o puede marcar cualquier punto en cualquier momento? → A: Libre — el chofer puede marcar arribo/descarga de cualquier punto de la lista, en cualquier orden, para cubrir desvíos reales de ruta.
 - Q: ¿Al marcar "arribo" se valida la ubicación GPS contra el destino (geocerca)? → A: Sin validación/bloqueo por geocerca, pero el sistema registra la ubicación GPS del dispositivo en el momento del evento (si está disponible), como dato de trazabilidad.
 - Q: ¿Cómo identifica el sistema a qué chofer/flete corresponde el dispositivo? → A: Enlace único por recorrido (token en la URL) generado por Central al asignar el recorrido; sin login usuario/clave tradicional.
+- Q: ¿La posición instantánea del flete durante el tránsito (no solo al marcar arribo/descarga) se persiste en Oracle o solo en memoria del backend? → A: Solo en memoria del backend, de forma efímera; Oracle únicamente recibe una ubicación cuando el chofer marca arribo y/o descarga en un punto (FR-006).
+- Q: ¿Cómo accede Central a esa posición en tránsito si nunca llega a Oracle? → A: A través del mismo proceso backend Express: se expone un endpoint interno que lee la posición en tránsito desde una estructura en memoria compartida entre el router del chofer y el de Central, sin pasar por Oracle.
+- Q: ¿Cada cuánto debe reportar el chofer su posición instantánea mientras el recorrido está activo? → A: A un intervalo configurable por variable de entorno del backend, con un valor por defecto largo (60 segundos), no fijado como constante rígida en la especificación.
+- Q: ¿Qué pasa con las posiciones instantáneas en memoria si el backend se reinicia? → A: Se pierden sin problema; son datos efímeros y no autoritativos (Principio VII), y el chofer retoma el reporte normalmente en el siguiente ciclo tras reconectar.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -88,6 +92,7 @@ En todo momento, el chofer puede ver de un vistazo cuántos puntos de su recorri
 - ¿Qué pasa si el chofer abre el mismo enlace único desde dos dispositivos distintos (por ejemplo, se cambia de celular)? Ambos deben ver el mismo estado del recorrido, ya que el estado vive en el servidor, no en el dispositivo.
 - ¿Qué pasa si un recorrido tiene menos de 10 puntos (por ejemplo, 3)? La app debe funcionar igual, mostrando solo esos puntos.
 - ¿Qué pasa si el chofer intenta marcar un evento sobre un punto que ya está "completado"? La app debe impedirlo y mostrar el estado final del punto.
+- ¿Qué pasa si el backend se reinicia mientras hay recorridos activos? Las ubicaciones instantáneas en memoria (FR-014 a FR-017) se pierden sin problema, por ser un dato efímero no autoritativo; el chofer retoma el reporte periódico normalmente en el siguiente ciclo, sin necesidad de reabrir la app ni de intervención manual.
 
 ## Requirements *(mandatory)*
 
@@ -106,12 +111,17 @@ En todo momento, el chofer puede ver de un vistazo cuántos puntos de su recorri
 - **FR-011**: El sistema MUST reflejar los estados de los puntos de forma consistente sin importar desde qué dispositivo se abra el mismo enlace único (el estado autoritativo reside en el servidor/Oracle, no en el dispositivo).
 - **FR-012**: Ante un enlace único inválido, expirado o revocado, el sistema MUST mostrar un mensaje de error claro sin exponer información de otros recorridos.
 - **FR-013**: Toda la interacción del chofer descrita arriba MUST ocurrir dentro de una única vista/pantalla (sin navegación multi-página).
+- **FR-014**: Mientras un recorrido esté activo, el sistema MUST reportar periódicamente la ubicación GPS instantánea del chofer (más allá de los eventos de "arribo"/"descarga"), a un intervalo configurable por el operador del backend (valor por defecto: 60 segundos).
+- **FR-015**: El sistema MUST mantener la ubicación instantánea reportada únicamente en memoria del backend mientras el recorrido está activo, sin persistirla en Oracle; solo la ubicación asociada a los eventos "arribo" y "descarga completa" (FR-006) se persiste en Oracle.
+- **FR-016**: El sistema MUST exponer la última ubicación instantánea conocida de cada flete con recorrido activo a través de una interfaz interna del mismo proceso backend, consumible por Central, sin que esa ubicación deba pasar por Oracle.
+- **FR-017**: La pérdida de las ubicaciones instantáneas en memoria ante un reinicio del backend MUST considerarse aceptable (dato efímero, no autoritativo); el sistema MUST reanudar el reporte con normalidad en el siguiente ciclo tras reconectar, sin intervención manual del chofer.
 
 ### Key Entities
 
 - **Recorrido**: Conjunto ordenado de hasta 10 puntos de entrega asignado a un flete determinado; tiene un enlace único asociado y un estado global (activo, finalizado).
 - **Punto de entrega**: Un destino dentro de un recorrido, con posición en la secuencia, ubicación (latitud/longitud), y estado (pendiente, arribado, completado), junto con las marcas de tiempo y ubicación de cada evento registrado.
 - **Enlace único (token de acceso)**: Identificador que vincula un dispositivo/chofer a un recorrido específico sin autenticación tradicional; puede estar vigente, expirado o revocado.
+- **Ubicación instantánea (en memoria)**: Última posición GPS reportada por un flete mientras su recorrido está activo, distinta de `arriboLat/Lon` y `descargaLat/Lon` de un punto. Vive únicamente en memoria del backend (nunca en Oracle), se sobrescribe con cada reporte periódico y se pierde sin problema si el backend se reinicia; es la fuente que consume Central para mostrar la "última ubicación conocida" del flete (Principio V).
 
 ## Success Criteria *(mandatory)*
 
@@ -130,3 +140,5 @@ En todo momento, el chofer puede ver de un vistazo cuántos puntos de su recorri
 - El enlace único no tiene fecha de expiración definida más allá del ciclo de vida del recorrido (se invalida cuando Central lo marca como finalizado/revocado); no se asume un tiempo fijo de expiración.
 - El dispositivo del chofer es un smartphone con navegador moderno y, opcionalmente, GPS habilitado; no se asume conectividad continua.
 - "Ubicación" mostrada al chofer por punto se deriva de las coordenadas lat/long provistas por Central (por ejemplo, mostrando una dirección aproximada o un enlace a mapa), no se asume que Central provea una dirección textual separada.
+- El reporte periódico de ubicación instantánea (FR-014) es independiente del reporte de ubicación al marcar arribo/descarga (FR-006): puede implementarse con el mismo mecanismo del navegador (geolocalización best-effort), pero con su propio temporizador y su propio intervalo configurable, sin bloquear ni depender de la cola de reintento offline usada para los eventos de arribo/descarga.
+- Esta especificación asume que el backend de Central (feature 002-panel-control-central) y el backend del chofer son el mismo proceso/servicio (según ya se definió en esa feature), por lo que la ubicación instantánea en memoria puede exponerse a Central sin necesitar un mecanismo de mensajería entre procesos separados.

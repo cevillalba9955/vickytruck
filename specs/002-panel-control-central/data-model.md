@@ -1,12 +1,15 @@
 # Data Model: Central — Panel de Control de Recorridos y Fletes
 
-Todas las entidades viven en Oracle (Principio IV). Este panel **no crea ni edita**
-puntos de entrega ni el directorio de fletes (confirmado en Clarifications de spec.md);
-solo consulta y, para `Asignación`, escribe a través del package `CENTRAL_API` (ver
-research.md §6). Los nombres de vista/tabla/columna documentados aquí son un supuesto
-razonable siguiendo la convención ya validada en 001-chofer-recorrido — a confirmar contra
-la instancia real durante la implementación (research.md §5), igual que ocurrió con
-`V_RECORRIDOS`/`V_PUNTOS_ENTREGA`.
+La mayoría de las entidades viven en Oracle (Principio IV): `Recorrido`, `Asignación` y
+`PuntoEntrega`. La **excepción** es la última ubicación conocida de un flete: vive
+principalmente en memoria del backend compartido con 001-chofer-recorrido, con un
+respaldo derivado de eventos ya persistidos en Oracle cuando no hay dato en memoria (ver
+research.md §8). Este panel **no crea ni edita** puntos de entrega ni el directorio de
+fletes (confirmado en Clarifications de spec.md); solo consulta y, para `Asignación`,
+escribe a través del package `CENTRAL_API` (ver research.md §6). Los nombres de
+vista/tabla/columna documentados aquí son un supuesto razonable siguiendo la convención
+ya validada en 001-chofer-recorrido — a confirmar contra la instancia real durante la
+implementación (research.md §5), igual que ocurrió con `V_RECORRIDOS`/`V_PUNTOS_ENTREGA`.
 
 ## Recorrido (extiende la entidad ya definida en 001-chofer-recorrido)
 
@@ -33,19 +36,38 @@ sin_asignar (fleteId = NULL) --(asignar)--> activo (fleteId = X) --(todos los pu
 - La reasignación no modifica el estado de los `PuntoEntrega` ya registrados (FR-009,
   Historia 4).
 
-## Flete (NUEVO para esta feature; directorio gestionado fuera de este panel)
+## Flete (directorio estático en Oracle — NUEVO para esta feature en cuanto a su consumo)
 
 | Campo | Tipo | Notas |
 |---|---|---|
-| `id` | identificador | clave primaria, ya existente en el directorio externo |
-| `disponible` | booleano derivado | `true` si no tiene un recorrido `activo` asignado en este momento |
-| `ultimaUbicacionLat`, `ultimaUbicacionLon` | decimal, nullable | última ubicación GPS reportada mientras ejecuta un recorrido activo |
-| `ultimaUbicacionEn` | timestamp, nullable | marca de tiempo del último reporte; `NULL` si nunca reportó |
-| `ubicacionReciente` | booleano derivado | `false` si `ultimaUbicacionEn` es más antigua que el umbral configurado (FR-014, research.md §7) |
+| `id` | identificador | clave primaria, ya existente en el directorio externo (`V_FLETES`) |
+| `nombre` | string | dato estático del directorio (`V_FLETES`) |
+| `disponible` | booleano derivado | `true` si no tiene un recorrido `activo` asignado en este momento (se calcula contra `Recorrido`, no vive en `V_FLETES`) |
+
+**`V_FLETES` es puramente estático** (research.md §8): no tiene ni tendrá columnas de
+ubicación. `id` y `nombre` son los únicos campos que este panel necesita de ahí.
 
 **Reglas de validación**:
-- Este panel no crea ni edita fletes; `disponible` y `ubicacionReciente` son valores
-  derivados en cada respuesta, no columnas propias necesariamente.
+- Este panel no crea ni edita fletes; `disponible` es un valor derivado en cada
+  respuesta, no una columna propia de `V_FLETES`.
+
+## Ubicación conocida de un flete (derivada — NO vive en `V_FLETES`)
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `lat`, `lon` | decimal, nullable | posición más reciente disponible, según la prioridad de abajo |
+| `en` | timestamp, nullable | marca de tiempo de esa posición; `NULL` si no hay ninguna fuente disponible |
+| `reciente` | booleano derivado | `false` si `en` es más antiguo que el umbral configurado (`UBICACION_STALE_MS`, research.md §7), sin importar la fuente |
+| `fuente` (interno, no necesariamente expuesto en la API) | enum: `memoria` \| `evento_oracle` \| `ninguna` | de dónde salió el dato, para depuración/tests |
+
+**Prioridad de obtención** (FR-016, research.md §8):
+1. Posición en memoria del backend compartido con 001-chofer-recorrido (`Ubicación
+   instantánea (en memoria)`, ver `specs/001-chofer-recorrido/data-model.md`).
+2. Si no hay dato en memoria: última ubicación de un evento `arribo` o `descarga` ya
+   persistido en Oracle para el recorrido activo de ese flete (`PuntoEntrega.arriboLat/Lon`
+   o `descargaLat/Lon`, el que tenga el timestamp más reciente).
+3. Si tampoco hay evento persistido: sin ubicación disponible (`lat`/`lon`/`en` en
+   `null`, `reciente = false`).
 
 ## Asignación (NUEVO — relación Recorrido↔Flete con historial implícito)
 
@@ -73,7 +95,8 @@ de recorrido); no ofrece ninguna acción de escritura sobre ellos (fuera de alca
 
 - **Resumen de monitoreo** (FR-001, Historia 1): por cada recorrido `activo`, `{ fleteId,
   progreso: { pendientes, arribados, completados }, ultimaUbicacion: { lat, lon, en,
-  reciente } }`.
+  reciente } }`, donde `ultimaUbicacion` sigue la prioridad memoria → evento Oracle →
+  sin datos descripta arriba (FR-016).
 - **Recorridos disponibles** (FR-003): recorridos con `fleteId = NULL`.
 - **Fletes disponibles** (FR-004): fletes sin un recorrido `activo` asignado en este
   momento.

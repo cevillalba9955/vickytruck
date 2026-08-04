@@ -4,6 +4,9 @@ import "./styles.css";
 import { RouteView } from "./components/RouteView.jsx";
 import { ProgressSummary } from "./components/ProgressSummary.jsx";
 import { ApiError, obtenerRecorrido, marcarArribo, marcarDescarga, iniciarSincronizacionOffline } from "./services/api.js";
+import { iniciarReportePeriodico } from "./services/ubicacionPeriodica.js";
+
+const INTERVALO_UBICACION_DEFAULT_MS = 60000;
 
 function obtenerTokenDeUrl() {
   return new URLSearchParams(window.location.search).get("token");
@@ -42,6 +45,14 @@ function App() {
     if (!token) return undefined;
     return iniciarSincronizacionOffline();
   }, [token]);
+
+  // FR-014: reporte periódico de ubicación instantánea mientras el recorrido
+  // está activo; el intervalo lo decide el backend (recorrido.intervaloUbicacionMs).
+  const intervaloUbicacionMs = recorrido?.recorrido?.intervaloUbicacionMs ?? INTERVALO_UBICACION_DEFAULT_MS;
+  useEffect(() => {
+    if (!token) return undefined;
+    return iniciarReportePeriodico(token, intervaloUbicacionMs);
+  }, [token, intervaloUbicacionMs]);
 
   const actualizarPuntoLocal = (puntoId, cambios) => {
     setRecorrido((actual) => {

@@ -20,6 +20,12 @@
 
 - Q: ¿Central debe seguir bloqueando/degradando su funcionalidad cuando se accede fuera de un iframe de Oracle APEX? → A: No — se elimina esa restricción (Principio III de la constitución, ahora v2.0.0). El acceso directo por URL pasa a ser un modo de uso válido y soportado, sin perder la compatibilidad con el embebido en APEX cuando corresponda.
 
+### Session 2026-08-03 (fuente de la posición en tiempo real)
+
+- Q: ¿La vista `V_FLETES` en Oracle incluye la última ubicación del flete, o solo datos estáticos? → A: Solo datos estáticos (identificador, nombre, etc.); `V_FLETES` no tiene ni tendrá columnas de ubicación.
+- Q: Si `V_FLETES` no tiene ubicación, ¿de dónde sale entonces la "última ubicación conocida" que muestra Central (Historia 1)? → A: Principalmente de la estructura en memoria del backend compartido con la app del chofer (ver FR-014 a FR-017 de 001-chofer-recorrido, alimentada por el reporte periódico del chofer mientras el recorrido está activo). Si no hay una posición en memoria para ese flete (por ejemplo, el backend se reinició recién y todavía no llegó un nuevo reporte), Central usa como respaldo la ubicación del último evento "arribo" o "descarga" ya persistido en Oracle para el recorrido activo de ese flete.
+- Q: ¿El umbral de "reciente/no reciente" (FR-014) se aplica igual a la posición en memoria y a la de respaldo en Oracle? → A: Sí, se aplica el mismo umbral configurado (`UBICACION_STALE_MS`) sin distinguir el origen del dato, para mantener una única regla simple (Principio VII).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Monitorear en vivo los recorridos activos (Priority: P1)
@@ -103,7 +109,7 @@ El operador consulta recorridos ya finalizados (todos sus puntos completados) pa
 
 - ¿Qué pasa si dos operadores intentan asignar el mismo recorrido precargado a dos fletes distintos casi al mismo tiempo? Solo una asignación MUST prevalecer; la segunda MUST rechazarse con un mensaje claro, sin dejar el recorrido en un estado ambiguo.
 - ¿Qué pasa si el panel se abre fuera del iframe de Oracle APEX (acceso directo a la URL)? MUST funcionar igual que embebido, sin bloquear ni degradar ninguna funcionalidad por esa sola razón (acceso directo es un modo de uso soportado).
-- ¿Qué pasa si un flete asignado deja de reportar ubicación por mucho tiempo (GPS denegado o dispositivo apagado)? El panel MUST distinguir visualmente "sin datos recientes" de "última ubicación conocida", sin mostrar una ubicación vieja como si fuera actual.
+- ¿Qué pasa si un flete asignado deja de reportar ubicación por mucho tiempo (GPS denegado, dispositivo apagado, o el backend se reinició y todavía no llegó un nuevo reporte)? El panel MUST intentar primero la posición en memoria del backend; si no hay ninguna, MUST usar como respaldo la ubicación del último evento arribo/descarga persistido en Oracle para ese recorrido; si tampoco existe ninguna de las dos, MUST indicar claramente que no hay ubicación disponible. En todos los casos, MUST distinguir visualmente "reciente" de "no reciente" según el mismo umbral (FR-014), sin mostrar una ubicación vieja como si fuera actual.
 - ¿Qué pasa si el recorrido precargado en Oracle tiene datos inconsistentes (por ejemplo, más de 10 puntos)? El panel MUST señalarlo como no asignable en vez de permitir una asignación inválida.
 - ¿Qué pasa si se reasigna un recorrido y el flete original todavía tenía acciones pendientes de sincronizar (offline)? Los eventos ya registrados en el servidor antes de la reasignación MUST conservarse; el enlace único anterior deja de ser válido para nuevas acciones.
 
@@ -126,11 +132,13 @@ El operador consulta recorridos ya finalizados (todos sus puntos completados) pa
 - **FR-013**: El sistema MUST resolver la identidad/sesión del operador a partir del contexto provisto por la página APEX contenedora cuando está embebido; cuando se accede directamente (sin ese contexto), MUST operar igual sin implementar un mecanismo de login propio adicional.
 - **FR-014**: El sistema MUST distinguir visualmente, para cada flete monitoreado, si su última ubicación reportada es reciente o si excede un umbral de antigüedad razonable, en lugar de presentarla siempre como dato actual.
 - **FR-015**: El sistema MUST evitar que dos asignaciones concurrentes sobre el mismo recorrido precargado produzcan un estado ambiguo: solo una MUST prevalecer y la otra MUST rechazarse con aviso claro.
+- **FR-016**: El sistema MUST obtener la última ubicación conocida de un flete en este orden de prioridad: (1) la posición en memoria del backend compartido con la app del chofer (FR-014 a FR-017 de 001-chofer-recorrido); (2) si no hay una posición en memoria, la ubicación del último evento "arribo" o "descarga" ya persistido en Oracle para el recorrido activo de ese flete; (3) si no existe ninguna de las dos, MUST indicarlo claramente en vez de mostrar un dato inventado o vacío sin explicación.
+- **FR-017**: El sistema MUST aplicar el mismo umbral de antigüedad (FR-014) para determinar si una ubicación es "reciente" o no, sin importar si proviene de la posición en memoria o del respaldo persistido en Oracle (FR-016).
 
 ### Key Entities
 
 - **Recorrido**: Igual que en la especificación del chofer (hasta 10 puntos ordenados); desde este panel se le añade un estado de asignación (sin asignar / asignado-activo / finalizado) y, cuando corresponde, el flete que lo tiene asignado.
-- **Flete (chofer)**: Entidad ya existente en el directorio de Oracle; para este panel interesa su disponibilidad para asignación y su última ubicación conocida reportada mientras ejecuta un recorrido.
+- **Flete (chofer)**: Entidad ya existente en el directorio de Oracle (datos estáticos: identificador, nombre); para este panel interesa además su disponibilidad para asignación (derivada de si tiene un recorrido activo). Su última ubicación conocida NO forma parte de este directorio estático: se obtiene de la "Ubicación instantánea (en memoria)" definida en 001-chofer-recorrido, con respaldo en la última ubicación de evento (arribo/descarga) persistida en Oracle cuando no hay dato en memoria (FR-016).
 - **Asignación**: Vínculo entre un recorrido precargado y un flete, con fecha/hora de asignación y el enlace único generado; puede terminar por finalización del recorrido o por reasignación explícita a otro flete.
 - **Punto de entrega**: Igual que en la especificación del chofer; este panel solo lo consulta (no lo crea ni edita), mostrando su posición, estado y eventos registrados.
 
@@ -153,3 +161,4 @@ El operador consulta recorridos ya finalizados (todos sus puntos completados) pa
 - La identidad del operador dentro de Central se resuelve mediante el contexto de sesión de la página Oracle APEX contenedora cuando está embebida (Restricción Técnica de Integración APEX); cuando se accede directamente por URL no hay ese contexto ni un login propio que lo reemplace, siguiendo la misma decisión de simplicidad ya tomada para el chofer (sin sistema de cuentas). El acceso directo queda, por diseño, sin control de acceso propio de la aplicación; restringir quién puede llegar a esa URL (red, firewall, etc.) es responsabilidad de quien despliega Central, no de esta especificación.
 - "Recorrido precargado disponible" se interpreta como un recorrido existente en Oracle sin flete asignado activo en este momento (nunca asignado, o cuya asignación anterior ya finalizó).
 - El umbral de "ubicación no reciente" (Historia 1, FR-014) es un valor razonable por definir en la fase de planificación (por ejemplo, unos pocos minutos sin reporte), no fijado por esta especificación.
+- El directorio de fletes en Oracle (`V_FLETES` u otra fuente equivalente) es puramente estático (identificador, nombre, etc.); no tiene ni tendrá columnas de ubicación. La "última ubicación conocida" que muestra Central depende del backend compartido con la app del chofer (memoria de proceso) definido en 001-chofer-recorrido, con el respaldo en Oracle descrito en FR-016. Esta especificación asume que ese backend compartido y su mecanismo en memoria ya existen (o se implementan junto con esta feature) — no se modela aquí una fuente de datos alternativa.
