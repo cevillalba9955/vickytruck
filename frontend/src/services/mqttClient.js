@@ -15,9 +15,15 @@ export function conectar({ url, username, password }) {
     password,
     reconnectPeriod: 4000,
   });
-  client.on("error", () => {
-    // Sin acción: mqtt.js reintenta solo (reconnectPeriod); publish() falla
-    // mientras tanto y el llamador decide si encolar (ver offlineQueue.js).
+  // Sin acción correctiva acá (mqtt.js reintenta solo; publish() falla
+  // mientras tanto y el llamador decide si encolar, ver offlineQueue.js),
+  // pero SÍ se loguea: sin esto, un rechazo de credenciales/ACL es invisible
+  // en devtools y parece "no pasa nada" en vez de un error concreto.
+  client.on("error", (err) => {
+    console.error("[mqtt] error de conexión:", err?.message || err);
+  });
+  client.on("close", () => {
+    console.warn("[mqtt] conexión cerrada, reintentando…");
   });
   return client;
 }

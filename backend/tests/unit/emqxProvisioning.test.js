@@ -11,10 +11,12 @@ async function conConfigDeTest(fn) {
     EMQX_CLOUD_API_URL: process.env.EMQX_CLOUD_API_URL,
     EMQX_CLOUD_API_KEY: process.env.EMQX_CLOUD_API_KEY,
     EMQX_CLOUD_API_SECRET: process.env.EMQX_CLOUD_API_SECRET,
+    EMQX_TOKEN_PASSWORD_SECRET: process.env.EMQX_TOKEN_PASSWORD_SECRET,
   };
   process.env.EMQX_CLOUD_API_URL = BASE;
   process.env.EMQX_CLOUD_API_KEY = "clave-test";
   process.env.EMQX_CLOUD_API_SECRET = "secreto-test";
+  process.env.EMQX_TOKEN_PASSWORD_SECRET = "secreto-de-passwords-test";
   try {
     return await fn();
   } finally {
@@ -66,6 +68,33 @@ test("emqxProvisioning — provisionarCredencial crea el usuario MQTT y su regla
   });
 });
 
+test("emqxProvisioning — provisionarCredencial es determinística: mismo token, misma contraseña siempre", async () => {
+  await conConfigDeTest(async () => {
+    // Reproduce el bug real (2026-08-04): dos llamadas para el mismo token
+    // (dos pestañas, recarga de página) ya NO deben generar contraseñas
+    // distintas, porque eso deja inválida la conexión que ya estaba abierta.
+    const fetchImpl1 = fakeFetch([{ ok: true, status: 201 }, { ok: true, status: 204 }]);
+    const credencial1 = await createEmqxProvisioning(fetchImpl1).provisionarCredencial("tok-mismo");
+
+    const fetchImpl2 = fakeFetch([{ ok: false, status: 409 }, { ok: true, status: 200 }, { ok: false, status: 409 }]);
+    const credencial2 = await createEmqxProvisioning(fetchImpl2).provisionarCredencial("tok-mismo");
+
+    assert.equal(credencial1.password, credencial2.password);
+  });
+});
+
+test("emqxProvisioning — provisionarCredencial da contraseñas distintas para tokens distintos", async () => {
+  await conConfigDeTest(async () => {
+    const fetchImplA = fakeFetch([{ ok: true, status: 201 }, { ok: true, status: 204 }]);
+    const credencialA = await createEmqxProvisioning(fetchImplA).provisionarCredencial("tok-a");
+
+    const fetchImplB = fakeFetch([{ ok: true, status: 201 }, { ok: true, status: 204 }]);
+    const credencialB = await createEmqxProvisioning(fetchImplB).provisionarCredencial("tok-b");
+
+    assert.notEqual(credencialA.password, credencialB.password);
+  });
+});
+
 test("emqxProvisioning — provisionarCredencial hace upsert (PUT) del usuario si ya existía (409)", async () => {
   await conConfigDeTest(async () => {
     const fetchImpl = fakeFetch([{ ok: false, status: 409 }, { ok: true, status: 200 }, { ok: true, status: 204 }]);
@@ -110,6 +139,18 @@ test("emqxProvisioning — provisionarCredencial lanza si la regla de ACL falla"
     const provisioning = createEmqxProvisioning(fetchImpl);
 
     await assert.rejects(() => provisioning.provisionarCredencial("tok-x"), /emqx_provisionar_acl_fallo/);
+  });
+});
+
+test("emqxProvisioning — provisionarCredencial es idempotente si la regla de ACL ya existía (409)", async () => {
+  await conConfigDeTest(async () => {
+    // Caso real: GET /:token llamado dos veces para el mismo token (ej.
+    // recarga de página) — la 2da vez el usuario Y la regla ya existen.
+    const fetchImpl = fakeFetch([{ ok: false, status: 409 }, { ok: true, status: 200 }, { ok: false, status: 409 }]);
+    const provisioning = createEmqxProvisioning(fetchImpl);
+
+    const credencial = await provisioning.provisionarCredencial("tok-recarga");
+    assert.equal(credencial.username, "tok-recarga");
   });
 });
 

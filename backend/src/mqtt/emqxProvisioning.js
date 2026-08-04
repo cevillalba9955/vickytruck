@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 // Aprovisiona/revoca la credencial MQTT de un flete (username=token) contra
 // la API HTTP nativa (v5) del propio deployment de EMQX Cloud — NO la
 // "Platform API" a nivel cuenta (esa vive bajo cloud-intl.emqx.com y sirve
@@ -65,24 +67,41 @@ function authHeader() {
   return `Basic ${basic}`;
 }
 
-function generarPassword() {
-  return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+// Determinística (HMAC-SHA256 del token con un secreto propio del backend),
+// NO aleatoria: `provisionarCredencial` se llama en cada GET /:token (cada
+// carga/recarga de la página del chofer), y con una contraseña aleatoria
+// cada llamada la pisaba en EMQX Cloud — dejando obsoleta la que ya tenía
+// cargada cualquier pestaña/conexión anterior de ese mismo token ("Bad
+// username or password" en el navegador, reproducido 2026-08-04). Al ser
+// función pura de (token, secreto), da siempre el mismo resultado sin
+// necesitar cachear nada (Principio IV/VII).
+function derivarPassword(token) {
+  const secreto = process.env.EMQX_TOKEN_PASSWORD_SECRET;
+  if (!secreto) throw new Error("EMQX_TOKEN_PASSWORD_SECRET no configurado");
+  return createHmac("sha256", secreto).update(token).digest("hex");
 }
 
 /**
  * Crea (o actualiza) la credencial MQTT de un token de recorrido y devuelve
- * SIEMPRE la contraseña vigente para ese `username`. Es un upsert idempotente
- * a propósito: `GET /:token` (recorrido.js) la llama en cada carga de la SPA
- * del chofer en vez de cachear el resultado en algún lado — así no hay
- * ningún estado local que pueda quedar desincronizado de EMQX Cloud (ej.
- * tras un reinicio del backend) ni que dependa de que Oracle tenga una
- * columna nueva (Principio IV). `fetchImpl` es inyectable para poder testear
- * sin llamar a la API real de EMQX Cloud.
+ * SIEMPRE la misma contraseña (determinística, ver `derivarPassword`) para
+ * ese `username`. Es un upsert idempotente a propósito: `GET /:token`
+ * (recorrido.js) la llama en cada carga de la SPA del chofer en vez de
+ * cachear el resultado en algún lado — así no hay ningún estado local que
+ * pueda quedar desincronizado de EMQX Cloud (ej. tras un reinicio del
+ * backend) ni que dependa de que Oracle tenga una columna nueva (Principio
+ * IV). Al ser determinística, dos llamadas concurrentes para el mismo token
+ * (dos pestañas, recarga de página) ya no compiten por dejar contraseñas
+ * distintas. `fetchImpl` es inyectable para poder testear sin llamar a la
+ * API real de EMQX Cloud.
  */
 async function upsertReglaDelToken(fetchImpl, token) {
   // Regla explícita para este token: solo puede publicar dentro de su propio
-  // árbol de tópicos (FR-006). El endpoint reemplaza el set completo de
-  // reglas de ese username en cada llamada, así que es seguro reintentar.
+  // árbol de tópicos (FR-006). `provisionarCredencial` es un upsert llamado
+  // en cada GET /:token (recarga de página incluida), así que esto se llama
+  // repetidas veces para el mismo token — a diferencia de lo asumido
+  // originalmente, el endpoint NO actualiza en silencio: devuelve 409 si la
+  // regla ya existe (confirmado contra un deployment real, 2026-08-04). Se
+  // trata igual que el 409 de creación de usuario: éxito, sin cambios.
   const res = await fetchImpl(reglasUsuariosUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: authHeader() },
@@ -93,7 +112,7 @@ async function upsertReglaDelToken(fetchImpl, token) {
       },
     ]),
   });
-  if (!res.ok) {
+  if (!res.ok && res.status !== 409) {
     throw new Error(`emqx_provisionar_acl_fallo: ${res.status}`);
   }
 }
@@ -101,7 +120,7 @@ async function upsertReglaDelToken(fetchImpl, token) {
 export function createEmqxProvisioning(fetchImpl = fetch) {
   return {
     async provisionarCredencial(token) {
-      const password = generarPassword();
+      const password = derivarPassword(token);
       const res = await fetchImpl(usersUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: authHeader() },
