@@ -1,8 +1,11 @@
 # backend
 
-API HTTP (Express) del chofer y de Central, sobre Oracle (fuente única de verdad,
-Principio IV) y un bróker MQTT en la nube para ubicación/acciones de los fletes
-(003-mqtt-broker-fletes).
+API HTTP (Express) de Central, sobre Oracle (fuente única de verdad, Principio IV) y un
+bróker MQTT en la nube para ubicación/acciones de los fletes (003-mqtt-broker-fletes). El
+frontend del chofer se despliega por separado, en un hosting público sin conectividad
+hacia este backend (004-chofer-cloud-broker): Central genera, al asignar un recorrido, un
+enlace con el recorrido y el token de publicación embebidos, y a partir de ahí el chofer
+solo habla con el bróker.
 
 ## Variables de entorno
 
@@ -32,9 +35,28 @@ Antes de levantar el backend por primera vez en un entorno nuevo:
    arranca la suscripción (`src/mqtt/subscriber.js`).
 
 Las credenciales MQTT de cada flete (una por token de recorrido) se aprovisionan solas,
-de forma perezosa, la primera vez que su enlace único hace `GET /api/recorridos/:token`
+de forma perezosa, en el momento en que Central genera o vuelve a pedir el enlace del
+recorrido (`POST /api/central/recorridos/:id/asignar`, `.../reasignar`, o simplemente
+`GET /api/central/recorridos/:id` para un recorrido ya activo — `src/services/enlaceRecorrido.js`)
 — no requieren ningún paso manual adicional. Se revocan automáticamente al reasignar el
 recorrido a otro flete o al completarse el último punto de entrega.
+
+## Frontend del chofer desplegado en la nube (004-chofer-cloud-broker)
+
+El frontend del chofer (`frontend/`) se despliega en un hosting público (ej. Cloudflare
+Pages/Workers) sin conectividad hacia este backend. Todo lo que necesita para mostrar el
+recorrido y publicar en el bróker viaja embebido en el enlace que Central genera —
+`CHOFER_FRONTEND_URL` (ver `.env.example`) es el origen de ese frontend, usado para armar
+la URL completa.
+
+Como el enlace de WhatsApp puede reenviarse fácilmente, el token de publicación queda
+atado al primer dispositivo que lo usa (`src/mqtt/conexionWatcher.js` +
+`src/state/vinculoDispositivo.js`): un segundo dispositivo con el mismo enlace puede ver
+el recorrido, pero su intento de publicar es expulsado del bróker. Es un mecanismo
+reactivo (detecta y expulsa), no preventivo — ver
+[`specs/004-chofer-cloud-broker/research.md`](../specs/004-chofer-cloud-broker/research.md)
+§3 para el porqué (el plan EMQX Cloud Serverless usado por el proyecto no soporta
+autenticación HTTP por webhook).
 
 ## Scripts
 

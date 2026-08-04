@@ -17,8 +17,20 @@ export function RecorridoDetalle({ detalle, onReasignado }) {
   const [fleteId, setFleteId] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState(null);
+  const [copiado, setCopiado] = useState(false);
 
   const puedeReasignar = detalle?.recorrido.estado === "activo";
+
+  // 004-chofer-cloud-broker (FR-006, US3 AS2): re-obtener el enlace de un
+  // recorrido ya activo, no solo justo después de asignarlo.
+  const handleCopiarEnlace = async () => {
+    try {
+      await navigator.clipboard.writeText(detalle.recorrido.enlace);
+      setCopiado(true);
+    } catch {
+      setCopiado(false);
+    }
+  };
 
   useEffect(() => {
     if (!puedeReasignar) return;
@@ -51,6 +63,15 @@ export function RecorridoDetalle({ detalle, onReasignado }) {
         Estado: <strong>{recorrido.estado}</strong>
         {recorrido.fleteId && <> — Flete asignado: {recorrido.fleteId}</>}
       </p>
+
+      {recorrido.enlace && (
+        <p>
+          Enlace del flete: <code>{recorrido.enlace}</code>{" "}
+          <button type="button" onClick={handleCopiarEnlace}>
+            {copiado ? "¡Copiado!" : "Copiar enlace"}
+          </button>
+        </p>
+      )}
 
       <ol className="detalle-view__lista">
         {puntos.map((p) => (

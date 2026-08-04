@@ -101,7 +101,9 @@ backend/
 │   │   └── central.js                 # POST /asignar, /reasignar → devuelven `enlace` completo
 │   ├── mqtt/
 │   │   ├── client.js                  # Sin cambios (cliente de servicio ya conectado)
-│   │   ├── subscriber.js              # Sin cambios (eventos/ubicación de fletes)
+│   │   ├── subscriber.js              # Agrega vinculoDispositivo.liberar(token) al completar
+│   │   │                               # el recorrido (mismo punto que ya revoca la credencial
+│   │   │                               # EMQX) — el resto del archivo no cambia
 │   │   ├── emqxProvisioning.js        # provisionarCredencial se invoca ahora al generar el
 │   │   │                               # enlace (en central.js), no en GET /:token (retirado)
 │   │   └── conexionWatcher.js         # NUEVO — suscribe a $SYS/eventos de conexión, detecta

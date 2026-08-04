@@ -2,9 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createInMemoryRecorridoRepository } from "../helpers/inMemoryRecorridoRepository.js";
 import { createFakeEmqxProvisioning } from "../helpers/fakeEmqxProvisioning.js";
-import { iniciarServidorDePrueba } from "../helpers/testServer.js";
+import { createEnlaceRecorrido } from "../../src/services/enlaceRecorrido.js";
 
-test("US1 — resolver token válido devuelve el recorrido completo sin exponer otros", async () => {
+// 004-chofer-cloud-broker: reemplaza el antiguo `GET /api/recorridos/:token`
+// (retirado) — el chofer ya no le pide el recorrido al backend; en cambio,
+// Central obtiene el payload embebido vía `enlaceRecorrido.construirEnlace`.
+// Se conserva la garantía de aislamiento entre tokens (FR-007) que cubría el
+// contrato HTTP retirado.
+test("US1 — construirEnlace(token) devuelve el recorrido completo sin exponer otros", async () => {
   const repository = createInMemoryRecorridoRepository([
     {
       token: "tok-flete-a",
@@ -18,21 +23,16 @@ test("US1 — resolver token válido devuelve el recorrido completo sin exponer 
       puntos: [{ id: "b1", orden: 1, latitud: -9, longitud: -9, estado: "pendiente" }],
     },
   ]);
-  const server = await iniciarServidorDePrueba(repository, undefined, createFakeEmqxProvisioning());
+  const enlaceRecorrido = createEnlaceRecorrido({
+    recorridoRepository: repository,
+    emqxProvisioning: createFakeEmqxProvisioning(),
+    frontendBaseUrl: "https://chofer.example",
+  });
 
-  try {
-    const resA = await fetch(`${server.baseUrl}/tok-flete-a`);
-    const bodyA = await resA.json();
-    assert.equal(resA.status, 200);
-    assert.equal(bodyA.puntos.length, 2);
-    assert.ok(bodyA.puntos.every((p) => ["a1", "a2"].includes(p.id)));
+  const enlaceA = await enlaceRecorrido.construirEnlace("tok-flete-a");
+  assert.equal(enlaceA.payload.puntos.length, 2);
+  assert.ok(enlaceA.payload.puntos.every((p) => ["a1", "a2"].includes(p.id)));
 
-    // FR-012: un token inválido no debe exponer datos de otros recorridos
-    const resInvalido = await fetch(`${server.baseUrl}/tok-no-existe`);
-    assert.equal(resInvalido.status, 404);
-    const bodyInvalido = await resInvalido.json();
-    assert.deepEqual(bodyInvalido, { error: "enlace_invalido" });
-  } finally {
-    await server.cerrar();
-  }
+  // FR-007: un token inexistente no debe exponer datos de otros recorridos.
+  assert.equal(await enlaceRecorrido.construirEnlace("tok-no-existe"), null);
 });

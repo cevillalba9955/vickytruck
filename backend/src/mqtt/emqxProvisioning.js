@@ -61,6 +61,16 @@ function reglaUsuarioUrl(token) {
   return `${reglasUsuariosUrl()}/${encodeURIComponent(token)}`;
 }
 
+// Endpoint nativo (v5) de "kick out" de cliente por `clientId`, mismo
+// criterio de "a confirmar contra el dashboard real" que `authId` arriba
+// (004-chofer-cloud-broker, FR-005a) — usado por conexionWatcher.js para
+// expulsar la sesión de un segundo dispositivo que se conecta con el mismo
+// token de publicación (research.md §3: mecanismo reactivo, no preventivo,
+// dadas las limitaciones del plan Serverless de EMQX Cloud).
+function clienteUrl(clientId) {
+  return `${apiBaseUrl()}/clients/${encodeURIComponent(clientId)}`;
+}
+
 function authHeader() {
   const { apiKey, apiSecret } = credencialesAdmin();
   const basic = Buffer.from(`${apiKey}:${apiSecret}`).toString("base64");
@@ -68,13 +78,15 @@ function authHeader() {
 }
 
 // Determinística (HMAC-SHA256 del token con un secreto propio del backend),
-// NO aleatoria: `provisionarCredencial` se llama en cada GET /:token (cada
-// carga/recarga de la página del chofer), y con una contraseña aleatoria
-// cada llamada la pisaba en EMQX Cloud — dejando obsoleta la que ya tenía
-// cargada cualquier pestaña/conexión anterior de ese mismo token ("Bad
-// username or password" en el navegador, reproducido 2026-08-04). Al ser
-// función pura de (token, secreto), da siempre el mismo resultado sin
-// necesitar cachear nada (Principio IV/VII).
+// NO aleatoria: `provisionarCredencial` se llama cada vez que Central genera
+// o vuelve a pedir el enlace de un recorrido (`enlaceRecorrido.js`,
+// 004-chofer-cloud-broker — antes se llamaba en cada `GET /:token`, endpoint
+// ya retirado), y con una contraseña aleatoria cada llamada la pisaba en
+// EMQX Cloud — dejando obsoleta la que ya tenía cargada cualquier
+// pestaña/conexión anterior de ese mismo token ("Bad username or password"
+// en el navegador, reproducido 2026-08-04). Al ser función pura de (token,
+// secreto), da siempre el mismo resultado sin necesitar cachear nada
+// (Principio IV/VII).
 function derivarPassword(token) {
   const secreto = process.env.EMQX_TOKEN_PASSWORD_SECRET;
   if (!secreto) throw new Error("EMQX_TOKEN_PASSWORD_SECRET no configurado");
@@ -84,24 +96,26 @@ function derivarPassword(token) {
 /**
  * Crea (o actualiza) la credencial MQTT de un token de recorrido y devuelve
  * SIEMPRE la misma contraseña (determinística, ver `derivarPassword`) para
- * ese `username`. Es un upsert idempotente a propósito: `GET /:token`
- * (recorrido.js) la llama en cada carga de la SPA del chofer en vez de
- * cachear el resultado en algún lado — así no hay ningún estado local que
- * pueda quedar desincronizado de EMQX Cloud (ej. tras un reinicio del
- * backend) ni que dependa de que Oracle tenga una columna nueva (Principio
- * IV). Al ser determinística, dos llamadas concurrentes para el mismo token
- * (dos pestañas, recarga de página) ya no compiten por dejar contraseñas
- * distintas. `fetchImpl` es inyectable para poder testear sin llamar a la
- * API real de EMQX Cloud.
+ * ese `username`. Es un upsert idempotente a propósito: `enlaceRecorrido.js`
+ * la llama cada vez que Central genera o vuelve a pedir el enlace de un
+ * recorrido (asignar, reasignar, o simplemente reabrir el detalle de uno ya
+ * activo) en vez de cachear el resultado en algún lado — así no hay ningún
+ * estado local que pueda quedar desincronizado de EMQX Cloud (ej. tras un
+ * reinicio del backend) ni que dependa de que Oracle tenga una columna
+ * nueva (Principio IV). Al ser determinística, dos llamadas concurrentes
+ * para el mismo token ya no compiten por dejar contraseñas distintas.
+ * `fetchImpl` es inyectable para poder testear sin llamar a la API real de
+ * EMQX Cloud.
  */
 async function upsertReglaDelToken(fetchImpl, token) {
   // Regla explícita para este token: solo puede publicar dentro de su propio
   // árbol de tópicos (FR-006). `provisionarCredencial` es un upsert llamado
-  // en cada GET /:token (recarga de página incluida), así que esto se llama
-  // repetidas veces para el mismo token — a diferencia de lo asumido
-  // originalmente, el endpoint NO actualiza en silencio: devuelve 409 si la
-  // regla ya existe (confirmado contra un deployment real, 2026-08-04). Se
-  // trata igual que el 409 de creación de usuario: éxito, sin cambios.
+  // cada vez que Central genera o vuelve a pedir el enlace de un recorrido,
+  // así que esto se llama repetidas veces para el mismo token — a
+  // diferencia de lo asumido originalmente, el endpoint NO actualiza en
+  // silencio: devuelve 409 si la regla ya existe (confirmado contra un
+  // deployment real, 2026-08-04). Se trata igual que el 409 de creación de
+  // usuario: éxito, sin cambios.
   const res = await fetchImpl(reglasUsuariosUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: authHeader() },
@@ -166,6 +180,23 @@ export function createEmqxProvisioning(fetchImpl = fetch) {
       });
       if (!resRegla.ok && resRegla.status !== 404) {
         throw new Error(`emqx_revocar_acl_fallo: ${resRegla.status}`);
+      }
+    },
+
+    /**
+     * Desconecta (kick) la sesión activa de `clientId` en el bróker, sin
+     * tocar su credencial ni su regla de ACL (a diferencia de
+     * `revocarCredencial`, que las borra). Idempotente: si el cliente ya no
+     * estaba conectado (404), no es un error.
+     */
+    async expulsarCliente(clientId) {
+      if (!clientId) return; // no-op si no hay clientId que expulsar
+      const res = await fetchImpl(clienteUrl(clientId), {
+        method: "DELETE",
+        headers: { Authorization: authHeader() },
+      });
+      if (!res.ok && res.status !== 404) {
+        throw new Error(`emqx_expulsar_fallo: ${res.status}`);
       }
     },
   };

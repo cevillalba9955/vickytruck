@@ -13,6 +13,7 @@ export function AsignacionForm({ onAsignado }) {
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState(null);
+  const [copiado, setCopiado] = useState(false);
 
   const cargarOpciones = async () => {
     const [recorridos, fletesDisponibles] = await Promise.all([listarDisponibles(), listarFletesDisponibles()]);
@@ -30,6 +31,7 @@ export function AsignacionForm({ onAsignado }) {
     setEnviando(true);
     setError(null);
     setResultado(null);
+    setCopiado(false);
     try {
       const data = await asignarRecorrido(recorridoId, fleteId);
       setResultado(data);
@@ -41,6 +43,18 @@ export function AsignacionForm({ onAsignado }) {
       setError(err.codigo || "error_desconocido");
     } finally {
       setEnviando(false);
+    }
+  };
+
+  // 004-chofer-cloud-broker (FR-006): copiar el enlace completo (con el
+  // payload y el token de publicación ya embebidos) para pegarlo en el
+  // canal externo elegido (ej. WhatsApp).
+  const handleCopiarEnlace = async () => {
+    try {
+      await navigator.clipboard.writeText(resultado.enlace);
+      setCopiado(true);
+    } catch {
+      setCopiado(false);
     }
   };
 
@@ -82,9 +96,17 @@ export function AsignacionForm({ onAsignado }) {
         <p role="alert">No se pudo asignar el recorrido.</p>
       )}
       {resultado && (
-        <p role="status">
-          Asignación confirmada. Enlace único para el flete: <code>{resultado.token}</code>
-        </p>
+        <div className="asignacion-form__resultado" role="status">
+          <p>Asignación confirmada. Enlace único para el flete:</p>
+          <p>
+            <code>{resultado.enlace ?? resultado.token}</code>
+          </p>
+          {resultado.enlace && (
+            <button type="button" onClick={handleCopiarEnlace}>
+              {copiado ? "¡Copiado!" : "Copiar enlace"}
+            </button>
+          )}
+        </div>
       )}
     </form>
   );

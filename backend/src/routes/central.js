@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-function serializeAsignacion(recorrido, { tokenAnteriorInvalidado } = {}) {
+function serializeAsignacion(recorrido, { tokenAnteriorInvalidado, enlace } = {}) {
   const body = {
     recorridoId: recorrido.recorridoId,
     fleteId: recorrido.fleteId,
@@ -8,10 +8,17 @@ function serializeAsignacion(recorrido, { tokenAnteriorInvalidado } = {}) {
     asignadoEn: recorrido.asignadoEn,
   };
   if (tokenAnteriorInvalidado) body.tokenAnteriorInvalidado = true;
+  // 004-chofer-cloud-broker (FR-006): enlace completo listo para copiar y
+  // enviar por un canal externo (ej. WhatsApp), con el payload del recorrido
+  // y el token de publicación ya embebidos — ver
+  // contracts/central-asignacion.md. `enlace` es opcional acá porque
+  // `enlaceRecorrido` no siempre está disponible (tests de /api/central que
+  // no ejercitan esta parte, ver createApp en server.js).
+  if (enlace) body.enlace = enlace;
   return body;
 }
 
-function responderAsignacion(res, resultado, opts) {
+async function responderAsignacion(res, resultado, opts, enlaceRecorrido) {
   if (resultado.outcome === "not_found") {
     return res.status(404).json({ error: "recorrido_no_encontrado" });
   }
@@ -21,7 +28,13 @@ function responderAsignacion(res, resultado, opts) {
   if (resultado.outcome === "flete_ocupado") {
     return res.status(409).json({ error: "flete_ocupado" });
   }
-  return res.status(200).json(serializeAsignacion(resultado.recorrido, opts));
+
+  let enlace;
+  if (enlaceRecorrido) {
+    const construido = await enlaceRecorrido.construirEnlace(resultado.recorrido.token);
+    enlace = construido?.url;
+  }
+  return res.status(200).json(serializeAsignacion(resultado.recorrido, { ...opts, enlace }));
 }
 
 /**
@@ -29,8 +42,11 @@ function responderAsignacion(res, resultado, opts) {
  * construye) para poder testear el contrato HTTP con un repositorio en
  * memoria, sin depender de una conexión Oracle real (ver
  * backend/tests/contract, backend/tests/helpers/inMemoryCentralRepository.js).
+ * `enlaceRecorrido` (004-chofer-cloud-broker, opcional) construye el `enlace`
+ * completo devuelto por `/asignar` y `/reasignar` — ver
+ * backend/src/services/enlaceRecorrido.js.
  */
-export function createCentralRouter(repository) {
+export function createCentralRouter(repository, enlaceRecorrido) {
   const router = Router();
 
   // GET /api/central/mqtt-config — 003-mqtt-broker-fletes (FR-005, Clarifications
@@ -95,7 +111,7 @@ export function createCentralRouter(repository) {
     try {
       const { fleteId } = req.body || {};
       const resultado = await repository.asignar(req.params.id, fleteId);
-      responderAsignacion(res, resultado);
+      await responderAsignacion(res, resultado, undefined, enlaceRecorrido);
     } catch (err) {
       next(err);
     }
@@ -106,7 +122,7 @@ export function createCentralRouter(repository) {
     try {
       const { fleteId } = req.body || {};
       const resultado = await repository.reasignar(req.params.id, fleteId);
-      responderAsignacion(res, resultado, { tokenAnteriorInvalidado: true });
+      await responderAsignacion(res, resultado, { tokenAnteriorInvalidado: true }, enlaceRecorrido);
     } catch (err) {
       next(err);
     }
@@ -119,6 +135,13 @@ export function createCentralRouter(repository) {
       const detalle = await repository.obtenerDetalle(req.params.id);
       if (!detalle) {
         return res.status(404).json({ error: "recorrido_no_encontrado" });
+      }
+      // 004-chofer-cloud-broker (FR-006, US3 AS2): permite volver a obtener
+      // el enlace de un recorrido ya activo (no solo justo tras asignarlo),
+      // determinístico igual que en /asignar y /reasignar.
+      if (enlaceRecorrido && detalle.recorrido.token) {
+        const construido = await enlaceRecorrido.construirEnlace(detalle.recorrido.token);
+        if (construido) detalle.recorrido.enlace = construido.url;
       }
       res.json(detalle);
     } catch (err) {

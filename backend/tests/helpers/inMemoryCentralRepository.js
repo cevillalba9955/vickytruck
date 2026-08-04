@@ -150,7 +150,7 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
       const r = recorridos.get(recorridoId);
       if (!r) return null;
       return {
-        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId },
+        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, token: r.token },
         puntos: serializarPuntos(r.puntos),
       };
     },

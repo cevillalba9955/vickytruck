@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createInMemoryCentralRepository } from "../helpers/inMemoryCentralRepository.js";
+import { createInMemoryRecorridoRepository } from "../helpers/inMemoryRecorridoRepository.js";
+import { createFakeEmqxProvisioning } from "../helpers/fakeEmqxProvisioning.js";
 import { iniciarServidorDePrueba } from "../helpers/testServer.js";
 
 function seed() {
@@ -30,6 +32,44 @@ test("POST asignar — 200 aplica la asignación y genera un token (FR-005, FR-0
     assert.equal(body.fleteId, "9");
     assert.ok(body.token);
     assert.ok(body.asignadoEn);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+// 004-chofer-cloud-broker (FR-006): la respuesta de /asignar incluye el
+// enlace completo listo para copiar, no solo el `token` crudo. El token que
+// genera `centralRepository.asignar` acá se fija a un valor conocido para
+// poder sembrar `recorridoRepository` con el mismo token (en producción,
+// `enlaceRecorrido.construirEnlace` resuelve ambos contra el mismo token
+// real, ver server.js).
+test("POST asignar — 200 incluye `enlace` con el payload embebido, decodificable (FR-006)", async () => {
+  process.env.CHOFER_FRONTEND_URL = "https://chofer.example";
+  const centralRepository = createInMemoryCentralRepository(
+    {
+      recorridos: [{ id: "50", fleteId: null, puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] }],
+      fletes: [{ id: "9", nombre: "Ana Gómez" }],
+    },
+    { generarToken: () => "tok-enlace-50" },
+  );
+  const recorridoRepository = createInMemoryRecorridoRepository([
+    { token: "tok-enlace-50", puntos: [{ id: "p1", orden: 1, latitud: -1, longitud: -1, estado: "pendiente" }] },
+  ]);
+  const server = await iniciarServidorDePrueba(recorridoRepository, centralRepository, createFakeEmqxProvisioning());
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/50/asignar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fleteId: "9" }),
+    });
+    const body = await res.json();
+
+    assert.ok(body.enlace.startsWith("https://chofer.example/#/r/"));
+    const b64 = body.enlace.split("/#/r/")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(Buffer.from(b64 + "=".repeat((4 - (b64.length % 4)) % 4), "base64").toString("utf8"));
+    assert.equal(payload.recorrido.mqtt.username, "tok-enlace-50");
+    assert.equal(payload.puntos.length, 1);
   } finally {
     await server.cerrar();
   }
