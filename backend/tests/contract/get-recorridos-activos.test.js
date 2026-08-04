@@ -10,6 +10,7 @@ test("GET /api/central/recorridos/activos — 200 con progreso y última ubicaci
         id: "50",
         estado: "activo",
         fleteId: "7",
+        token: "tok-50",
         puntos: [
           { id: "p1", orden: 1, estado: "completado" },
           { id: "p2", orden: 2, estado: "arribado" },
@@ -36,6 +37,7 @@ test("GET /api/central/recorridos/activos — 200 con progreso y última ubicaci
     assert.equal(body.recorridos.length, 1);
     const [r] = body.recorridos;
     assert.equal(r.id, "50");
+    assert.equal(r.token, "tok-50"); // 003-mqtt-broker-fletes: Central lo usa para correlacionar mensajes MQTT
     assert.equal(r.flete.nombre, "Juan Pérez");
     assert.deepEqual(r.progreso, { pendientes: 1, arribados: 1, completados: 1 });
     assert.equal(r.ultimaUbicacion.reciente, true);

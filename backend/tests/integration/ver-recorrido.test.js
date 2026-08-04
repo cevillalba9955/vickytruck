@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createInMemoryRecorridoRepository } from "../helpers/inMemoryRecorridoRepository.js";
+import { createFakeEmqxProvisioning } from "../helpers/fakeEmqxProvisioning.js";
 import { iniciarServidorDePrueba } from "../helpers/testServer.js";
 
 test("US1 — resolver token válido devuelve el recorrido completo sin exponer otros", async () => {
@@ -17,7 +18,7 @@ test("US1 — resolver token válido devuelve el recorrido completo sin exponer 
       puntos: [{ id: "b1", orden: 1, latitud: -9, longitud: -9, estado: "pendiente" }],
     },
   ]);
-  const server = await iniciarServidorDePrueba(repository);
+  const server = await iniciarServidorDePrueba(repository, undefined, createFakeEmqxProvisioning());
 
   try {
     const resA = await fetch(`${server.baseUrl}/tok-flete-a`);
