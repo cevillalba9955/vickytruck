@@ -1,4 +1,4 @@
-/* Escritorio, embebido en iframe dentro de Oracle APEX (Principio III) — no mobile-first. */
+/* Escritorio, embebible en iframe dentro de Oracle APEX o de acceso directo (Principio III) — no mobile-first. */
 
 :root {
   color-scheme: light dark;
@@ -46,12 +46,6 @@ body {
 
 .monitor-view tr[data-ubicacion-reciente="false"] td {
   color: color-mix(in srgb, currentColor 60%, orange);
-}
-
-.fuera-de-iframe {
-  align-items: center;
-  justify-content: center;
-  text-align: center;
 }
 
 .asignacion-form,

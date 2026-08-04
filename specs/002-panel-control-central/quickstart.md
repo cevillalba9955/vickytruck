@@ -72,12 +72,15 @@ Para simular el embebido real en APEX durante desarrollo, abrir `central/` dentr
 4. **Resultado esperado**: ya no es reconocido como válido para ese recorrido (Historia
    4, escenario 2).
 
-## Escenario de validación 5 — Fuera del iframe de APEX (Edge case, FR-011/FR-012)
+## Escenario de validación 5 — Acceso directo, fuera del iframe de APEX (FR-011/FR-012)
 
 1. Navegar directamente a la URL de `central/` fuera de cualquier `<iframe>`.
-2. **Resultado esperado**: se muestra un mensaje claro indicando que la app debe abrirse
-   embebida desde APEX, sin exponer datos de recorridos/fletes y sin fallar
-   silenciosamente.
+2. **Resultado esperado**: el panel funciona exactamente igual que embebido (monitoreo,
+   asignación, detalle, historial); acceso directo es un modo de uso soportado, no hay
+   bloqueo ni mensaje de "abrí esto desde APEX" (Principio III v2.0.0).
+3. Repetir embebiendo `central/` dentro de un `<iframe>` de prueba.
+4. **Resultado esperado**: se comporta igual que en acceso directo (mismas vistas,
+   mismas acciones disponibles).
 
 ## Escenario de validación 6 — Asignación concurrente (Edge case, FR-015)
 

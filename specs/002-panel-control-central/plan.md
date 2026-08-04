@@ -6,17 +6,19 @@
 
 ## Summary
 
-Una web app de escritorio (Central) embebida como iframe en una página Oracle APEX
-existente: un operador monitorea en vivo el estado y última ubicación de los recorridos
-activos, asigna recorridos precargados (ya existentes en Oracle) a fletes disponibles,
-puede reasignar un recorrido activo a otro flete, ver el detalle de cualquier recorrido y
-consultar el historial de recorridos finalizados. Central no crea/edita puntos de
-entrega, no gestiona el alta de fletes ni incluye mensajería (fuera de alcance, ver
-Assumptions de spec.md). Enfoque técnico: se extiende el backend Express ya existente de
-`001-chofer-recorrido` (mismo pool `oracledb`, mismo Principio IV de fuente única de
-verdad) con un nuevo conjunto de rutas de solo-lectura + un package PL/SQL de asignación,
-y se agrega un nuevo frontend React de escritorio (`central/`) que refresca su vista por
-polling corto (no requiere WebSockets/SSE) y detecta si está fuera del iframe de APEX.
+Una web app de escritorio (Central), embebible como iframe en una página Oracle APEX
+existente o accedida directamente por su propia URL (ambos modos igualmente soportados,
+Principio III v2.0.0): un operador monitorea en vivo el estado y última ubicación de los
+recorridos activos, asigna recorridos precargados (ya existentes en Oracle) a fletes
+disponibles, puede reasignar un recorrido activo a otro flete, ver el detalle de
+cualquier recorrido y consultar el historial de recorridos finalizados. Central no
+crea/edita puntos de entrega, no gestiona el alta de fletes ni incluye mensajería (fuera
+de alcance, ver Assumptions de spec.md). Enfoque técnico: se extiende el backend Express
+ya existente de `001-chofer-recorrido` (mismo pool `oracledb`, mismo Principio IV de
+fuente única de verdad) con un nuevo conjunto de rutas de solo-lectura + un package
+PL/SQL de asignación, y se agrega un nuevo frontend React de escritorio (`central/`) que
+refresca su vista por polling corto (no requiere WebSockets/SSE) y funciona igual esté o
+no embebido en un iframe.
 
 ## Technical Context
 
@@ -41,12 +43,12 @@ proceso que documentó research.md §7 de 001-chofer-recorrido).
 
 **Testing**: `node --test` para contratos/integración del backend (listar disponibles,
 asignar, reasignar, condición de carrera de asignación simultánea). `vitest` + Testing
-Library para el frontend de Central (vista de monitoreo, flujo de asignación, detección
-de fuera-de-iframe).
+Library para el frontend de Central (vista de monitoreo, flujo de asignación).
 
-**Target Platform**: navegador de escritorio moderno, embebido dentro de un `<iframe>` en
-una página Oracle APEX existente (Principio III); backend accesible por HTTPS desde la
-red donde corre APEX.
+**Target Platform**: navegador de escritorio moderno, ya sea embebido dentro de un
+`<iframe>` en una página Oracle APEX existente o accedido directamente por su propia URL
+(Principio III v2.0.0); backend accesible por HTTPS desde donde corra cada modo de
+acceso.
 
 **Project Type**: web (dos frontends + un backend compartido: `frontend/` de
 001-chofer-recorrido ya existente, `central/` nuevo, `backend/` extendido).
@@ -56,10 +58,12 @@ al abrir el panel (SC-001); cambios de estado del chofer reflejados en el panel 
 sin recarga manual (SC-002); asignación completable en 3 pasos o menos (SC-003).
 
 **Constraints**:
-- El panel MUST funcionar embebido en iframe dentro de APEX y degradar de forma segura
-  fuera de ese contexto (Principio III, FR-011, FR-012).
+- El panel MUST funcionar tanto embebido en iframe dentro de APEX como accedido
+  directamente por su propia URL, sin bloquear ni degradar funcionalidad en ninguno de
+  los dos modos (Principio III v2.0.0, FR-011, FR-012).
 - Sin login propio: la identidad del operador se resuelve por el contexto de la página
-  APEX contenedora (FR-013).
+  APEX contenedora cuando está embebido; sin ese contexto en acceso directo, sin que eso
+  bloquee la operación (FR-013).
 - Ninguna asignación concurrente sobre el mismo recorrido MUST producir estado ambiguo
   (FR-015) — se resuelve de forma atómica en Oracle, no solo en el cliente.
 - Central no crea/edita puntos de entrega ni el directorio de fletes (fuera de alcance,
@@ -77,7 +81,7 @@ de alta escala.
 |---|---|
 | I. Chofer: página única, móvil-primero | N/A en esta feature — corresponde a `frontend/` (001-chofer-recorrido), no se modifica. |
 | II. Ruta acotada y ordenada (máx. 10 puntos) | PASS — Central solo consulta recorridos ya validados con ≤10 puntos; no crea ni reordena puntos (fuera de alcance por decisión confirmada). |
-| III. Central embebible en Oracle APEX (NON-NEGOTIABLE) | PASS por diseño — `central/` se construye para correr dentro de `<iframe>`, detecta `window.self !== window.top` para degradar fuera de ese contexto (FR-011, FR-012), sin cookies de terceros ni popups. |
+| III. Central compatible con embebido en Oracle APEX y con acceso directo (NON-NEGOTIABLE) | PASS por diseño — `central/` funciona igual embebida en `<iframe>` o accedida directamente (FR-011, FR-012); no bloquea ni degrada funcionalidad al detectar que no está embebida, sin cookies de terceros ni popups. |
 | IV. Oracle como fuente única de verdad | PASS — toda asignación/reasignación se persiste de inmediato en Oracle vía el nuevo package PL/SQL antes de considerarse efectiva (FR-005, FR-009); sin base de datos ni caché propia persistente. |
 | V. Trazabilidad de estado y ubicación en tiempo (casi) real | PASS — el panel muestra estado y última ubicación de cada flete y se refresca automáticamente (FR-001, FR-002) vía polling corto, sin recarga manual. |
 | VI. Mensajería interna | N/A en esta feature — explícitamente fuera de alcance (Clarifications de spec.md). |
@@ -124,11 +128,12 @@ backend/                          # YA EXISTE (001-chofer-recorrido) — se EXTI
 
 frontend/                          # YA EXISTE (001-chofer-recorrido) — sin cambios
 
-central/                           # NUEVO — SPA de escritorio embebible en APEX
+central/                           # NUEVO — SPA de escritorio, embebible en APEX o de
+│                                    # acceso directo (Principio III v2.0.0)
 ├── src/
 │   ├── components/                 # MonitorView, AsignacionForm, RecorridoDetalle,
-│   │                                # HistorialView, FueraDeIframeNotice
-│   ├── services/                   # api.js, polling.js, embedGuard.js
+│   │                                # HistorialView
+│   ├── services/                   # api.js, polling.js
 │   └── main.jsx
 └── tests/
     └── components/

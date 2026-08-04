@@ -5,8 +5,6 @@ import { MonitorView } from "./components/MonitorView.jsx";
 import { AsignacionForm } from "./components/AsignacionForm.jsx";
 import { RecorridoDetalle } from "./components/RecorridoDetalle.jsx";
 import { HistorialView } from "./components/HistorialView.jsx";
-import { FueraDeIframeNotice } from "./components/FueraDeIframeNotice.jsx";
-import { estaEmbebidoEnIframe } from "./services/embedGuard.js";
 import { listarActivos, obtenerDetalle } from "./services/api.js";
 import { pollEvery } from "./services/polling.js";
 
@@ -70,14 +68,11 @@ function App() {
   );
 }
 
-const raiz = createRoot(document.getElementById("root"));
-
-if (!estaEmbebidoEnIframe()) {
-  raiz.render(<FueraDeIframeNotice />);
-} else {
-  raiz.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  );
-}
+// Principio III (v2.0.0): Central funciona igual embebida en un iframe de
+// APEX o accedida directamente por su propia URL; ninguno de los dos modos
+// bloquea ni degrada la funcionalidad.
+createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);

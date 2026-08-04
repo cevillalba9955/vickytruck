@@ -16,6 +16,10 @@
 - Q: ¿La mensajería interna Central↔chofer (Principio VI) entra en el alcance de este panel? → A: Fuera de alcance — se especifica como feature independiente, tal como ya se asumió en la spec del chofer (001-chofer-recorrido).
 - Q: ¿El panel permite dar de alta/editar fletes (choferes), o solo consume un listado ya existente? → A: Solo consumir listado existente — el alta/edición de fletes se gestiona fuera de este panel.
 
+### Session 2026-08-03 (enmienda de constitución v2.0.0)
+
+- Q: ¿Central debe seguir bloqueando/degradando su funcionalidad cuando se accede fuera de un iframe de Oracle APEX? → A: No — se elimina esa restricción (Principio III de la constitución, ahora v2.0.0). El acceso directo por URL pasa a ser un modo de uso válido y soportado, sin perder la compatibilidad con el embebido en APEX cuando corresponda.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Monitorear en vivo los recorridos activos (Priority: P1)
@@ -98,7 +102,7 @@ El operador consulta recorridos ya finalizados (todos sus puntos completados) pa
 ### Edge Cases
 
 - ¿Qué pasa si dos operadores intentan asignar el mismo recorrido precargado a dos fletes distintos casi al mismo tiempo? Solo una asignación MUST prevalecer; la segunda MUST rechazarse con un mensaje claro, sin dejar el recorrido en un estado ambiguo.
-- ¿Qué pasa si el panel se abre fuera del iframe de Oracle APEX (acceso directo a la URL)? MUST degradar de forma segura, mostrando un mensaje claro en vez de fallar silenciosamente o exponer datos.
+- ¿Qué pasa si el panel se abre fuera del iframe de Oracle APEX (acceso directo a la URL)? MUST funcionar igual que embebido, sin bloquear ni degradar ninguna funcionalidad por esa sola razón (acceso directo es un modo de uso soportado).
 - ¿Qué pasa si un flete asignado deja de reportar ubicación por mucho tiempo (GPS denegado o dispositivo apagado)? El panel MUST distinguir visualmente "sin datos recientes" de "última ubicación conocida", sin mostrar una ubicación vieja como si fuera actual.
 - ¿Qué pasa si el recorrido precargado en Oracle tiene datos inconsistentes (por ejemplo, más de 10 puntos)? El panel MUST señalarlo como no asignable en vez de permitir una asignación inválida.
 - ¿Qué pasa si se reasigna un recorrido y el flete original todavía tenía acciones pendientes de sincronizar (offline)? Los eventos ya registrados en el servidor antes de la reasignación MUST conservarse; el enlace único anterior deja de ser válido para nuevas acciones.
@@ -118,8 +122,8 @@ El operador consulta recorridos ya finalizados (todos sus puntos completados) pa
 - **FR-009**: El sistema MUST permitir al operador reasignar explícitamente un recorrido activo a un flete distinto, conservando el estado ya registrado de los puntos e invalidando el enlace único previamente asociado al flete original.
 - **FR-010**: El sistema MUST permitir al operador consultar un historial de recorridos finalizados (todos los puntos en estado "completado"), incluyendo su línea de tiempo de eventos y el flete que los ejecutó.
 - **FR-011**: El sistema MUST funcionar correctamente cuando se lo embebe como iframe dentro de una página Oracle APEX, sin asumir que es la ventana de nivel superior.
-- **FR-012**: El sistema MUST degradar de forma segura (mensaje claro, sin fallo ni exposición de datos) cuando se abre fuera del contexto de embebido esperado en APEX.
-- **FR-013**: El sistema MUST resolver la identidad/sesión del operador a partir del contexto provisto por la página APEX contenedora, sin implementar un mecanismo de login propio adicional.
+- **FR-012**: El sistema MUST funcionar igual (sin bloquear, degradar ni limitar funcionalidad) cuando se accede directamente por su propia URL, fuera de cualquier iframe; el acceso directo es un modo de uso válido y soportado.
+- **FR-013**: El sistema MUST resolver la identidad/sesión del operador a partir del contexto provisto por la página APEX contenedora cuando está embebido; cuando se accede directamente (sin ese contexto), MUST operar igual sin implementar un mecanismo de login propio adicional.
 - **FR-014**: El sistema MUST distinguir visualmente, para cada flete monitoreado, si su última ubicación reportada es reciente o si excede un umbral de antigüedad razonable, en lugar de presentarla siempre como dato actual.
 - **FR-015**: El sistema MUST evitar que dos asignaciones concurrentes sobre el mismo recorrido precargado produzcan un estado ambiguo: solo una MUST prevalecer y la otra MUST rechazarse con aviso claro.
 
@@ -137,7 +141,7 @@ El operador consulta recorridos ya finalizados (todos sus puntos completados) pa
 - **SC-001**: Un operador puede ver el estado y la última ubicación conocida de todos los recorridos activos en menos de 5 segundos desde que abre el panel.
 - **SC-002**: Un cambio de estado registrado por un chofer (arribo/descarga) se refleja en el panel en menos de 10 segundos, sin que el operador recargue la página manualmente.
 - **SC-003**: Un operador puede completar la asignación de un recorrido precargado a un flete en 3 pasos o menos.
-- **SC-004**: El panel funciona correctamente embebido dentro de una página Oracle APEX en el 100% de las verificaciones realizadas, sin errores de bloqueo por frame.
+- **SC-004**: El panel funciona correctamente tanto embebido dentro de una página Oracle APEX como accedido directamente por su URL, en el 100% de las verificaciones realizadas, sin errores de bloqueo por frame ni por falta de embebido.
 - **SC-005**: Ninguna asignación duplicada o inconsistente se produce cuando dos operadores intentan asignar el mismo recorrido casi simultáneamente.
 - **SC-006**: Un operador sin capacitación previa puede encontrar y asignar un recorrido precargado a un flete en su primer intento sin asistencia externa.
 
@@ -146,6 +150,6 @@ El operador consulta recorridos ya finalizados (todos sus puntos completados) pa
 - Los recorridos precargados (puntos, orden, coordenadas) se generan e ingresan a Oracle mediante un proceso externo a este panel; Central solo los consulta y asigna, no los crea ni edita.
 - La mensajería interna Central↔chofer (Principio VI) se especifica como una feature independiente, no incluida en el alcance de este panel.
 - El alta y edición del directorio de fletes/choferes (datos de contacto, vehículo, etc.) se gestiona fuera de este panel; aquí solo se consume el listado ya existente para elegir a quién asignar.
-- La identidad del operador dentro de Central se resuelve mediante el contexto de sesión de la página Oracle APEX contenedora (Restricción Técnica de Integración APEX), sin un login propio adicional.
+- La identidad del operador dentro de Central se resuelve mediante el contexto de sesión de la página Oracle APEX contenedora cuando está embebida (Restricción Técnica de Integración APEX); cuando se accede directamente por URL no hay ese contexto ni un login propio que lo reemplace, siguiendo la misma decisión de simplicidad ya tomada para el chofer (sin sistema de cuentas). El acceso directo queda, por diseño, sin control de acceso propio de la aplicación; restringir quién puede llegar a esa URL (red, firewall, etc.) es responsabilidad de quien despliega Central, no de esta especificación.
 - "Recorrido precargado disponible" se interpreta como un recorrido existente en Oracle sin flete asignado activo en este momento (nunca asignado, o cuya asignación anterior ya finalizó).
 - El umbral de "ubicación no reciente" (Historia 1, FR-014) es un valor razonable por definir en la fase de planificación (por ejemplo, unos pocos minutos sin reporte), no fijado por esta especificación.

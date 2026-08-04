@@ -52,23 +52,31 @@ compatibilidad mencionado y por ser complejidad adicional no justificada dado qu
 corto ya cumple el SLA de la Historia 1; WebSockets — mismo motivo, con mayor complejidad
 aún.
 
-## 4. Identidad del operador dentro del iframe de APEX
+## 4. Identidad del operador: sin login propio, embebido o de acceso directo (revisado tras constitución v2.0.0)
 
-**Decision**: Central no implementa un login propio (Principio VII); confía en que el
-acceso al iframe ya está controlado por la autenticación de la página APEX contenedora
-(Principio III/Restricciones Técnicas). El frontend detecta si está embebido comparando
-`window.self !== window.top`; si no lo está, muestra un aviso claro en vez de operar como
-si fuera una ventana de nivel superior (FR-011, FR-012).
+**Decision** (actualizada — Principio III ahora también exige soportar acceso directo,
+constitución v2.0.0): Central no implementa un login propio (Principio VII), ni cuando
+está embebida en APEX ni cuando se accede directamente por URL. Ya no existe un guard que
+detecte `window.self !== window.top` para bloquear o degradar la app fuera de un iframe:
+Central funciona igual en ambos modos (FR-011, FR-012). Cuando está embebida y la página
+APEX contenedora provee contexto de sesión, ese contexto puede usarse para identificar al
+operador; cuando se accede directamente no hay ese contexto, y la app opera igual sin él
+(FR-013).
 
-**Rationale**: agregar un sistema de autenticación propio duplicaría el que ya exige APEX
-para llegar a la página contenedora, violando el Principio VII sin necesidad real. La
-detección de embebido es la técnica estándar y no requiere cooperación del backend.
+**Rationale**: la versión anterior de esta decisión usaba la detección de embebido para
+bloquear el acceso directo, tratándolo como "fuera de contexto". La constitución v2.0.0
+elimina esa restricción explícitamente: exigir el embebido como condición para operar
+limitaba casos de uso legítimos (acceso administrativo directo, pruebas manuales, entornos
+sin APEX) sin aportar valor de seguridad real, porque la identidad del operador nunca
+dependió técnicamente del framing sino del contexto que APEX decida pasar. Restringir el
+acceso a la URL (red, firewall, credenciales de infraestructura) queda fuera del alcance
+de esta especificación — es responsabilidad de quien despliega Central.
 
 **Alternatives considered**: exigir un token de sesión propio pasado por query string
-desde APEX (similar al patrón de enlace único del chofer). Se descarta por ahora porque el
-alcance de esta spec no definió una necesidad de distinguir operadores individuales dentro
-de Central (no hay requisito de auditoría por operador); se reconsideraría si una futura
-feature lo requiere.
+desde APEX (similar al patrón de enlace único del chofer), incluso para el modo de acceso
+directo. Se descarta por ahora porque el alcance de esta spec no definió una necesidad de
+distinguir operadores individuales dentro de Central (no hay requisito de auditoría por
+operador); se reconsideraría si una futura feature lo requiere.
 
 ## 5. Esquema de datos para "fletes" y "asignación": nombres asumidos, a confirmar contra la instancia real
 

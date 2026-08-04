@@ -29,6 +29,16 @@ Según plan.md: se **extiende** `backend/src/`, `backend/tests/`, `backend/sql/`
 existentes de 001-chofer-recorrido) y se **crea** `central/src/`, `central/tests/`
 (frontend nuevo). `frontend/` (chofer) no se modifica en esta feature.
 
+> **Nota de enmienda (constitución v2.0.0)**: el Principio III cambió de "Central
+> Embebible en Oracle APEX (NON-NEGOTIABLE)" a "Central Compatible con Embebido en
+> Oracle APEX y con Acceso Directo (NON-NEGOTIABLE)" — el acceso directo por URL ya no
+> se bloquea ni degrada. Esto deja obsoleto el guard de embebido bloqueante que T009
+> introdujo originalmente (`central/src/services/embedGuard.js`) y el componente
+> `FueraDeIframeNotice` de T042/T044: ambos se eliminaron del código; `central/src/main.jsx`
+> ya no distingue entre embebido y acceso directo, renderiza la misma app en los dos
+> casos. Las tareas de abajo quedan como registro histórico de lo implementado
+> originalmente; el estado actual del código es el que refleja esta nota.
+
 ---
 
 ## Phase 1: Setup (Shared Infrastructure)
