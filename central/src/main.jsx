@@ -5,10 +5,16 @@ import { MonitorView } from "./components/MonitorView.jsx";
 import { AsignacionForm } from "./components/AsignacionForm.jsx";
 import { RecorridoDetalle } from "./components/RecorridoDetalle.jsx";
 import { HistorialView } from "./components/HistorialView.jsx";
-import { listarActivos, obtenerDetalle } from "./services/api.js";
+import { listarActivos, obtenerDetalle, obtenerConfigMqtt } from "./services/api.js";
 import { pollEvery } from "./services/polling.js";
+import { conectar as conectarMqtt, suscribir as suscribirMqtt } from "./services/mqttClient.js";
 
 const INTERVALO_POLLING_MS = 5000;
+
+function extraerTokenDeTopic(topic) {
+  // vickytruck/fletes/{token}/ubicacion
+  return topic.split("/")[2] || null;
+}
 
 function App() {
   const [vista, setVista] = useState("monitor");
@@ -34,6 +40,42 @@ function App() {
         setError("error_desconocido");
       }
     });
+  }, []);
+
+  // 003-mqtt-broker-fletes (FR-005, US1): suscripción directa al bróker,
+  // aditiva al polling de arriba — si falla, el panel sigue funcionando vía
+  // polling (research.md §5). Actualiza `ultimaUbicacion` del recorrido cuyo
+  // `token` coincide con el del mensaje recibido, sin esperar al próximo tick.
+  useEffect(() => {
+    let cancelado = false;
+    let dejarDeEscuchar;
+
+    (async () => {
+      try {
+        const config = await obtenerConfigMqtt();
+        if (cancelado) return;
+        conectarMqtt(config);
+        dejarDeEscuchar = suscribirMqtt(config.ubicacionTopicFilter, (topic, payload) => {
+          const token = extraerTokenDeTopic(topic);
+          if (!token || payload?.lat == null || payload?.lon == null) return;
+          setActivos((actuales) =>
+            actuales.map((r) =>
+              r.token === token
+                ? { ...r, ultimaUbicacion: { lat: payload.lat, lon: payload.lon, en: payload.en, reciente: true } }
+                : r,
+            ),
+          );
+        });
+      } catch {
+        // Sin credencial de servicio disponible (backend recién arrancando,
+        // bróker no configurado aún): el panel sigue funcionando vía polling.
+      }
+    })();
+
+    return () => {
+      cancelado = true;
+      if (dejarDeEscuchar) dejarDeEscuchar();
+    };
   }, []);
 
   return (

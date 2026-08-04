@@ -2,6 +2,7 @@ import oracledb from "oracledb";
 import { withConnection } from "./pool.js";
 import { obtenerRespaldoDesdeEventos, resolverUbicacion } from "./ubicacionResolver.js";
 import { ubicacionEnMemoriaCompartida } from "../state/ubicacionEnMemoria.js";
+import { createEmqxProvisioning } from "../mqtt/emqxProvisioning.js";
 
 // Mismo patrón de validación de identificadores que recorridoRepository.js:
 // los nombres vienen de configuración del operador, no de input de usuario,
@@ -128,7 +129,20 @@ async function invocarAsignacion(procedimiento, recorridoId, fleteId) {
  * Oracle: sale de `ubicacionStore` (memoria compartida con 001-chofer-recorrido),
  * con respaldo en el último evento arribo/descarga ya persistido (research.md §8).
  */
-export function createOracleCentralRepository(ubicacionStore = ubicacionEnMemoriaCompartida) {
+export function createOracleCentralRepository(
+  ubicacionStore = ubicacionEnMemoriaCompartida,
+  emqxProvisioning = createEmqxProvisioning(),
+) {
+  async function leerTokenActual(recorridoId) {
+    return withConnection(async (connection) => {
+      const result = await connection.execute(
+        `SELECT token FROM ${tablaRecorridos()} WHERE id = :id`,
+        { id: Number(recorridoId) },
+      );
+      return result.rows[0]?.TOKEN ?? null;
+    });
+  }
+
   return {
     async listarActivos() {
       return withConnection(async (connection) => {
@@ -136,7 +150,7 @@ export function createOracleCentralRepository(ubicacionStore = ubicacionEnMemori
         const ahora = Date.now();
 
         const recorridosResult = await connection.execute(
-          `SELECT r.id, r.flete_id, f.nombre AS flete_nombre
+          `SELECT r.id, r.flete_id, r.token, f.nombre AS flete_nombre
            FROM ${tablaRecorridos()} r
            JOIN ${tablaFletes()} f ON f.id = r.flete_id
            WHERE r.estado = 'activo'`,
@@ -159,6 +173,7 @@ export function createOracleCentralRepository(ubicacionStore = ubicacionEnMemori
 
           resultado.push({
             id: String(r.ID),
+            token: r.TOKEN,
             flete: { id: String(r.FLETE_ID), nombre: r.FLETE_NOMBRE },
             progreso,
             ultimaUbicacion: resolverUbicacion({ enMemoria, respaldoOracle, staleMs, ahora }),
@@ -201,7 +216,17 @@ export function createOracleCentralRepository(ubicacionStore = ubicacionEnMemori
     },
 
     async reasignar(recorridoId, fleteId) {
-      return invocarAsignacion("reasignar_recorrido", recorridoId, fleteId);
+      // Se lee el token vigente ANTES de reasignar para poder revocar su
+      // credencial MQTT después (003-mqtt-broker-fletes, FR-008): la
+      // invalidación del token en sí sigue siendo responsabilidad exclusiva
+      // y atómica del package PL/SQL (FR-009 de 002), esto es solo un efecto
+      // secundario de mejor esfuerzo sobre el bróker.
+      const tokenAnterior = await leerTokenActual(recorridoId);
+      const resultado = await invocarAsignacion("reasignar_recorrido", recorridoId, fleteId);
+      if (resultado.outcome === "ok" && tokenAnterior) {
+        await emqxProvisioning.revocarCredencial(tokenAnterior);
+      }
+      return resultado;
     },
 
     async obtenerDetalle(recorridoId) {

@@ -33,6 +33,20 @@ function responderAsignacion(res, resultado, opts) {
 export function createCentralRouter(repository) {
   const router = Router();
 
+  // GET /api/central/mqtt-config — 003-mqtt-broker-fletes (FR-005, Clarifications
+  // de spec.md): credencial de servicio de solo lectura para que Central se
+  // suscriba directamente al bróker, sin compilarla dentro del bundle de
+  // central/ (ver contracts/mqtt-canal.md).
+  router.get("/mqtt-config", (req, res) => {
+    res.json({
+      url: process.env.EMQX_WSS_URL,
+      username: process.env.EMQX_CENTRAL_USERNAME,
+      password: process.env.EMQX_CENTRAL_PASSWORD,
+      ubicacionTopicFilter: "vickytruck/fletes/+/ubicacion",
+      eventosTopicFilter: "vickytruck/fletes/+/eventos",
+    });
+  });
+
   // GET /api/central/recorridos/activos — Historia 1, FR-001, FR-002
   router.get("/recorridos/activos", async (req, res, next) => {
     try {

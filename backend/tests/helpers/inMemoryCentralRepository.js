@@ -29,6 +29,10 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
   const now = opts.now ?? (() => Date.now());
   let tokenCounter = 0;
   const generarToken = opts.generarToken ?? (() => `tok-test-${++tokenCounter}`);
+  // 003-mqtt-broker-fletes (US3): mismo contrato que createOracleCentralRepository
+  // — reasignar revoca la credencial MQTT del token anterior. Sin emqxProvisioning
+  // inyectado, es un no-op (la mayoría de los tests de 002 no necesitan esto).
+  const emqxProvisioning = opts.emqxProvisioning ?? { async revocarCredencial() {} };
 
   const recorridos = new Map(
     (seed.recorridos || []).map((r) => [
@@ -78,6 +82,7 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
         const ultimaEnMs = flete?.ultimaUbicacionEn ? new Date(flete.ultimaUbicacionEn).getTime() : null;
         resultado.push({
           id: r.id,
+          token: r.token,
           flete: { id: r.fleteId, nombre: flete?.nombre ?? null },
           progreso: calcularProgreso(r.puntos),
           ultimaUbicacion: {
@@ -130,9 +135,11 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
       if (!r || r.estado !== "activo") return { outcome: "not_found" };
       if (fleteOcupado(fleteId, recorridoId)) return { outcome: "flete_ocupado" };
 
+      const tokenAnterior = r.token;
       r.fleteId = fleteId;
       r.token = generarToken();
       r.asignadoEn = new Date(now()).toISOString();
+      if (tokenAnterior) await emqxProvisioning.revocarCredencial(tokenAnterior);
       return {
         outcome: "ok",
         recorrido: { recorridoId, fleteId, token: r.token, asignadoEn: r.asignadoEn },
