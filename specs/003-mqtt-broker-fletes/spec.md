@@ -13,6 +13,7 @@
 ### Session 2026-08-04
 
 - Q: ¿Quiénes pueden suscribirse (leer) los mensajes de ubicación y acciones publicados por los fletes en el bróker? → A: Tanto el backend como Central pueden suscribirse directamente al bróker; la restricción de lectura es "solo backend y Central" (los componentes propios del sistema), no "solo backend". Los fletes entre sí y cualquier otro componente externo siguen sin poder leerlos.
+- Q: ¿Qué proveedor de bróker MQTT en la nube se utilizará? → A: EMQX Cloud.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -76,7 +77,7 @@ Ningún flete puede ver la ubicación ni las acciones publicadas por otro flete,
 
 ### Functional Requirements
 
-- **FR-001**: El sistema MUST transmitir la ubicación instantánea del flete (ya definida en la funcionalidad de recorrido del chofer) a través de un intermediario de mensajería publicar/suscribir alojado en la nube (bróker MQTT), en lugar de una conexión directa entre el dispositivo del chofer y el backend.
+- **FR-001**: El sistema MUST transmitir la ubicación instantánea del flete (ya definida en la funcionalidad de recorrido del chofer) a través de un intermediario de mensajería publicar/suscribir alojado en la nube (bróker MQTT provisto por EMQX Cloud), en lugar de una conexión directa entre el dispositivo del chofer y el backend.
 - **FR-002**: El sistema MUST transmitir los eventos "Llegué" (arribo) y "Descarga completa" de cada punto de entrega a través del mismo canal de mensajería.
 - **FR-003**: El sistema MUST permitir que backend y Central reciban ubicación y eventos de los fletes sin requerir una dirección IP pública ni puertos entrantes abiertos en su infraestructura; toda conexión de backend o Central hacia el bróker MUST iniciarse desde el propio componente hacia afuera.
 - **FR-004**: El sistema MUST permitir que el dispositivo del chofer publique su ubicación y sus acciones sin necesidad de aceptar conexiones entrantes ni de exponer su propia dirección IP a otros participantes del sistema.
@@ -113,4 +114,4 @@ Ningún flete puede ver la ubicación ni las acciones publicadas por otro flete,
 - El sentido de la comunicación cubierto por esta funcionalidad es únicamente flete → backend/Central (publicar/leer). El envío de información del backend hacia el chofer (por ejemplo, la carga inicial del recorrido o la mensajería interna de la constitución) queda fuera de alcance y sigue su mecanismo actual.
 - La identidad de publicación de cada flete en el canal de mensajería está ligada al mismo enlace único de recorrido diario ya definido en la funcionalidad de recorrido del chofer (sin login adicional), y deja de ser válida cuando ese recorrido finaliza.
 - Central puede suscribirse directamente al bróker para obtener ubicación y acciones de los fletes, igual que el backend; esto es adicional (no un reemplazo) al mecanismo interno ya definido en la funcionalidad de panel de control central para los datos que sí dependen del backend (ej. estado persistido en Oracle). Ningún componente distinto de backend y Central puede leer directamente del bróker.
-- El proveedor del bróker en la nube es un servicio de terceros con su propia disponibilidad; una interrupción prolongada del proveedor está fuera del control de este sistema y se acepta como riesgo operativo conocido.
+- El proveedor del bróker en la nube es EMQX Cloud, un servicio de terceros con su propia disponibilidad; una interrupción prolongada del proveedor está fuera del control de este sistema y se acepta como riesgo operativo conocido. La elección concreta del plan/tier de EMQX Cloud (límites de conexiones, mensajes o retención) es una decisión de `/speckit-plan`, no de esta especificación.
