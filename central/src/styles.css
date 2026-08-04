@@ -1,0 +1,63 @@
+/* Escritorio, embebible en iframe dentro de Oracle APEX o de acceso directo (Principio III) — no mobile-first. */
+
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+}
+
+body {
+  margin: 0;
+  padding: 1rem 1.5rem;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.app__nav {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.app__nav button[aria-pressed="true"] {
+  font-weight: 700;
+}
+
+.monitor-view,
+.historial-view table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.monitor-view th,
+.monitor-view td,
+.historial-view th,
+.historial-view td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.monitor-view tr[data-ubicacion-reciente="false"] td {
+  color: color-mix(in srgb, currentColor 60%, orange);
+}
+
+.asignacion-form,
+.detalle-view {
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.asignacion-form__campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}

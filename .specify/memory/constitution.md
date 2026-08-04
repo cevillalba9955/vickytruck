@@ -1,25 +1,36 @@
 <!--
 Sync Impact Report
-Version change: 1.0.0 → 1.1.0
-Modified principles: none renamed; VII (Simplicidad y Datos Mínimos Necesarios) is now
-  read alongside the new Express constraint below (no redefinition, just a concrete
-  framework pick within the existing simplicity bar).
-Added sections:
-  - Restricciones Técnicas y de Integración: nuevo ítem "Framework backend" (Express.js
-    obligatorio para todo backend HTTP del proyecto)
-Removed sections: none
+Version change: 1.1.0 → 2.0.0
+Modified principles:
+  - III. "Central Embebible en Oracle APEX (NON-NEGOTIABLE)" → "Central Compatible con
+    Embebido en Oracle APEX y con Acceso Directo (NON-NEGOTIABLE)" — REDEFINICIÓN
+    INCOMPATIBLE: se elimina la exigencia de que Central SOLO funcione embebida y de
+    que deba "degradar de forma segura" (bloquear/mostrar aviso) fuera de un iframe de
+    APEX. El acceso directo por URL pasa a ser un modo de uso válido y soportado, sin
+    perder la compatibilidad con el embebido en APEX cuando corresponda.
+Added sections: ninguna (modificación de un principio existente)
+Removed sections: ninguna (se retira una restricción dentro del Principio III, no una
+  sección completa)
 Templates requiring updates:
   - .specify/templates/plan-template.md ✅ no changes needed (Constitution Check gate is derived dynamically from this file)
   - .specify/templates/spec-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/tasks-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/checklist-template.md ✅ no changes needed
-  - specs/001-chofer-recorrido/plan.md ⚠ pending manual update (Technical Context /
-    Constitution Check referenced "node:http nativo, sin framework"; debe pasar a Express)
-  - specs/001-chofer-recorrido/research.md ⚠ pending manual update (Decision §2 debe
-    reflejar Express como constraint de constitución, no como elección de research)
-  - specs/001-chofer-recorrido/tasks.md ⚠ pending manual update (T002, T008 mencionan
-    "sin framework" / falta dependencia express)
-Follow-up TODOs: none
+  - specs/002-panel-control-central/spec.md ⚠ pending manual update (FR-011/FR-012,
+    Edge Cases y Assumptions asumían bloqueo fuera de iframe; deben permitir acceso
+    directo)
+  - specs/002-panel-control-central/plan.md ⚠ pending manual update (Constitution Check
+    de Principio III y Constraints de Technical Context)
+  - specs/002-panel-control-central/research.md ⚠ pending manual update (§4, identidad
+    del operador: ya no corresponde bloquear fuera de iframe)
+  - specs/002-panel-control-central/quickstart.md ⚠ pending manual update (Escenario de
+    validación 5, ahora debe esperar que el acceso directo funcione)
+  - specs/002-panel-control-central/tasks.md ⚠ pending manual update (T009, T042, T044
+    describían el guard como bloqueante)
+  - central/src/services/embedGuard.js, central/src/main.jsx,
+    central/src/components/FueraDeIframeNotice.jsx ⚠ pending manual update (código de
+    la feature 002 implementaba el bloqueo que este principio ya no exige)
+Follow-up TODOs: ninguno
 -->
 
 # VickyTruck Constitution
@@ -50,18 +61,25 @@ Rationale: acotar a 10 puntos mantiene la interfaz simple y evita listas que
 degraden la usabilidad móvil; el orden autoritativo evita ambigüedad sobre qué
 entrega corresponde ejecutar.
 
-### III. Central Embebible en Oracle APEX (NON-NEGOTIABLE)
-La aplicación de Central es una web app de escritorio diseñada para
-funcionar embebida como iframe/URL dentro de una página Oracle APEX
-existente. Toda pantalla de Central DEBE funcionar correctamente dentro de un
-`<iframe>` (sin asumir que es la ventana de nivel superior), DEBE evitar
-mecanismos incompatibles con embebido (bloqueo de cookies de terceros,
+### III. Central Compatible con Embebido en Oracle APEX y con Acceso Directo (NON-NEGOTIABLE)
+La aplicación de Central es una web app de escritorio que DEBE funcionar
+tanto embebida como iframe/URL dentro de una página Oracle APEX existente,
+como accedida directamente por su propia URL (fuera de cualquier frame).
+Toda pantalla de Central DEBE funcionar correctamente dentro de un
+`<iframe>` (sin asumir que es la ventana de nivel superior) y DEBE evitar
+mecanismos incompatibles con el embebido (bloqueo de cookies de terceros,
 `X-Frame-Options`/CSP restrictivos sin coordinación previa, popups
-bloqueados) y DEBE degradar de forma segura si se abre fuera del frame de
-APEX. Cualquier cambio que rompa el embebido en APEX se considera una
-regresión crítica.
-Rationale: la integración con APEX es un requisito de despliegue no
-negociable; romperla invalida el canal principal de acceso de la Central.
+bloqueados). El acceso directo (fuera de un iframe) es un modo de uso
+válido y soportado: Central NO DEBE bloquear, degradar ni limitar su
+funcionalidad solo por detectar que no está embebida. Cualquier cambio que
+rompa el embebido en APEX o el acceso directo se considera una regresión
+crítica.
+Rationale: la integración con APEX sigue siendo un canal de acceso
+relevante, pero ya no es el único soportado; exigir el embebido como
+condición para operar limitaba casos de uso legítimos (acceso
+administrativo directo, pruebas manuales, entornos sin APEX disponible)
+sin aportar valor de seguridad real, ya que la identidad del operador no
+depende de estar dentro de un frame.
 
 ### IV. Oracle como Fuente Única de Verdad
 La base de datos Oracle es la fuente autoritativa de recorridos
@@ -107,9 +125,12 @@ costo de mantenimiento y menor riesgo de privacidad/seguridad.
 - **Base de datos**: Oracle es el motor de persistencia obligatorio para
   recorridos, asignaciones, estados y ubicaciones; cualquier caché local es
   efímera y no autoritativa.
-- **Integración APEX**: la Central se sirve mediante una URL embebible; debe
-  soportar paso de contexto (p. ej. usuario/sesión) compatible con el
-  mecanismo de autenticación de la página APEX contenedora.
+- **Integración APEX (opcional, no exclusiva)**: la Central se sirve
+  mediante una URL propia que puede embeberse dentro de una página Oracle
+  APEX (soportando paso de contexto, p. ej. usuario/sesión, compatible con
+  el mecanismo de autenticación de la página contenedora) o accederse
+  directamente sin ese contexto. Ninguno de los dos modos de acceso es
+  requisito para que funcione el otro.
 - **Geolocalización**: la app del chofer usa geolocalización del navegador
   (o dispositivo); DEBE solicitar permiso explícito y manejar con claridad
   el caso de permiso denegado o señal GPS ausente.
@@ -117,8 +138,8 @@ costo de mantenimiento y menor riesgo de privacidad/seguridad.
   marcar descarga) DEBEN reintentarse o encolarse ante pérdida temporal de
   red, sin bloquear la interfaz.
 - **Responsive por rol**: el frontend del chofer se diseña mobile-first; el
-  frontend de Central se diseña para uso de escritorio dentro de un frame
-  embebido, no mobile-first.
+  frontend de Central se diseña para uso de escritorio (embebido en un
+  frame o accedido directamente), no mobile-first.
 - **Framework backend**: todo backend HTTP del proyecto (Chofer, Central y
   cualquier servicio que se agregue) DEBE construirse sobre Express.js. No se
   introducen frameworks adicionales (NestJS, Fastify, etc.) sin enmendar esta
@@ -133,9 +154,9 @@ costo de mantenimiento y menor riesgo de privacidad/seguridad.
   verificación de "Constitution Check" contra este documento.
   
 
-- Cambios que afecten el embebido en APEX (Principio III) o el límite de 10
-  puntos por recorrido (Principio II) requieren pruebas manuales o
-  automatizadas explícitas antes de mergear.
+- Cambios que afecten el embebido en APEX, el acceso directo de Central
+  (Principio III) o el límite de 10 puntos por recorrido (Principio II)
+  requieren pruebas manuales o automatizadas explícitas antes de mergear.
 - Cambios en el modelo de datos Oracle (tablas de recorridos, asignaciones,
   estados, mensajería) requieren revisión explícita de compatibilidad con
   datos ya precargados en producción.
@@ -160,4 +181,4 @@ semver:
 "Constitution Check" antes de la Fase 0 y volver a repasarla tras la Fase 1
 de diseño.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-03
+**Version**: 2.0.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-03

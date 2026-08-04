@@ -223,6 +223,50 @@ quickstart.md).
 
 ---
 
+## Phase 8: Reporte periódico de ubicación instantánea (FR-014 a FR-017)
+
+**Contexto**: agregado en una clarificación posterior a la implementación original
+(sesión de Clarifications sobre la posición del flete durante el tránsito). El backend
+compartido (endpoint `POST /api/recorridos/:token/ubicacion` y el módulo en memoria) ya
+se implementó como parte de 002-panel-control-central (research.md §8 de esa feature).
+Esta fase agrega la mitad que faltaba: que la SPA del chofer efectivamente llame a ese
+endpoint de forma periódica mientras el recorrido está activo.
+
+**Goal**: mientras el chofer tiene un recorrido abierto, la app reporta su posición GPS
+instantánea al backend a un intervalo configurable por el operador del backend (FR-014),
+sin bloquear la interfaz ni encolar el reporte si falla (FR-017 — es un dato efímero, no
+crítico como los eventos de arribo/descarga).
+
+**Independent Test**: con un recorrido de prueba abierto y GPS disponible, verificar
+(inspeccionando la red del navegador) que se hace un `POST .../ubicacion` al intervalo
+indicado por el backend; con el GPS denegado, verificar que no se intenta el POST y la
+app sigue funcionando con normalidad.
+
+- [X] T039 [P] Implementar `frontend/src/services/ubicacionPeriodica.js`
+      (`iniciarReportePeriodico(token, intervaloMs)`: usa `obtenerUbicacionBestEffort()`
+      y hace `POST /api/recorridos/:token/ubicacion`; si no hay GPS disponible o falla
+      la red, descarta ese reporte puntual sin encolar — FR-014, FR-017 — y devuelve una
+      función para detener el temporizador)
+- [X] T040 Exponer `intervaloUbicacionMs` (configurable vía
+      `UBICACION_REPORTE_INTERVALO_MS`, default 60000 ms) dentro de `recorrido` en la
+      respuesta de `GET /api/recorridos/:token` en `backend/src/routes/recorrido.js`
+      (FR-014)
+- [X] T041 Integrar `iniciarReportePeriodico` en `frontend/src/main.jsx`: arranca cuando
+      hay un token válido, usando el `intervaloUbicacionMs` devuelto por el backend (con
+      un default local si todavía no cargó); se detiene al desmontar (depende de T039,
+      T040)
+- [X] T042 [P] Service test: `ubicacionPeriodica.js` reporta al intervalo indicado, no
+      llama a la API si no hay ubicación disponible, y la función de limpieza detiene el
+      temporizador en `frontend/tests/services/ubicacionPeriodica.test.js`
+- [X] T043 [P] Agregar `UBICACION_REPORTE_INTERVALO_MS` a `backend/.env.example`
+      documentando su propósito (FR-014)
+
+**Checkpoint**: el ciclo completo de FR-014 a FR-017 queda operativo de punta a punta —
+el chofer reporta posición periódicamente, Central la lee vía memoria compartida
+(002-panel-control-central).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

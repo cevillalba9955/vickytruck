@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
-    "test": "node --env-file-if-exists=.env --test tests/contract/*.test.js tests/integration/*.test.js",
+    "test": "node --env-file-if-exists=.env --test tests/unit/*.test.js tests/contract/*.test.js tests/integration/*.test.js",
     "smoke:oracle": "node --env-file-if-exists=.env scripts/smoke-oracle-connection.js"
   },
   "dependencies": {

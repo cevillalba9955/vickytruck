@@ -1,13 +1,20 @@
 import { pathToFileURL } from "node:url";
 import express from "express";
 import { createRecorridoRouter } from "./routes/recorrido.js";
+import { createCentralRouter } from "./routes/central.js";
 import { createOracleRecorridoRepository } from "./db/recorridoRepository.js";
+import { createOracleCentralRepository } from "./db/centralRepository.js";
 
-export function createApp(repository) {
+// `centralRepository` y `ubicacionStore` son opcionales para no romper los
+// tests existentes de 001-chofer-recorrido que llaman a createApp(repository)
+// con un solo argumento (nunca ejercitan las rutas /api/central ni necesitan
+// una instancia aislada de la posición en memoria).
+export function createApp(repository, centralRepository, ubicacionStore) {
   const app = express();
   app.use(express.json());
 
-  app.use("/api/recorridos", createRecorridoRouter(repository));
+  app.use("/api/recorridos", createRecorridoRouter(repository, ubicacionStore));
+  app.use("/api/central", createCentralRouter(centralRepository));
 
   app.use((req, res) => {
     res.status(404).json({ error: "ruta_no_encontrada" });
@@ -30,7 +37,8 @@ export function createApp(repository) {
 const esModuloPrincipal = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (esModuloPrincipal) {
   const repository = createOracleRecorridoRepository();
-  const app = createApp(repository);
+  const centralRepository = createOracleCentralRepository();
+  const app = createApp(repository, centralRepository);
   const port = Number(process.env.PORT || 3001);
   app.listen(port, () => {
     console.log(`[vickytruck-chofer] API escuchando en http://localhost:${port}`);
