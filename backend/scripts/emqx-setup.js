@@ -1,30 +1,34 @@
 // Setup ADMINISTRATIVO (ejecución manual, una sola vez por deployment de
 // EMQX Cloud) para 003-mqtt-broker-fletes: crea las credenciales de servicio
-// de backend/Central y la regla de ACL global que aísla a cada flete dentro
-// de su propio tópico (research.md §2-§3). NO forma parte de `npm test`
-// (vive en scripts/, que `node --test` no escanea) — es infraestructura, no
-// lógica de aplicación, igual que scripts/smoke-oracle-connection.js.
+// de backend/Central y sus reglas de ACL de solo-lectura sobre todo el árbol
+// de fletes (research.md §2-§3). NO forma parte de `npm test` (vive en
+// scripts/, que `node --test` no escanea) — es infraestructura, no lógica de
+// aplicación, igual que scripts/smoke-oracle-connection.js.
 //
-// IMPORTANTE: los paths exactos de la API de administración de EMQX Cloud
-// para autorización (ACL) son un supuesto razonable a confirmar contra el
-// dashboard/documentación real del deployment (Serverless no soporta
-// auth/ACL externa vía webhook — sí soporta reglas de ACL con placeholders
-// ${username}/${clientid} desde su base integrada; ver research.md §2 de
-// 003-mqtt-broker-fletes). Si el path real difiere, ajustar solo
-// `reglasAclUrl()` acá — el resto del script no cambia.
+// La regla de ACL de cada flete (aislamiento por token, FR-006) NO se crea
+// acá: se crea/actualiza junto con su credencial en
+// backend/src/mqtt/emqxProvisioning.js, porque el endpoint de ACL de EMQX
+// asigna reglas a un username LITERAL (no soporta un placeholder ${username}
+// que aplique a cualquier usuario futuro — confirmado empíricamente
+// 2026-08-04 contra un deployment real: una regla con username="${username}"
+// no es un comodín, sería literalmente ese string).
+//
+// IMPORTANTE: apunta a la API HTTP nativa (v5) del propio deployment de
+// EMQX Cloud, NO a la "Platform API" a nivel cuenta (cloud-intl.emqx.com,
+// que gestiona deployments/facturación). EMQX_CLOUD_API_URL debe ser la URL
+// completa que muestra la consola para ese deployment (ej.
+// `https://<host>.emqxsl.com:8443/api/v5`), sin agregar nada más — ver
+// backend/src/mqtt/emqxProvisioning.js para el detalle confirmado
+// empíricamente (2026-08-04) de que no lleva prefijo `/deployments/{id}/`.
 //
 // Uso: npm run emqx:setup
 
 import { pathToFileURL } from "node:url";
 
 function apiBaseUrl() {
-  return process.env.EMQX_CLOUD_API_BASE_URL || "https://cloud-intl.emqx.com";
-}
-
-function deploymentId() {
-  const id = process.env.EMQX_CLOUD_DEPLOYMENT_ID;
-  if (!id) throw new Error("EMQX_CLOUD_DEPLOYMENT_ID no configurado");
-  return id;
+  const url = process.env.EMQX_CLOUD_API_URL;
+  if (!url) throw new Error("EMQX_CLOUD_API_URL no configurado");
+  return url;
 }
 
 function authId() {
@@ -41,11 +45,11 @@ function authHeader() {
 }
 
 function usersUrl() {
-  return `${apiBaseUrl()}/api/v5/deployments/${deploymentId()}/authentication/${authId()}/users`;
+  return `${apiBaseUrl()}/authentication/${authId()}/users`;
 }
 
 function reglasAclUrl() {
-  return `${apiBaseUrl()}/api/v5/deployments/${deploymentId()}/authorization/sources/built_in_database/rules/users`;
+  return `${apiBaseUrl()}/authorization/sources/built_in_database/rules/users`;
 }
 
 async function upsertUsuarioServicio({ fetchImpl, print, username, password }) {
@@ -65,24 +69,17 @@ async function upsertUsuarioServicio({ fetchImpl, print, username, password }) {
   throw new Error(`no se pudo crear el usuario de servicio "${username}": HTTP ${res.status}`);
 }
 
-// Reglas de ACL globales (research.md §2): los fletes publican solo dentro
-// de su propio token vía placeholder ${username}; las credenciales de
-// servicio de backend/Central se identifican por username exacto para leer
-// todo el árbol de fletes.
+// Reglas de ACL de las credenciales de servicio (research.md §2): backend y
+// Central pueden SUBSCRIBE sobre todo el árbol de fletes, sin PUBLISH.
 async function upsertReglasAcl({ fetchImpl, print }) {
   const reglas = [
-    { username: "${username}", topic: "vickytruck/fletes/${username}/#", permission: "allow", action: "publish" },
     {
       username: process.env.EMQX_BACKEND_USERNAME,
-      topic: "vickytruck/fletes/+/#",
-      permission: "allow",
-      action: "subscribe",
+      rules: [{ action: "subscribe", permission: "allow", topic: "vickytruck/fletes/+/#" }],
     },
     {
       username: process.env.EMQX_CENTRAL_USERNAME,
-      topic: "vickytruck/fletes/+/#",
-      permission: "allow",
-      action: "subscribe",
+      rules: [{ action: "subscribe", permission: "allow", topic: "vickytruck/fletes/+/#" }],
     },
   ];
 
@@ -91,17 +88,24 @@ async function upsertReglasAcl({ fetchImpl, print }) {
     headers: { "Content-Type": "application/json", Authorization: authHeader() },
     body: JSON.stringify(reglas),
   });
-  if (!res.ok) {
-    throw new Error(`no se pudieron aplicar las reglas de ACL: HTTP ${res.status}`);
+  if (res.ok) {
+    print(`  reglas de ACL de backend/Central: aplicadas (${reglas.length}).`);
+    return;
   }
-  print(`  reglas de ACL: aplicadas (${reglas.length}).`);
+  if (res.status === 409) {
+    // Idempotente: correr el script de nuevo con las mismas reglas ya
+    // aplicadas no es un error (igual que upsertUsuarioServicio arriba).
+    print(`  reglas de ACL de backend/Central: ya existían (sin cambios).`);
+    return;
+  }
+  throw new Error(`no se pudieron aplicar las reglas de ACL: HTTP ${res.status}`);
 }
 
 export async function runSetup({ print = console.log, error = console.error, fetchImpl = fetch } = {}) {
   print("Setup EMQX Cloud — 003-mqtt-broker-fletes");
 
   const faltantes = [
-    "EMQX_CLOUD_DEPLOYMENT_ID",
+    "EMQX_CLOUD_API_URL",
     "EMQX_CLOUD_API_KEY",
     "EMQX_CLOUD_API_SECRET",
     "EMQX_BACKEND_USERNAME",
