@@ -72,3 +72,8 @@ export function asignarRecorrido(recorridoId, fleteId) {
 export function reasignarRecorrido(recorridoId, fleteId) {
   return enviarJson(`${BASE_URL}/recorridos/${encodeURIComponent(recorridoId)}/reasignar`, { fleteId });
 }
+
+/** 003-mqtt-broker-fletes (FR-005): credencial de servicio para suscribirse directo al bróker. */
+export function obtenerConfigMqtt() {
+  return obtenerJson(`${BASE_URL}/mqtt-config`);
+}

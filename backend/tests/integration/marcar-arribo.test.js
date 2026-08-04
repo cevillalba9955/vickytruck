@@ -1,7 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { createInMemoryRecorridoRepository } from "../helpers/inMemoryRecorridoRepository.js";
+import { createFakeEmqxProvisioning } from "../helpers/fakeEmqxProvisioning.js";
 import { iniciarServidorDePrueba } from "../helpers/testServer.js";
+import { createSubscriber } from "../../src/mqtt/subscriber.js";
+
+// Reemplaza (003-mqtt-broker-fletes) el POST directo por una publicación
+// simulada en vickytruck/fletes/{token}/eventos, igual que hace el chofer
+// real a través de frontend/src/services/mqttClient.js.
+function crearClienteMqttFake() {
+  const emitter = new EventEmitter();
+  emitter.subscribe = () => {};
+  emitter.simularPublicacion = (topic, payload) => {
+    emitter.emit("message", topic, Buffer.from(JSON.stringify(payload)));
+  };
+  return emitter;
+}
 
 test("US2 — marcar arribo sobre un punto no inicial funciona igual (marcado libre)", async () => {
   const repository = createInMemoryRecorridoRepository([
@@ -14,12 +29,14 @@ test("US2 — marcar arribo sobre un punto no inicial funciona igual (marcado li
       ],
     },
   ]);
-  const server = await iniciarServidorDePrueba(repository);
+  const server = await iniciarServidorDePrueba(repository, undefined, createFakeEmqxProvisioning());
+  const mqttClient = crearClienteMqttFake();
+  createSubscriber({ client: mqttClient, repository, ubicacionStore: { registrar() {} } }).iniciar();
 
   try {
     // Se marca arribo en el punto 3 sin haber tocado el 1 ni el 2.
-    const res = await fetch(`${server.baseUrl}/tok-1/puntos/p3/arribo`, { method: "POST" });
-    assert.equal(res.status, 200);
+    mqttClient.simularPublicacion("vickytruck/fletes/tok-1/eventos", { tipo: "arribo", puntoId: "p3" });
+    await new Promise((resolve) => setImmediate(resolve));
 
     const estadoActual = await (await fetch(`${server.baseUrl}/tok-1`)).json();
     const porId = Object.fromEntries(estadoActual.puntos.map((p) => [p.id, p.estado]));

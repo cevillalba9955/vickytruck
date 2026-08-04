@@ -1,7 +1,16 @@
 import { obtenerUbicacionBestEffort } from "./geolocation.js";
 import { encolar, iniciarReintentoAutomatico } from "./offlineQueue.js";
+import { publicar } from "./mqttClient.js";
 
 const BASE_URL = "/api/recorridos";
+
+// Mismo template que arma el backend en `recorrido.mqtt.eventosTopic`
+// (contracts/mqtt-canal.md de 003-mqtt-broker-fletes) — determinístico a
+// partir del token, así no hace falta hacer viajar el string completo desde
+// GET /:token hasta cada llamada de marcarArribo/marcarDescarga.
+function eventosTopic(token) {
+  return `vickytruck/fletes/${token}/eventos`;
+}
 
 export class ApiError extends Error {
   constructor(codigo, status) {
@@ -29,33 +38,29 @@ export async function obtenerRecorrido(token) {
   return res.json();
 }
 
-function rutaEvento(token, puntoId, tipo) {
-  return `${BASE_URL}/${encodeURIComponent(token)}/puntos/${encodeURIComponent(puntoId)}/${tipo}`;
-}
-
 async function enviarEvento(tipo, token, puntoId) {
   const ubicacion = await obtenerUbicacionBestEffort();
-  const body = JSON.stringify(ubicacion ? { lat: ubicacion.lat, lon: ubicacion.lon } : {});
+  const payload = {
+    tipo,
+    puntoId,
+    lat: ubicacion?.lat ?? null,
+    lon: ubicacion?.lon ?? null,
+  };
 
-  let res;
   try {
-    res = await fetch(rutaEvento(token, puntoId, tipo), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
+    await publicar(eventosTopic(token), payload, { qos: 1 });
   } catch {
-    // Fallo de red (offline): encolar para reintento automático (FR-010),
-    // sin bloquear ni marcar la acción como error para el chofer.
+    // Sin conexión al bróker (offline, o todavía no conectó): encolar para
+    // reintento automático (FR-010), sin bloquear ni marcar la acción como
+    // error para el chofer.
     encolar({ tipo, token, puntoId, ubicacion });
     return { queued: true };
   }
 
-  if (!res.ok) {
-    const respBody = await safeJson(res);
-    throw new ApiError(respBody?.error || "error_desconocido", res.status);
-  }
-  return { queued: false, data: await res.json() };
+  // MQTT no tiene una respuesta síncrona con el nuevo estado (a diferencia
+  // del POST HTTP que reemplaza): la UI ya aplicó la actualización optimista
+  // (main.jsx); no hay `data` que fusionar acá.
+  return { queued: false, data: null };
 }
 
 /** Marca "arribo" sobre un punto (US2). No exige orden entre puntos. */
@@ -71,19 +76,17 @@ export function marcarDescarga(token, puntoId) {
 /**
  * Arranca el reintento automático de la cola offline. Devuelve una función
  * para desregistrar los listeners (útil en tests/cleanup de componentes).
+ * A diferencia del POST HTTP que reemplaza, `publicar` con QoS 1 no informa
+ * si la transición fue válida en el backend (FR-013: eso se descarta
+ * silenciosamente allá) — solo confirma que el bróker aceptó el mensaje. Si
+ * `publicar` rechaza (sin conexión), el item se mantiene en la cola.
  */
 export function iniciarSincronizacionOffline() {
   return iniciarReintentoAutomatico(async (item) => {
-    const res = await fetch(rutaEvento(item.token, item.puntoId, item.tipo), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(item.ubicacion ? { lat: item.ubicacion.lat, lon: item.ubicacion.lon } : {}),
-    });
-    // 2xx: aplicado. 404/409: ya no aplica o inválido, no tiene sentido
-    // reintentar de nuevo. Solo un error de servidor (5xx) o de red amerita
-    // reintentar más tarde (mantiene el item en la cola).
-    if (!res.ok && res.status >= 500) {
-      throw new Error("reintentar_luego");
-    }
+    await publicar(
+      eventosTopic(item.token),
+      { tipo: item.tipo, puntoId: item.puntoId, lat: item.ubicacion?.lat ?? null, lon: item.ubicacion?.lon ?? null },
+      { qos: 1 },
+    );
   });
 }

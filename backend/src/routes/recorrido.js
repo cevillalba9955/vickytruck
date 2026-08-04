@@ -1,8 +1,24 @@
 import { Router } from "express";
-import { ubicacionEnMemoriaCompartida } from "../state/ubicacionEnMemoria.js";
+import { createEmqxProvisioning } from "../mqtt/emqxProvisioning.js";
 
 function intervaloReporteUbicacionMs() {
   return Number(process.env.UBICACION_REPORTE_INTERVALO_MS || 60000);
+}
+
+// Config de conexión MQTT entregada al frontend del chofer (contracts/mqtt-canal.md
+// de 003-mqtt-broker-fletes): reemplaza los POST directos de ubicación/arribo/
+// descarga por publicaciones hacia el bróker, para no exponer IP propia del
+// backend ni del dispositivo del chofer.
+async function construirConfigMqtt(token, emqxProvisioning) {
+  const { username, password } = await emqxProvisioning.provisionarCredencial(token);
+  return {
+    url: process.env.EMQX_WSS_URL,
+    username,
+    password,
+    ubicacionTopic: `vickytruck/fletes/${token}/ubicacion`,
+    eventosTopic: `vickytruck/fletes/${token}/eventos`,
+    intervaloUbicacionMs: intervaloReporteUbicacionMs(),
+  };
 }
 
 function serializePunto(punto, totalPuntos) {
@@ -24,10 +40,11 @@ function serializePunto(punto, totalPuntos) {
  * memoria, sin depender de una conexión Oracle real (ver
  * backend/tests/contract).
  */
-export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMemoriaCompartida) {
+export function createRecorridoRouter(repository, emqxProvisioning = createEmqxProvisioning()) {
   const router = Router();
 
-  // GET /api/recorridos/:token — FR-002, FR-003, FR-008, FR-012
+  // GET /api/recorridos/:token — FR-002, FR-003, FR-008, FR-012 (001);
+  // incluye `recorrido.mqtt` desde 003-mqtt-broker-fletes (FR-001, FR-002).
   router.get("/:token", async (req, res, next) => {
     try {
       const recorrido = await repository.obtenerPorToken(req.params.token);
@@ -35,7 +52,10 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
         return res.status(404).json({ error: "enlace_invalido" });
       }
       res.json({
-        recorrido: { estado: recorrido.estado, intervaloUbicacionMs: intervaloReporteUbicacionMs() },
+        recorrido: {
+          estado: recorrido.estado,
+          mqtt: await construirConfigMqtt(req.params.token, emqxProvisioning),
+        },
         progreso: recorrido.progreso,
         puntos: recorrido.puntos.map((p) => serializePunto(p, recorrido.puntos.length)),
       });
@@ -44,77 +64,12 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
     }
   });
 
-  // POST /api/recorridos/:token/puntos/:puntoId/arribo — FR-004, FR-006, FR-007
-  router.post("/:token/puntos/:puntoId/arribo", async (req, res, next) => {
-    try {
-      const { lat, lon } = req.body || {};
-      const resultado = await repository.marcarArribo(req.params.token, req.params.puntoId, {
-        lat,
-        lon,
-      });
-      responderTransicion(res, resultado);
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // POST /api/recorridos/:token/puntos/:puntoId/descarga — FR-005, FR-006, FR-007
-  router.post("/:token/puntos/:puntoId/descarga", async (req, res, next) => {
-    try {
-      const { lat, lon } = req.body || {};
-      const resultado = await repository.marcarDescarga(req.params.token, req.params.puntoId, {
-        lat,
-        lon,
-      });
-      responderTransicion(res, resultado);
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // POST /api/recorridos/:token/ubicacion — FR-014, FR-015 de 001-chofer-recorrido.
-  // Reporte periódico de ubicación instantánea mientras el recorrido está
-  // activo; se guarda solo en memoria (nunca en Oracle, research.md §8 de
-  // 002-panel-control-central).
-  router.post("/:token/ubicacion", async (req, res, next) => {
-    try {
-      const { lat, lon } = req.body || {};
-      if (lat == null || lon == null) {
-        return res.status(400).json({ error: "ubicacion_invalida" });
-      }
-      const recorrido = await repository.obtenerPorToken(req.params.token);
-      if (!recorrido) {
-        return res.status(404).json({ error: "enlace_invalido" });
-      }
-      ubicacionStore.registrar(recorrido.id, { lat, lon, en: new Date().toISOString() });
-      res.status(200).json({ ok: true });
-    } catch (err) {
-      next(err);
-    }
-  });
+  // POST /:token/puntos/:puntoId/arribo — RETIRADO (003-mqtt-broker-fletes,
+  // FR-002): llega por el bróker MQTT (ver mqtt/subscriber.js).
+  // POST /:token/puntos/:puntoId/descarga — RETIRADO, idem.
+  // POST /:token/ubicacion — RETIRADO (003-mqtt-broker-fletes, FR-001): el
+  // reporte periódico de ubicación instantánea ahora llega por el bróker MQTT
+  // (ver mqtt/subscriber.js), no por este endpoint.
 
   return router;
-}
-
-function responderTransicion(res, resultado) {
-  if (resultado.outcome === "invalid_token") {
-    return res.status(404).json({ error: "enlace_invalido" });
-  }
-  if (resultado.outcome === "not_found") {
-    return res.status(404).json({ error: "punto_no_encontrado" });
-  }
-  if (resultado.outcome === "conflict") {
-    return res.status(409).json({
-      error: "transicion_invalida",
-      puntoId: resultado.punto.id,
-      estado: resultado.punto.estado,
-    });
-  }
-  // outcome === "ok" (aplicada ahora, o repetición idempotente — research.md §6)
-  return res.status(200).json({
-    puntoId: resultado.punto.id,
-    estado: resultado.punto.estado,
-    arriboEn: resultado.punto.arriboEn,
-    descargaEn: resultado.punto.descargaEn,
-  });
 }

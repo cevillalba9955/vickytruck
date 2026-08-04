@@ -5,6 +5,7 @@ import { RouteView } from "./components/RouteView.jsx";
 import { ProgressSummary } from "./components/ProgressSummary.jsx";
 import { ApiError, obtenerRecorrido, marcarArribo, marcarDescarga, iniciarSincronizacionOffline } from "./services/api.js";
 import { iniciarReportePeriodico } from "./services/ubicacionPeriodica.js";
+import { conectar as conectarMqtt } from "./services/mqttClient.js";
 
 const INTERVALO_UBICACION_DEFAULT_MS = 60000;
 
@@ -46,13 +47,16 @@ function App() {
     return iniciarSincronizacionOffline();
   }, [token]);
 
-  // FR-014: reporte periódico de ubicación instantánea mientras el recorrido
-  // está activo; el intervalo lo decide el backend (recorrido.intervaloUbicacionMs).
-  const intervaloUbicacionMs = recorrido?.recorrido?.intervaloUbicacionMs ?? INTERVALO_UBICACION_DEFAULT_MS;
+  // FR-001, FR-014: conecta al bróker MQTT con la config recibida de GET
+  // /:token y arranca el reporte periódico de ubicación instantánea mientras
+  // el recorrido está activo (003-mqtt-broker-fletes).
+  const mqttConfig = recorrido?.recorrido?.mqtt;
+  const intervaloUbicacionMs = mqttConfig?.intervaloUbicacionMs ?? INTERVALO_UBICACION_DEFAULT_MS;
   useEffect(() => {
-    if (!token) return undefined;
-    return iniciarReportePeriodico(token, intervaloUbicacionMs);
-  }, [token, intervaloUbicacionMs]);
+    if (!token || !mqttConfig) return undefined;
+    conectarMqtt(mqttConfig);
+    return iniciarReportePeriodico(mqttConfig.ubicacionTopic, intervaloUbicacionMs);
+  }, [token, mqttConfig, intervaloUbicacionMs]);
 
   const actualizarPuntoLocal = (puntoId, cambios) => {
     setRecorrido((actual) => {
@@ -68,25 +72,19 @@ function App() {
     });
   };
 
+  // 003-mqtt-broker-fletes: publicar por MQTT no tiene una respuesta
+  // síncrona con el nuevo estado del punto (a diferencia del POST HTTP que
+  // reemplaza), así que la actualización optimista de abajo pasa a ser la
+  // única fuente del estado mostrado; el backend aplica la transición real
+  // de forma asíncrona al recibir el mensaje (descartando silenciosamente
+  // cualquier transición inválida, FR-013 de spec.md).
   const ejecutarAccion = async (tipo, puntoId, estadoOptimista, enviar) => {
     setProcesandoPuntoId(puntoId);
     actualizarPuntoLocal(puntoId, { estado: estadoOptimista });
     try {
-      const resultado = await enviar(token, puntoId);
-      if (!resultado.queued) {
-        actualizarPuntoLocal(puntoId, {
-          estado: resultado.data.estado,
-          arriboEn: resultado.data.arriboEn,
-          descargaEn: resultado.data.descargaEn,
-        });
-      }
-      // Si quedó encolada (offline), se deja el estado optimista: la cola la
-      // sincroniza sola cuando vuelve la conectividad (FR-010).
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        // Nuestra vista optimista quedó desincronizada del servidor: resincronizar.
-        await cargarRecorrido();
-      }
+      await enviar(token, puntoId);
+      // Si quedó encolada (offline), se deja igual el estado optimista: la
+      // cola la sincroniza sola cuando vuelve la conectividad (FR-010).
     } finally {
       setProcesandoPuntoId(null);
     }
