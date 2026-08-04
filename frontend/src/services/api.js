@@ -2,40 +2,14 @@ import { obtenerUbicacionBestEffort } from "./geolocation.js";
 import { encolar, iniciarReintentoAutomatico } from "./offlineQueue.js";
 import { publicar } from "./mqttClient.js";
 
-const BASE_URL = "/api/recorridos";
-
 // Mismo template que arma el backend en `recorrido.mqtt.eventosTopic`
-// (contracts/mqtt-canal.md de 003-mqtt-broker-fletes) — determinístico a
-// partir del token, así no hace falta hacer viajar el string completo desde
-// GET /:token hasta cada llamada de marcarArribo/marcarDescarga.
+// (contracts/enlace-recorrido.md de 004-chofer-cloud-broker, que hereda el
+// contrato de tópicos de contracts/mqtt-canal.md de 003-mqtt-broker-fletes)
+// — determinístico a partir del token, así no hace falta hacer viajar el
+// string completo desde el payload embebido hasta cada llamada de
+// marcarArribo/marcarDescarga.
 function eventosTopic(token) {
   return `vickytruck/fletes/${token}/eventos`;
-}
-
-export class ApiError extends Error {
-  constructor(codigo, status) {
-    super(codigo);
-    this.codigo = codigo;
-    this.status = status;
-  }
-}
-
-async function safeJson(res) {
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-/** GET del recorrido completo (US1). Lanza ApiError si el token es inválido. */
-export async function obtenerRecorrido(token) {
-  const res = await fetch(`${BASE_URL}/${encodeURIComponent(token)}`);
-  if (!res.ok) {
-    const body = await safeJson(res);
-    throw new ApiError(body?.error || "error_desconocido", res.status);
-  }
-  return res.json();
 }
 
 async function enviarEvento(tipo, token, puntoId) {

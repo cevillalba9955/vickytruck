@@ -2,6 +2,7 @@ import oracledb from "oracledb";
 import { withConnection } from "./pool.js";
 import { obtenerRespaldoDesdeEventos, resolverUbicacion } from "./ubicacionResolver.js";
 import { ubicacionEnMemoriaCompartida } from "../state/ubicacionEnMemoria.js";
+import { vinculoDispositivoCompartido } from "../state/vinculoDispositivo.js";
 import { createEmqxProvisioning } from "../mqtt/emqxProvisioning.js";
 
 // Mismo patrón de validación de identificadores que recorridoRepository.js:
@@ -64,7 +65,7 @@ async function leerPuntosDelRecorrido(connection, recorridoId) {
 
 async function leerDetalle(connection, recorridoId) {
   const recorridoResult = await connection.execute(
-    `SELECT id, estado, flete_id FROM ${tablaRecorridos()} WHERE id = :id`,
+    `SELECT id, estado, flete_id, token FROM ${tablaRecorridos()} WHERE id = :id`,
     { id: Number(recorridoId) },
   );
   const row = recorridoResult.rows[0];
@@ -75,6 +76,10 @@ async function leerDetalle(connection, recorridoId) {
       id: String(row.ID),
       estado: row.ESTADO,
       fleteId: row.FLETE_ID != null ? String(row.FLETE_ID) : null,
+      // 004-chofer-cloud-broker (FR-006, US3 AS2): permite reconstruir el
+      // `enlace` de un recorrido ya activo, no solo justo después de
+      // asignarlo (ver central.js, GET /recorridos/:id).
+      token: row.TOKEN ?? null,
     },
     puntos,
   };
@@ -132,6 +137,7 @@ async function invocarAsignacion(procedimiento, recorridoId, fleteId) {
 export function createOracleCentralRepository(
   ubicacionStore = ubicacionEnMemoriaCompartida,
   emqxProvisioning = createEmqxProvisioning(),
+  vinculoDispositivo = vinculoDispositivoCompartido,
 ) {
   async function leerTokenActual(recorridoId) {
     return withConnection(async (connection) => {
@@ -225,6 +231,10 @@ export function createOracleCentralRepository(
       const resultado = await invocarAsignacion("reasignar_recorrido", recorridoId, fleteId);
       if (resultado.outcome === "ok" && tokenAnterior) {
         await emqxProvisioning.revocarCredencial(tokenAnterior);
+        // 004-chofer-cloud-broker (FR-005a): el vínculo a primer dispositivo
+        // del token anterior ya no tiene sentido una vez revocada su
+        // credencial — se limpia junto con ella.
+        vinculoDispositivo.liberar(tokenAnterior);
       }
       return resultado;
     },

@@ -4,6 +4,7 @@
 export function createFakeEmqxProvisioning() {
   const credenciales = new Map();
   const revocados = [];
+  const expulsados = []; // 004-chofer-cloud-broker (FR-005a)
 
   return {
     async provisionarCredencial(token) {
@@ -16,12 +17,19 @@ export function createFakeEmqxProvisioning() {
       credenciales.delete(token);
       revocados.push(token);
     },
+    async expulsarCliente(clientId) {
+      if (!clientId) return;
+      expulsados.push(clientId);
+    },
     // Helpers de inspección, solo para tests.
     _tieneCredencial(token) {
       return credenciales.has(token);
     },
     _revocados() {
       return [...revocados];
+    },
+    _expulsados() {
+      return [...expulsados];
     },
   };
 }

@@ -144,8 +144,9 @@ test("emqxProvisioning — provisionarCredencial lanza si la regla de ACL falla"
 
 test("emqxProvisioning — provisionarCredencial es idempotente si la regla de ACL ya existía (409)", async () => {
   await conConfigDeTest(async () => {
-    // Caso real: GET /:token llamado dos veces para el mismo token (ej.
-    // recarga de página) — la 2da vez el usuario Y la regla ya existen.
+    // Caso real: Central pide el enlace dos veces para el mismo token (ej.
+    // vuelve a abrir el detalle de un recorrido ya activo) — la 2da vez el
+    // usuario Y la regla ya existen.
     const fetchImpl = fakeFetch([{ ok: false, status: 409 }, { ok: true, status: 200 }, { ok: false, status: 409 }]);
     const provisioning = createEmqxProvisioning(fetchImpl);
 
@@ -204,5 +205,54 @@ test("emqxProvisioning — revocarCredencial lanza si borrar la regla de ACL fal
     const provisioning = createEmqxProvisioning(fetchImpl);
 
     await assert.rejects(() => provisioning.revocarCredencial("tok-x"), /emqx_revocar_acl_fallo/);
+  });
+});
+
+// 004-chofer-cloud-broker (FR-005a): usada por conexionWatcher.js para
+// expulsar la sesión de un segundo dispositivo que se conecta con el mismo
+// token de publicación.
+test("emqxProvisioning — expulsarCliente hace DELETE del cliente por clientId", async () => {
+  await conConfigDeTest(async () => {
+    const fetchImpl = fakeFetch([{ ok: true, status: 204 }]);
+    const provisioning = createEmqxProvisioning(fetchImpl);
+
+    await provisioning.expulsarCliente("dev-intruso");
+
+    assert.equal(fetchImpl.llamadas.length, 1);
+    const [expulsion] = fetchImpl.llamadas;
+    assert.equal(expulsion.url, `${BASE}/clients/dev-intruso`);
+    assert.equal(expulsion.opciones.method, "DELETE");
+    assert.equal(
+      expulsion.opciones.headers.Authorization,
+      `Basic ${Buffer.from("clave-test:secreto-test").toString("base64")}`,
+    );
+  });
+});
+
+test("emqxProvisioning — expulsarCliente es idempotente (404 no lanza: el cliente ya se había desconectado solo)", async () => {
+  await conConfigDeTest(async () => {
+    const fetchImpl = fakeFetch([{ ok: false, status: 404 }]);
+    const provisioning = createEmqxProvisioning(fetchImpl);
+
+    await assert.doesNotReject(() => provisioning.expulsarCliente("dev-ya-desconectado"));
+  });
+});
+
+test("emqxProvisioning — expulsarCliente lanza si la API falla con otro código", async () => {
+  await conConfigDeTest(async () => {
+    const fetchImpl = fakeFetch([{ ok: false, status: 500 }]);
+    const provisioning = createEmqxProvisioning(fetchImpl);
+
+    await assert.rejects(() => provisioning.expulsarCliente("dev-x"), /emqx_expulsar_fallo/);
+  });
+});
+
+test("emqxProvisioning — expulsarCliente es no-op si no se pasa clientId", async () => {
+  await conConfigDeTest(async () => {
+    const fetchImpl = fakeFetch([]);
+    const provisioning = createEmqxProvisioning(fetchImpl);
+
+    await assert.doesNotReject(() => provisioning.expulsarCliente(null));
+    assert.equal(fetchImpl.llamadas.length, 0);
   });
 });

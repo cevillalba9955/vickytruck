@@ -1,45 +1,28 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { RouteView } from "./components/RouteView.jsx";
 import { ProgressSummary } from "./components/ProgressSummary.jsx";
-import { ApiError, obtenerRecorrido, marcarArribo, marcarDescarga, iniciarSincronizacionOffline } from "./services/api.js";
+import { ConnectionBanner } from "./components/ConnectionBanner.jsx";
+import { marcarArribo, marcarDescarga, iniciarSincronizacionOffline } from "./services/api.js";
+import { leerPayloadDeUrl } from "./services/enlacePayload.js";
 import { iniciarReportePeriodico } from "./services/ubicacionPeriodica.js";
-import { conectar as conectarMqtt } from "./services/mqttClient.js";
+import { conectar as conectarMqtt, onEstadoCambio } from "./services/mqttClient.js";
+import { obtenerDeviceId } from "./services/deviceId.js";
 
 const INTERVALO_UBICACION_DEFAULT_MS = 60000;
 
-function obtenerTokenDeUrl() {
-  return new URLSearchParams(window.location.search).get("token");
-}
-
 function App() {
-  const [token] = useState(obtenerTokenDeUrl);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(null);
-  const [recorrido, setRecorrido] = useState(null);
+  // 004-chofer-cloud-broker: el payload (puntos + config MQTT) llega
+  // embebido en el fragmento de la URL (FR-002a) — se lee una sola vez, de
+  // forma síncrona, al montar; no hay ningún `fetch` involucrado en mostrar
+  // el recorrido (a diferencia del `GET /api/recorridos/:token` retirado).
+  const [payloadInicial] = useState(leerPayloadDeUrl);
+  const [recorrido, setRecorrido] = useState(payloadInicial);
   const [procesandoPuntoId, setProcesandoPuntoId] = useState(null);
 
-  const cargarRecorrido = useCallback(async () => {
-    if (!token) {
-      setError("enlace_invalido");
-      setCargando(false);
-      return;
-    }
-    try {
-      const data = await obtenerRecorrido(token);
-      setRecorrido(data);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.codigo : "error_desconocido");
-    } finally {
-      setCargando(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    cargarRecorrido();
-  }, [cargarRecorrido]);
+  const token = recorrido?.recorrido?.mqtt?.username ?? null;
+  const error = payloadInicial ? null : "enlace_invalido";
 
   // FR-010: reintento automático de la cola offline al recuperar conectividad.
   useEffect(() => {
@@ -47,15 +30,25 @@ function App() {
     return iniciarSincronizacionOffline();
   }, [token]);
 
-  // FR-001, FR-014: conecta al bróker MQTT con la config recibida de GET
-  // /:token y arranca el reporte periódico de ubicación instantánea mientras
-  // el recorrido está activo (003-mqtt-broker-fletes).
+  // FR-004: conecta al bróker MQTT con la config ya recibida en el payload
+  // embebido y arranca el reporte periódico de ubicación instantánea
+  // mientras el recorrido está activo (003-mqtt-broker-fletes). El estado
+  // "cargando" ya no cubre la obtención del recorrido (no hay red
+  // involucrada en eso): cubre solo esta conexión al bróker.
+  const [cargando, setCargando] = useState(() => Boolean(payloadInicial));
+  const [estadoConexion, setEstadoConexion] = useState(null);
   const mqttConfig = recorrido?.recorrido?.mqtt;
   const intervaloUbicacionMs = mqttConfig?.intervaloUbicacionMs ?? INTERVALO_UBICACION_DEFAULT_MS;
   useEffect(() => {
     if (!token || !mqttConfig) return undefined;
-    conectarMqtt(mqttConfig);
-    return iniciarReportePeriodico(mqttConfig.ubicacionTopic, intervaloUbicacionMs);
+    const desuscribir = onEstadoCambio(setEstadoConexion);
+    conectarMqtt({ ...mqttConfig, clientId: obtenerDeviceId() });
+    setCargando(false);
+    const detenerReporte = iniciarReportePeriodico(mqttConfig.ubicacionTopic, intervaloUbicacionMs);
+    return () => {
+      desuscribir();
+      detenerReporte();
+    };
   }, [token, mqttConfig, intervaloUbicacionMs]);
 
   const actualizarPuntoLocal = (puntoId, cambios) => {
@@ -103,6 +96,7 @@ function App() {
 
   return (
     <main className="app">
+      <ConnectionBanner estadoConexion={estadoConexion} />
       <ProgressSummary progreso={recorrido.progreso} />
       <RouteView
         puntos={recorrido.puntos}

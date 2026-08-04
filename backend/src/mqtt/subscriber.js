@@ -22,12 +22,14 @@ function parsearPayload(payloadBuf) {
 }
 
 /**
- * Crea el suscriptor. `repository` resuelve token -> recorrido
- * (mismo `recorridoRepository` que ya usa el router HTTP del chofer);
- * `ubicacionStore` es el mismo módulo en memoria que antes escribía el
- * endpoint `POST /:token/ubicacion` retirado.
+ * Crea el suscriptor. `repository` resuelve token -> recorrido (el mismo
+ * `recorridoRepository` que usa `enlaceRecorrido.js`); `ubicacionStore` es
+ * el mismo módulo en memoria que antes escribía el endpoint
+ * `POST /:token/ubicacion` retirado (003-mqtt-broker-fletes). `vinculoDispositivo`
+ * es opcional: si se pasa, su vínculo se libera junto con la credencial EMQX
+ * al completar el recorrido (004-chofer-cloud-broker, FR-005a).
  */
-export function createSubscriber({ client, repository, ubicacionStore, emqxProvisioning }) {
+export function createSubscriber({ client, repository, ubicacionStore, emqxProvisioning, vinculoDispositivo }) {
   async function manejarUbicacion(token, payload) {
     if (payload?.lat == null || payload?.lon == null) return; // FR-013
     const recorrido = await repository.obtenerPorToken(token);
@@ -69,6 +71,7 @@ export function createSubscriber({ client, repository, ubicacionStore, emqxProvi
       const recorrido = await repository.obtenerPorToken(token);
       if (recorrido && recorrido.progreso.pendientes === 0 && recorrido.progreso.arribados === 0) {
         await emqxProvisioning.revocarCredencial(token);
+        vinculoDispositivo?.liberar(token);
       }
     }
   }
