@@ -49,7 +49,9 @@ if (esModuloPrincipal) {
   startMqttBridge(integracionStore);
   const app = createApp(integracionStore, integracionStore, undefined, integracionStore);
   const port = Number(process.env.PORT || 3001);
-  app.listen(port, () => {
+  // Bind explícito a 0.0.0.0: en contenedores (Fly.io) el default de Node
+  // puede quedar solo en IPv6, y el proxy externo espera IPv4.
+  app.listen(port, "0.0.0.0", () => {
     console.log(`[vickytruck-chofer] API escuchando en http://localhost:${port}`);
   });
 }
