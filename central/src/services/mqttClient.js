@@ -1,4 +1,4 @@
-import { connect } from "mqtt";
+import mqtt from "mqtt";
 
 const TOPIC_UBICACION = "chofer/+/ubicacion";
 
@@ -9,7 +9,7 @@ export function conectarUbicacionEnTiempoReal({ onEvento, onEstado }) {
     return () => {};
   }
 
-  const client = connect(brokerUrl, {
+  const client = mqtt.connect(brokerUrl, {
     clientId: `central-${Math.random().toString(16).slice(2)}`,
     username: import.meta.env.VITE_MQTT_USERNAME || undefined,
     password: import.meta.env.VITE_MQTT_PASSWORD || undefined,
