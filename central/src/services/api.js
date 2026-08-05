@@ -1,4 +1,7 @@
-const BASE_URL = "/api/central";
+// Vacío en dev (el proxy de vite.config.js reenvía /api a localhost:3001);
+// en producción (Cloudflare Workers) apunta al backend real en Fly.io, ver
+// .env.production.
+const BASE_URL = `${import.meta.env.VITE_API_BASE_URL || ""}/api/central`;
 
 export class ApiError extends Error {
   constructor(codigo, status) {

@@ -5,6 +5,7 @@ import { createCentralRouter } from "./routes/central.js";
 import { createIntegracionRouter } from "./routes/integracion.js";
 import { integracionStoreCompartido } from "./state/integracionStore.js";
 import { startMqttBridge } from "./services/mqttBridge.js";
+import { cors } from "./middleware/cors.js";
 
 // `centralRepository` y `ubicacionStore` son opcionales para no romper los
 // tests existentes de 001-chofer-recorrido que llaman a createApp(repository)
@@ -12,6 +13,7 @@ import { startMqttBridge } from "./services/mqttBridge.js";
 // una instancia aislada de la posición en memoria).
 export function createApp(repository, centralRepository, ubicacionStore, integracionStore = integracionStoreCompartido) {
   const app = express();
+  app.use(cors);
   app.use(express.json());
 
   app.use("/api/recorridos", createRecorridoRouter(repository, ubicacionStore));

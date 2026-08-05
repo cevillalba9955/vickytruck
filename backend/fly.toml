@@ -10,6 +10,10 @@ primary_region = 'gru'
 
 [env]
   PORT = '3001'
+  # Orígenes de frontend/central en Cloudflare Workers. La URL de central es
+  # una estimación (<nombre-worker>.<subdominio>.workers.dev, ver
+  # central/wrangler.jsonc) — confirmar/ajustar una vez deployado de verdad.
+  CORS_ORIGINS = 'https://vickytruck.cevillalba.workers.dev,https://vickytruck-central.cevillalba.workers.dev'
 
 [http_service]
   # Debe coincidir con el puerto real donde escucha server.js (PORT de
