@@ -7,6 +7,7 @@ import { RecorridoDetalle } from "./components/RecorridoDetalle.jsx";
 import { HistorialView } from "./components/HistorialView.jsx";
 import { listarActivos, obtenerDetalle } from "./services/api.js";
 import { pollEvery } from "./services/polling.js";
+import { conectarUbicacionEnTiempoReal } from "./services/mqttClient.js";
 
 const INTERVALO_POLLING_MS = 5000;
 
@@ -16,6 +17,21 @@ function App() {
   const [error, setError] = useState(null);
   const [detalleId, setDetalleId] = useState(null);
   const [detalle, setDetalle] = useState(null);
+  const [mqttEstado, setMqttEstado] = useState("disabled");
+
+  const aplicarUbicacionViva = (lista, evento) =>
+    lista.map((r) => {
+      if (String(r.flete?.id) !== String(evento.fleteId)) return r;
+      return {
+        ...r,
+        ultimaUbicacion: {
+          lat: evento.lat,
+          lon: evento.lon,
+          en: evento.en,
+          reciente: true,
+        },
+      };
+    });
 
   const abrirDetalle = async (id) => {
     setDetalleId(id);
@@ -36,6 +52,15 @@ function App() {
     });
   }, []);
 
+  useEffect(() => {
+    return conectarUbicacionEnTiempoReal({
+      onEstado: setMqttEstado,
+      onEvento: (evento) => {
+        setActivos((prev) => aplicarUbicacionViva(prev, evento));
+      },
+    });
+  }, []);
+
   return (
     <main className="app">
       <h1>Central — Panel de control</h1>
@@ -52,6 +77,7 @@ function App() {
       </nav>
 
       {error && <p role="alert">No se pudo actualizar el panel; reintentando…</p>}
+      {mqttEstado !== "disabled" && <p role="status">Canal tiempo real MQTT: {mqttEstado}</p>}
 
       {vista === "monitor" && <MonitorView recorridos={activos} onSeleccionar={abrirDetalle} />}
       {vista === "asignar" && <AsignacionForm onAsignado={() => setVista("monitor")} />}

@@ -1,4 +1,4 @@
-@startuml
+@startuml VickyTruck - Arquitectura Cloud Rediseñada (sin acceso Oracle desde cloud)
 title VickyTruck - Arquitectura Cloud Rediseñada (sin acceso Oracle desde cloud)
 
 skinparam shadowing false

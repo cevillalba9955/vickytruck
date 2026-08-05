@@ -5,3 +5,12 @@ node_modules/
 !.env.example
 dist/
 .specify/extensions/.cache/
+build/
+coverage/
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
