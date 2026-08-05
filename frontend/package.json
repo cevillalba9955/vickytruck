@@ -11,7 +11,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy": "vite build && wrangler deploy"
   },
   "dependencies": {
     "mqtt": "^5.10.3",

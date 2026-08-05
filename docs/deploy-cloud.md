@@ -36,9 +36,9 @@ Cubrir FR-001 con una guía operativa mínima para desplegar `backend/`, `fronte
 
 ## Flujo de release sugerido
 
-1. Build backend y publicar imagen.
-2. Build `frontend/` y publicar estáticos.
-3. Build `central/` y publicar estáticos.
+1. Build backend y publicar imagen (`backend/Dockerfile`; ejemplo de despliegue en Fly.io vía `backend/fly.toml` — requiere contenedor siempre encendido por la suscripción MQTT persistente, no sirve un runtime serverless/Workers).
+2. Build `frontend/` y publicar estáticos (`cd frontend && npm run deploy`, Cloudflare Workers vía `frontend/wrangler.jsonc`).
+3. Build `central/` y publicar estáticos (`cd central && npm run deploy`, Cloudflare Workers vía `central/wrangler.jsonc`).
 4. Configurar variables de entorno por ambiente.
 5. Ejecutar validaciones de `quickstart.md`.
 
