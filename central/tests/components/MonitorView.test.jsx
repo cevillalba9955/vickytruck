@@ -31,4 +31,25 @@ describe("MonitorView", () => {
     render(<MonitorView recorridos={[]} />);
     expect(screen.getByRole("status")).toHaveTextContent("No hay recorridos activos");
   });
+
+  it("permite coexistencia con estado de canal MQTT mostrado en pantalla", () => {
+    render(
+      <>
+        <p role="status">Canal tiempo real MQTT: connected</p>
+        <MonitorView
+          recorridos={[
+            {
+              id: "52",
+              flete: { id: "10", nombre: "Mario Ruiz" },
+              progreso: { pendientes: 2, arribados: 1, completados: 0 },
+              ultimaUbicacion: { lat: -34.61, lon: -58.39, en: new Date().toISOString(), reciente: true },
+            },
+          ]}
+        />
+      </>,
+    );
+
+    expect(screen.getByText("Canal tiempo real MQTT: connected")).toBeInTheDocument();
+    expect(screen.getByText("Mario Ruiz")).toBeInTheDocument();
+  });
 });

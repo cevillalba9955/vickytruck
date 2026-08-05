@@ -1,0 +1,30 @@
+# Config de despliegue en Fly.io (https://fly.io) — alternativa "contenedor
+# siempre encendido" a Cloudflare Workers, necesaria porque este backend
+# mantiene una suscripción MQTT persistente y debe poder recibir pushes de
+# Oracle/APEX en cualquier momento (ver docs/deploy-cloud.md).
+#
+# Uso:
+#   cd backend
+#   fly launch --no-deploy   # crea/ajusta la app en tu cuenta (te va a
+#                             # preguntar el nombre y la región más cercana;
+#                             # podés pisar los valores de acá)
+#   fly secrets set INTEGRACION_API_KEY=... MQTT_BROKER_URL=... MQTT_USERNAME=... MQTT_PASSWORD=... ORACLE_USER=... ORACLE_PASSWORD=... ORACLE_CONNECT_STRING=...
+#   fly deploy
+
+app = "vickytruck-backend"
+primary_region = "gru" # São Paulo — la región más cercana disponible al momento de escribir esto; `fly launch` te va a sugerir la mejor opción, se puede cambiar.
+
+[build]
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  # auto_stop/min_machines en 1: este backend necesita quedar siempre
+  # conectado al broker MQTT y disponible para los pushes de Oracle/APEX, no
+  # puede escalar a cero como una función serverless.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[env]
+  PORT = "3001"

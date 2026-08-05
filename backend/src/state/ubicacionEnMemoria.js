@@ -5,8 +5,9 @@
 //
 // Se exporta como factory (`createUbicacionEnMemoria`) para poder usar
 // instancias aisladas en tests, más un singleton (`ubicacionEnMemoriaCompartida`)
-// que es el que importan `recorrido.js` (escribe) y `centralRepository.js` (lee)
-// en producción, ya que ambos corren en el mismo proceso backend.
+// que es el que usa `recorrido.js` para el reporte periódico de ubicación del
+// chofer (POST /:token/ubicacion) — el monitoreo de Central lee ubicación en
+// vivo desde `integracionStore` (alimentado por el bridge MQTT), no de acá.
 export function createUbicacionEnMemoria() {
   const posiciones = new Map();
 

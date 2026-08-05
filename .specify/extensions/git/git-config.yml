@@ -26,7 +26,7 @@ auto_commit:
     enabled: false
     message: "[Spec Kit] Save progress before task generation"
   before_implement:
-    enabled: false
+    enabled: true
     message: "[Spec Kit] Save progress before implementation"
   before_checklist:
     enabled: false

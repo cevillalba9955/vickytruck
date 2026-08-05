@@ -9,14 +9,15 @@ import { createApp } from "../../src/server.js";
  * instancia aislada (`createUbicacionEnMemoria()`) para no compartir estado
  * con otros tests vía el singleton compartido.
  */
-export async function iniciarServidorDePrueba(recorridoRepository, centralRepository, ubicacionStore) {
-  const app = createApp(recorridoRepository, centralRepository, ubicacionStore);
+export async function iniciarServidorDePrueba(recorridoRepository, centralRepository, ubicacionStore, integracionStore) {
+  const app = createApp(recorridoRepository, centralRepository, ubicacionStore, integracionStore);
   const server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   const { port } = server.address();
   return {
     baseUrl: `http://127.0.0.1:${port}/api/recorridos`,
     centralBaseUrl: `http://127.0.0.1:${port}/api/central`,
+    integracionBaseUrl: `http://127.0.0.1:${port}/api/integracion`,
     async cerrar() {
       await new Promise((resolve) => server.close(resolve));
     },

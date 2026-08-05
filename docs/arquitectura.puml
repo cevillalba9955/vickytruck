@@ -1,4 +1,4 @@
-@startuml
+@startuml VickyTruck - Arquitectura General del Proyecto
 title VickyTruck - Arquitectura General del Proyecto
 
 skinparam shadowing false

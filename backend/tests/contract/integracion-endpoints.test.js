@@ -1,0 +1,93 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { iniciarServidorDePrueba } from "../helpers/testServer.js";
+import { createIntegracionStore } from "../../src/state/integracionStore.js";
+
+function withApiKey(init = {}) {
+  return {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": "test-key",
+      ...(init.headers || {}),
+    },
+  };
+}
+
+test("POST /api/integracion/recorridos — 401 sin credenciales", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store);
+
+  try {
+    const res = await fetch(`${server.integracionBaseUrl}/recorridos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recorridos: [] }),
+    });
+    assert.equal(res.status, 401);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
+test("POST+GET /api/integracion/* — upsert y consulta de estado", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store);
+
+  try {
+    const upsert = await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({
+          source: "oracle-apex",
+          recorridos: [
+            {
+              id: "R-1001",
+              fleteId: "F-1",
+              estado: "activo",
+              updatedAt: "2026-08-05T13:20:00Z",
+              puntos: [{ id: "P-1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4 }],
+            },
+          ],
+        }),
+      }),
+    );
+
+    assert.equal(upsert.status, 200);
+    const upsertBody = await upsert.json();
+    assert.equal(upsertBody.ok, true);
+    assert.equal(upsertBody.upserted, 1);
+
+    const estado = await fetch(`${server.integracionBaseUrl}/estado?recorridoId=R-1001`, withApiKey());
+    assert.equal(estado.status, 200);
+    const estadoBody = await estado.json();
+    assert.equal(estadoBody.recorridos.length, 1);
+    assert.equal(estadoBody.recorridos[0].id, "R-1001");
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/integracion/estado — 404 para recorrido inexistente", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store);
+
+  try {
+    const res = await fetch(`${server.integracionBaseUrl}/estado?recorridoId=NOPE`, withApiKey());
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.error, "recorrido_no_encontrado");
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});

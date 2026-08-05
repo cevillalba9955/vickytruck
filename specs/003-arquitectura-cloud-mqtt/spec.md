@@ -50,7 +50,7 @@ El panel Central consume ubicación en tiempo real suscribiéndose directamente 
 
 **Acceptance Scenarios**:
 
-1. **Given** un chofer activo, **When** publica `chofer/{fleteId}/ubicacion`, **Then** Central actualiza su vista sin esperar polling REST.
+1. **Given** un chofer activo, **When** publica `v1/chofer/{fleteId}/ubicacion`, **Then** Central actualiza su vista sin esperar polling REST.
 2. **Given** publicaciones MQTT válidas, **When** backend bridge consume el topic, **Then** persiste la última ubicación para consultas históricas.
 
 ---
@@ -69,12 +69,12 @@ El panel Central consume ubicación en tiempo real suscribiéndose directamente 
 - **FR-001**: El sistema MUST desplegar `frontend/`, `central/` y `backend/` en cloud sin conectividad saliente directa desde cloud hacia Oracle local.
 - **FR-002**: El sistema MUST exponer un endpoint de integración para alta/actualización de recorridos desde Oracle/APEX local hacia cloud.
 - **FR-003**: El sistema MUST exponer un endpoint de integración para consulta de estado de arribos/descargas desde Oracle/APEX local.
-- **FR-004**: El sistema MUST usar MQTT para publicación de ubicación de chofer en topic jerárquico versionado.
+- **FR-004**: El sistema MUST usar MQTT para publicación de ubicación de chofer en topic jerárquico versionado con prefijo de versión (`v1/...`).
 - **FR-005**: El frontend Central MUST suscribirse directamente al broker MQTT vía WebSocket para ubicación en vivo.
 - **FR-006**: El backend MUST suscribirse en paralelo a MQTT para persistir ubicación y soportar consultas históricas/auditoría.
 - **FR-007**: El sistema MUST mantener polling REST en Central como reconciliación de estado de negocio (fallback ante pérdida MQTT).
 - **FR-008**: El sistema MUST autenticar y autorizar llamadas de integración Oracle/APEX a backend cloud mediante credenciales técnicas rotables.
-- **FR-009**: El sistema MUST documentar y estandarizar QoS, retención y políticas de sesión MQTT por tipo de evento.
+- **FR-009**: El sistema MUST documentar y estandarizar QoS, retención y políticas de sesión MQTT por tipo de evento (al menos: ubicación, estado y control).
 - **FR-010**: El sistema MUST registrar recomendaciones de proveedores para broker MQTT y edge/proxy (EMQX y Cloudflare), con criterios de selección.
 
 ### Key Entities
