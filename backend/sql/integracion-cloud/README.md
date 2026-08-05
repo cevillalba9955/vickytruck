@@ -9,6 +9,19 @@ trigger ni job automático todavía. Sirve para validar que el POST en sí
 funciona end-to-end contra el backend real (`https://vickytruck.fly.dev`)
 antes de decidir cómo se dispara solo.
 
+> **Estado real (esta sesión): funcionando, vía relay nginx local** —
+> Oracle no logró salir directo a internet hacia `vickytruck.fly.dev` (ACL
+> con `http`/`connect`/`resolve` sobre el host/puerto correcto, sin éxito).
+> La solución es un **relay nginx local** en el mismo server Rocky — ver
+> [`relay-rocky/README.md`](./relay-rocky/README.md). `c_backend_url` del
+> package apunta al relay (`http://localhost:8090/...`).
+>
+> **Ojo con `localhost` vs `127.0.0.1`**: la ACL de red de Oracle matchea
+> por el string literal del host — no son equivalentes para esa
+> comparación aunque resuelvan a la misma IP. La ACL para el relay se creó
+> para `localhost`, así que la URL también tiene que decir `localhost`
+> (no la IP), o Oracle sigue tirando `ORA-24247` aunque la ACL "esté bien".
+
 ## Sobre el esquema dueño (VIC vs VICKYTRUCK)
 
 El usuario `VICKYTRUCK` (el que conecta el backend) no tiene privilegio
