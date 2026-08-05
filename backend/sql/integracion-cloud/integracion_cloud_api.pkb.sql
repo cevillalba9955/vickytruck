@@ -28,7 +28,18 @@
 
 CREATE OR REPLACE PACKAGE BODY INTEGRACION_CLOUD_API AS
 
-  c_backend_url CONSTANT VARCHAR2(200) := 'https://vickytruck.fly.dev/api/integracion/recorridos';
+  -- Vía relay nginx local (ver relay-rocky/README.md): esta Oracle no logra
+  -- salir directo a internet (ORA-29273/ORA-24247 persistente pese a ACL
+  -- correcta), así que le pega a nginx en el mismo server por loopback, y
+  -- nginx hace el salto real a https://vickytruck.fly.dev. Si en algún
+  -- momento se habilita salida directa, cambiar esto de vuelta a
+  -- 'https://vickytruck.fly.dev/api/integracion/recorridos'.
+  --
+  -- OJO: 'localhost', no '127.0.0.1' — la ACL de red de Oracle matchea por
+  -- el string literal del host, no son equivalentes para esa comparación
+  -- aunque resuelvan a la misma IP (esto costó varias vueltas de ORA-24247
+  -- "acceso de red denegado" con la ACL aparentemente bien configurada).
+  c_backend_url CONSTANT VARCHAR2(200) := 'http://localhost:8090/api/integracion/recorridos';
   c_api_key     CONSTANT VARCHAR2(100) := 'b9gFJKRPl2eYf3SWgHDtvsV-6CIXfGHC';
 
   FUNCTION armar_payload(p_recorrido_id IN NUMBER) RETURN CLOB IS
@@ -44,7 +55,7 @@ CREATE OR REPLACE PACKAGE BODY INTEGRACION_CLOUD_API AS
     SELECT r.id, r.token, r.estado, r.flete_id, f.nombre
       INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre
       FROM VIC.V_RECORRIDOS r
-      LEFT JOIN VIC.V_FLETES f ON f.id = r.flete_id
+      LEFT JOIN DB_ENTIDADES.V_FLETES f ON f.id = r.flete_id
      WHERE r.id = p_recorrido_id;
 
     SELECT JSON_ARRAYAGG(
@@ -127,13 +138,16 @@ CREATE OR REPLACE PACKAGE BODY INTEGRACION_CLOUD_API AS
     WHEN OTHERS THEN
       p_resultado   := 'ERROR';
       p_http_status := NULL;
-      -- SQLERRM solo trae la primera línea del stack ("ORA-29273: fallo de
-      -- la solicitud HTTP" sin la causa real encadenada abajo, ej. ACL de
-      -- red o wallet). FORMAT_ERROR_STACK trae el stack completo, pero con
-      -- errores muy encadenados (APEX_WEB_SERVICE + UTL_HTTP + ACL) puede
-      -- superar el VARCHAR2(4000) del caller y volar todo con ORA-06502 —
-      -- se trunca acá para que la falla original no se pierda.
-      p_respuesta   := SUBSTR(DBMS_UTILITY.FORMAT_ERROR_STACK, 1, 4000);
+      -- SQLERRM solo trae la primera línea del stack (ej. "ORA-29273: fallo
+      -- de la solicitud HTTP"), sin la causa encadenada (ACL, wallet, etc.)
+      -- — pero es segura. FORMAT_ERROR_STACK se probó acá y con stacks muy
+      -- largos (APEX_WEB_SERVICE + UTL_HTTP + ACL, 15+ líneas) el propio
+      -- FORMAT_ERROR_STACK tira ORA-06502 "buffer demasiado pequeño" DENTRO
+      -- de este handler, y como no está protegido se escapa sin capturar —
+      -- se ve el volcado crudo en vez de p_resultado='ERROR' limpio. Para
+      -- ver la causa completa, revisar el log/consola en el momento del
+      -- error (ahí sí se imprime entero) en vez de confiar en p_respuesta.
+      p_respuesta   := SQLERRM;
   END sincronizar_recorrido;
 
 END INTEGRACION_CLOUD_API;
