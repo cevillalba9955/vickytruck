@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { MonitorView } from "./components/MonitorView.jsx";
-import { AsignacionForm } from "./components/AsignacionForm.jsx";
 import { RecorridoDetalle } from "./components/RecorridoDetalle.jsx";
 import { HistorialView } from "./components/HistorialView.jsx";
 import { listarActivos, obtenerDetalle } from "./services/api.js";
@@ -15,7 +14,6 @@ function App() {
   const [vista, setVista] = useState("monitor");
   const [activos, setActivos] = useState([]);
   const [error, setError] = useState(null);
-  const [detalleId, setDetalleId] = useState(null);
   const [detalle, setDetalle] = useState(null);
   const [mqttEstado, setMqttEstado] = useState("disabled");
 
@@ -34,7 +32,6 @@ function App() {
     });
 
   const abrirDetalle = async (id) => {
-    setDetalleId(id);
     setDetalle(await obtenerDetalle(id));
     setVista("detalle");
   };
@@ -68,9 +65,6 @@ function App() {
         <button type="button" aria-pressed={vista === "monitor"} onClick={() => setVista("monitor")}>
           Monitoreo
         </button>
-        <button type="button" aria-pressed={vista === "asignar"} onClick={() => setVista("asignar")}>
-          Asignar recorrido
-        </button>
         <button type="button" aria-pressed={vista === "historial"} onClick={() => setVista("historial")}>
           Historial
         </button>
@@ -80,13 +74,12 @@ function App() {
       {mqttEstado !== "disabled" && <p role="status">Canal tiempo real MQTT: {mqttEstado}</p>}
 
       {vista === "monitor" && <MonitorView recorridos={activos} onSeleccionar={abrirDetalle} />}
-      {vista === "asignar" && <AsignacionForm onAsignado={() => setVista("monitor")} />}
       {vista === "detalle" && (
         <>
           <button type="button" onClick={() => setVista("monitor")}>
             ← Volver al monitoreo
           </button>
-          <RecorridoDetalle detalle={detalle} onReasignado={() => abrirDetalle(detalleId)} />
+          <RecorridoDetalle detalle={detalle} />
         </>
       )}
       {vista === "historial" && <HistorialView />}

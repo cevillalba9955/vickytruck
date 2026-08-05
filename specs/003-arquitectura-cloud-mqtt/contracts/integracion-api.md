@@ -16,6 +16,7 @@
       "id": "R-1001",
       "token": "a1b2c3d4",
       "fleteId": "F-12",
+      "fleteNombre": "Juan Pérez",
       "estado": "activo",
       "puntos": [
         { "id": "P-1", "orden": 1, "estado": "pendiente", "lat": -34.6, "lon": -58.4 }
@@ -37,6 +38,14 @@ endpoint de consulta de estado de abajo — es la única forma en que Oracle/APE
 se entera de esos eventos, vía polling. Un re-push del mismo recorrido no pisa
 el progreso ya confirmado por el chofer (solo se refresca la topología:
 `orden`/`lat`/`lon`).
+
+`fleteNombre` (opcional) es el nombre a mostrar del flete — lo usa el panel
+Central (`GET /api/central/recorridos/activos`) para no depender de un
+catálogo de fletes propio. **Central en cloud es de solo lectura**: no existe
+ningún endpoint para asignar/reasignar flete desde ahí — esa operación ocurre
+en Oracle/APEX antes de este push (un recorrido llega siempre con `fleteId`
+ya definido, o sin él si todavía no fue asignado, en cuyo caso no aparece en
+el monitoreo de Central hasta que Oracle/APEX lo re-envíe con `fleteId`).
 
 ### Response 200
 

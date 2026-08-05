@@ -3,7 +3,6 @@ import express from "express";
 import { createRecorridoRouter } from "./routes/recorrido.js";
 import { createCentralRouter } from "./routes/central.js";
 import { createIntegracionRouter } from "./routes/integracion.js";
-import { createOracleCentralRepository } from "./db/centralRepository.js";
 import { integracionStoreCompartido } from "./state/integracionStore.js";
 import { startMqttBridge } from "./services/mqttBridge.js";
 
@@ -32,22 +31,21 @@ export function createApp(repository, centralRepository, ubicacionStore, integra
   return app;
 }
 
-// Solo arranca el servidor real (con Oracle para /api/central) cuando este
-// módulo se ejecuta directamente — permite importar createApp() en tests sin
-// abrir el pool.
+// Solo arranca el servidor real cuando este módulo se ejecuta directamente —
+// permite importar createApp() en tests.
 // Comparación vía pathToFileURL (no `file://${process.argv[1]}`): en Windows
 // process.argv[1] usa backslashes y el drive letter, que no matchean con
 // import.meta.url por simple concatenación de string.
 const esModuloPrincipal = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (esModuloPrincipal) {
-  // El chofer ya no habla con Oracle directo (spec 003, FR-001): lee/escribe
-  // contra `integracionStore`, el mismo store que recibe los push de
-  // Oracle/APEX vía /api/integracion y que este último consulta después por
-  // polling (ver specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md).
-  const centralRepository = createOracleCentralRepository();
+  // Sin acceso a Oracle (spec 003, FR-001): backend cloud solo expone
+  // endpoints. Chofer, Central e integración leen/escriben todos contra la
+  // misma instancia de `integracionStore`, poblada por los push de
+  // Oracle/APEX vía /api/integracion y consultada después por polling (ver
+  // specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md).
   const integracionStore = integracionStoreCompartido;
   startMqttBridge(integracionStore);
-  const app = createApp(integracionStore, centralRepository, undefined, integracionStore);
+  const app = createApp(integracionStore, integracionStore, undefined, integracionStore);
   const port = Number(process.env.PORT || 3001);
   app.listen(port, () => {
     console.log(`[vickytruck-chofer] API escuchando en http://localhost:${port}`);

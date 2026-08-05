@@ -1,3 +1,9 @@
+import { resolverUbicacion } from "../db/ubicacionResolver.js";
+
+function umbralUbicacionMs() {
+  return Number(process.env.UBICACION_STALE_MS || 300000);
+}
+
 const PUNTO_ESTADO_TRANSICION = {
   arribo: { estadoOrigen: "pendiente", estadoDestino: "arribado", estadoIdempotente: "arribado", campoTimestamp: "arriboEn" },
   descarga: { estadoOrigen: "arribado", estadoDestino: "completado", estadoIdempotente: "completado", campoTimestamp: "descargaEn" },
@@ -63,6 +69,7 @@ export function createIntegracionStore() {
           id,
           token: raw.token ?? previo?.token ?? null,
           fleteId: raw.fleteId != null ? String(raw.fleteId) : previo?.fleteId ?? null,
+          fleteNombre: raw.fleteNombre ?? previo?.fleteNombre ?? null,
           estado: raw.estado || previo?.estado || "pendiente",
           updatedAt: raw.updatedAt || new Date().toISOString(),
           puntos: puntosEntrantes.map((p) => mergearPunto(p, puntosPreviosPorId.get(String(p.id)))),
@@ -126,7 +133,54 @@ export function createIntegracionStore() {
     async marcarDescarga(token, puntoId, ubicacion) {
       return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, PUNTO_ESTADO_TRANSICION.descarga);
     },
+
+    // Contrato compatible con `repository` de createCentralRouter (ver
+    // backend/tests/helpers/inMemoryCentralRepository.js): Central en cloud
+    // es de solo lectura (la asignación de flete ocurre en Oracle/APEX antes
+    // del push), así que solo hacen falta estos 3 métodos de consulta.
+    async listarActivos() {
+      const ahora = Date.now();
+      const staleMs = umbralUbicacionMs();
+      const resultado = [];
+      for (const r of recorridos.values()) {
+        if (r.estado !== "activo" || r.fleteId == null) continue;
+        resultado.push({
+          id: r.id,
+          flete: { id: r.fleteId, nombre: r.fleteNombre },
+          progreso: calcularProgreso(r.puntos),
+          ultimaUbicacion: resolverUbicacion({ enMemoria: r.ultimaUbicacion, respaldoOracle: null, staleMs, ahora }),
+        });
+      }
+      return resultado;
+    },
+
+    async listarHistorial() {
+      const resultado = [];
+      for (const r of recorridos.values()) {
+        if (r.estado !== "finalizado") continue;
+        resultado.push({
+          recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId },
+          puntos: serializarPuntosCentral(r.puntos),
+        });
+      }
+      return resultado;
+    },
+
+    async obtenerDetalle(id) {
+      const r = recorridos.get(String(id));
+      if (!r) return null;
+      return {
+        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId },
+        puntos: serializarPuntosCentral(r.puntos),
+      };
+    },
   };
+}
+
+function serializarPuntosCentral(puntos) {
+  return puntos
+    .map((p) => ({ id: p.id, orden: p.orden, estado: p.estado, arriboEn: p.arriboEn, descargaEn: p.descargaEn }))
+    .sort((a, b) => a.orden - b.orden);
 }
 
 function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, { estadoOrigen, estadoDestino, estadoIdempotente, campoTimestamp }) {

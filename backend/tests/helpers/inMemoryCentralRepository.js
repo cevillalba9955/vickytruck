@@ -1,6 +1,8 @@
-// Repositorio en memoria que implementa el mismo contrato que
-// createOracleCentralRepository, para poder testear el contrato HTTP de
-// Central sin depender de una conexión Oracle real.
+// Repositorio en memoria que implementa el mismo contrato que el store real
+// (integracionStore) para testear el contrato HTTP de Central (solo lectura
+// — la asignación de flete ocurre en Oracle/APEX antes del push, ver
+// specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md) sin
+// depender de una instancia real.
 
 function calcularProgreso(puntos) {
   const progreso = { pendientes: 0, arribados: 0, completados: 0 };
@@ -27,8 +29,6 @@ function serializarPuntos(puntos) {
 export function createInMemoryCentralRepository(seed = {}, opts = {}) {
   const staleMs = opts.staleMs ?? 300000;
   const now = opts.now ?? (() => Date.now());
-  let tokenCounter = 0;
-  const generarToken = opts.generarToken ?? (() => `tok-test-${++tokenCounter}`);
 
   const recorridos = new Map(
     (seed.recorridos || []).map((r) => [
@@ -37,13 +37,6 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
         id: r.id,
         estado: r.estado ?? "activo",
         fleteId: r.fleteId ?? null,
-        token: r.token ?? null,
-        asignadoEn: r.asignadoEn ?? null,
-        // Referencia directa (sin clonar): permite que un test simule un
-        // cambio de estado externo (p. ej. hecho por recorridoRepository al
-        // marcar arribo/descarga) mutando el mismo array/objeto de puntos,
-        // igual que en producción ambos repositorios leen la misma fuente
-        // Oracle (Principio IV).
         puntos: r.puntos || [],
       },
     ]),
@@ -61,13 +54,6 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
       },
     ]),
   );
-
-  function fleteOcupado(fleteId, excluirRecorridoId) {
-    for (const r of recorridos.values()) {
-      if (r.fleteId === fleteId && r.estado === "activo" && r.id !== excluirRecorridoId) return true;
-    }
-    return false;
-  }
 
   return {
     async listarActivos() {
@@ -89,54 +75,6 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
         });
       }
       return resultado;
-    },
-
-    async listarDisponibles() {
-      const resultado = [];
-      for (const r of recorridos.values()) {
-        if (r.fleteId != null) continue;
-        resultado.push({ id: r.id, totalPuntos: r.puntos.length });
-      }
-      return resultado;
-    },
-
-    async listarFletesDisponibles() {
-      const resultado = [];
-      for (const f of fletes.values()) {
-        const ocupado = [...recorridos.values()].some((r) => r.fleteId === f.id && r.estado === "activo");
-        if (!ocupado) resultado.push({ id: f.id, nombre: f.nombre });
-      }
-      return resultado;
-    },
-
-    async asignar(recorridoId, fleteId) {
-      const r = recorridos.get(recorridoId);
-      if (!r) return { outcome: "not_found" };
-      if (r.fleteId != null) return { outcome: "ya_asignado" };
-      if (fleteOcupado(fleteId, recorridoId)) return { outcome: "flete_ocupado" };
-
-      r.fleteId = fleteId;
-      r.estado = "activo";
-      r.token = generarToken();
-      r.asignadoEn = new Date(now()).toISOString();
-      return {
-        outcome: "ok",
-        recorrido: { recorridoId, fleteId, token: r.token, asignadoEn: r.asignadoEn },
-      };
-    },
-
-    async reasignar(recorridoId, fleteId) {
-      const r = recorridos.get(recorridoId);
-      if (!r || r.estado !== "activo") return { outcome: "not_found" };
-      if (fleteOcupado(fleteId, recorridoId)) return { outcome: "flete_ocupado" };
-
-      r.fleteId = fleteId;
-      r.token = generarToken();
-      r.asignadoEn = new Date(now()).toISOString();
-      return {
-        outcome: "ok",
-        recorrido: { recorridoId, fleteId, token: r.token, asignadoEn: r.asignadoEn },
-      };
     },
 
     async obtenerDetalle(recorridoId) {
