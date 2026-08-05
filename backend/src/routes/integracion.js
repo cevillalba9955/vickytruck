@@ -41,7 +41,23 @@ export function createIntegracionRouter(store) {
       return res.status(404).json({ error: "recorrido_no_encontrado" });
     }
 
-    return res.status(200).json({ recorridos: recorridos.map(serializarEstado) });
+    if (recorridoId) {
+      return res.status(200).json({ recorridos: recorridos.map(serializarEstado) });
+    }
+
+    const limit = Math.max(1, Number(req.query?.limit || 50));
+    const offset = Math.max(0, Number(req.query?.offset || 0));
+    const page = recorridos.slice(offset, offset + limit).map(serializarEstado);
+
+    return res.status(200).json({
+      recorridos: page,
+      paginacion: {
+        total: recorridos.length,
+        limit,
+        offset,
+        hasNext: offset + limit < recorridos.length,
+      },
+    });
   });
 
   return router;

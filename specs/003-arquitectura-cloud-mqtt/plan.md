@@ -50,7 +50,7 @@ directamente por WebSocket y backend bridge persiste para histórico y auditorí
 - Principio I: PASS (sin cambios a UX móvil chofer).
 - Principio II: PASS (límite de puntos se mantiene en dominio recorrido).
 - Principio III: PASS (Central embebida o acceso directo se conserva).
-- Principio IV: REQUIERE ENMIENDA para reflejar fuente de verdad por dominio (Oracle local + store cloud operativo sincronizado).
+- Principio IV: PASS (constitución v3.0.0 ya adoptó "Fuentes de Verdad por Dominio y Sincronización Explícita").
 - Principio V: PASS (MQTT mejora latencia de trazabilidad).
 - Principio VI: N/A (mensajería interna fuera de alcance de este cambio).
 - Principio VII: PASS condicionado: complejidad agregada (broker) justificada por latencia y desacople.

@@ -45,6 +45,10 @@ function parsearPayload(raw) {
 }
 
 export function startMqttBridge(store, logger = console) {
+  return startMqttBridgeWithConnector(store, mqtt.connect, logger);
+}
+
+export function startMqttBridgeWithConnector(store, connectClient, logger = console) {
   const brokerUrl = process.env.MQTT_BROKER_URL;
   if (!brokerUrl) {
     logger.warn("[mqtt-bridge] MQTT_BROKER_URL no configurado; bridge deshabilitado.");
@@ -52,7 +56,7 @@ export function startMqttBridge(store, logger = console) {
   }
 
   const dedupe = createDeduplicadorEventos();
-  const client = mqtt.connect(brokerUrl, opcionesConexion());
+  const client = connectClient(brokerUrl, opcionesConexion());
 
   client.on("connect", () => {
     client.subscribe(topicUbicacion(), { qos: 1 }, (err) => {
@@ -72,6 +76,10 @@ export function startMqttBridge(store, logger = console) {
 
   client.on("error", (err) => {
     logger.error("[mqtt-bridge] error", err);
+  });
+
+  client.on("reconnect", () => {
+    logger.info("[mqtt-bridge] reconectando...");
   });
 
   return {

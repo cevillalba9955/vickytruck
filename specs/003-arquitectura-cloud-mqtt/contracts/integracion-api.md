@@ -39,7 +39,10 @@
 
 - Method: `GET`
 - Path: `/api/integracion/estado`
-- Query: `recorridoId` (opcional; sin filtro retorna lote paginado)
+- Query:
+  - `recorridoId` (opcional)
+  - `limit` (opcional, default 50; aplica cuando no se envía `recorridoId`)
+  - `offset` (opcional, default 0; aplica cuando no se envía `recorridoId`)
 
 ### Response 200 (ejemplo)
 
@@ -59,6 +62,22 @@
       ]
     }
   ]
+}
+```
+
+### Response 200 (sin `recorridoId`, paginado)
+
+```json
+{
+  "recorridos": [
+    { "id": "R-1002", "estado": "activo", "puntos": [] }
+  ],
+  "paginacion": {
+    "total": 120,
+    "limit": 50,
+    "offset": 0,
+    "hasNext": true
+  }
 }
 ```
 

@@ -1,12 +1,22 @@
 # Contract: MQTT Topics y Politicas
 
+## Convención de versionado
+
+- Namespace obligatorio: `v1/...`
+- Regla de evolución: cambios incompatibles publican en `v2/...` sin romper consumidores de `v1/...`.
+
 ## Topic principal de ubicación
 
-- Topic: `chofer/{fleteId}/ubicacion`
+- Topic: `v1/chofer/{fleteId}/ubicacion`
 - Publisher: frontend chofer
 - Subscribers:
   - frontend central (directo por WebSocket)
   - backend mqttBridge (persistencia)
+
+## Topics adicionales por tipo de evento
+
+- Estado de punto (arribo/descarga): `v1/recorrido/{recorridoId}/estado`
+- Control operativo (alertas/heartbeats): `v1/sistema/{tenantId}/control`
 
 ## Payload sugerido
 
@@ -24,10 +34,13 @@
 
 ## QoS y sesiones
 
-- Ubicación en vivo: QoS 1 recomendado.
-- Retained: deshabilitado para ubicación transitoria.
-- Session expiry: habilitada para reconexión corta de clientes.
-- ACL: publicar solo en tópico propio del flete autenticado.
+| Tipo de evento | Topic | QoS | Retained | Session expiry | Orden/Idempotencia |
+|---|---|---|---|---|---|
+| Ubicación en vivo | `v1/chofer/{fleteId}/ubicacion` | 1 | No | Corta (cliente browser) | `eventId` + `en` |
+| Estado de punto | `v1/recorrido/{recorridoId}/estado` | 1 | Si (último estado) | Media | `eventId` único |
+| Control operativo | `v1/sistema/{tenantId}/control` | 0 o 1 según criticidad | No | Corta | timestamp + tipo |
+
+- ACL: publicar solo en tópico autorizado para la identidad técnica.
 
 ## Seguridad
 
