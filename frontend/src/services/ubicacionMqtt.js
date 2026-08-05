@@ -1,4 +1,4 @@
-import { connect } from "mqtt";
+import mqtt from "mqtt";
 
 const TOPIC_TEMPLATE = "chofer/{fleteId}/ubicacion";
 
@@ -17,7 +17,7 @@ export function createPublisherUbicacionMqtt(fleteId) {
     };
   }
 
-  const client = connect(brokerUrl, {
+  const client = mqtt.connect(brokerUrl, {
     clientId: `chofer-${Math.random().toString(16).slice(2)}`,
     username: import.meta.env.VITE_MQTT_USERNAME || undefined,
     password: import.meta.env.VITE_MQTT_PASSWORD || undefined,

@@ -14,6 +14,7 @@
   "recorridos": [
     {
       "id": "R-1001",
+      "token": "a1b2c3d4",
       "fleteId": "F-12",
       "estado": "activo",
       "puntos": [
@@ -24,6 +25,18 @@
   ]
 }
 ```
+
+`token` es el mismo token con el que el chofer resuelve su recorrido en
+`GET /api/recorridos/:token` (backend cloud, feature 001) — lo genera y
+posee Oracle/APEX, el backend cloud solo lo indexa. Un recorrido sin `token`
+queda cargado en el store pero no es accesible por el chofer.
+
+Cuando el chofer marca arribo/descarga, ese cambio se aplica directo sobre
+este mismo store (nunca contra Oracle) y queda reflejado de inmediato en el
+endpoint de consulta de estado de abajo — es la única forma en que Oracle/APEX
+se entera de esos eventos, vía polling. Un re-push del mismo recorrido no pisa
+el progreso ya confirmado por el chofer (solo se refresca la topología:
+`orden`/`lat`/`lon`).
 
 ### Response 200
 
