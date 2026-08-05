@@ -1,0 +1,111 @@
+@startuml
+title VickyTruck - Arquitectura Cloud Rediseñada (sin acceso Oracle desde cloud)
+
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+left to right direction
+
+actor "Chofer" as Chofer
+actor "Operador Central" as Operador
+actor "Operador Local Oracle/APEX" as OperadorLocal
+
+cloud "Cloud (Internet/VPC)" as CLOUD {
+  rectangle "Frontend Chofer\n(frontend/)" as FrontChofer {
+	component "UI React" as CH_UI
+	component "API Client\nservices/api.js" as CH_API
+	component "GPS\nservices/geolocation.js" as CH_GPS
+	component "Reporte periódico\nservices/ubicacionPeriodica.js" as CH_UBI
+	component "Cola offline\nservices/offlineQueue.js" as CH_OFF
+  }
+
+
+  rectangle "Frontend Central\n(central/)" as FrontCentral {
+    component "App React Central" as CE_UI
+  	component "API Client\nservices/api.js" as CE_API
+  	component "Polling\nservices/polling.js" as CE_POLL
+	component "MQTT Client\nWebSocket MQTT" as CE_MQTT
+  }
+
+  rectangle "Backend API\n(backend/)" as Backend {
+    component "REST API Recorridos\n/api/recorridos" as BE_REC
+    component "REST API Central\n/api/central" as BE_CEN
+
+    component "Endpoint Integracion Inbound\n/api/integracion/recorridos\n(Alta/actualizacion desde Oracle/APEX local)" as BE_IN_RECORRIDOS
+    component "Endpoint Integracion Query\n/api/integracion/estado\n(Consulta arribo/descarga)" as BE_IN_ESTADO
+
+    component "Store Operacional Cloud\n(SQL/NoSQL gestionado)" as BE_STORE
+    component "Servicio MQTT Bridge" as BE_MQ_BRIDGE
+  }
+
+  queue "Broker MQTT\n(gestionado en cloud)" as MQTT
+}
+
+node "Sitio Local (Datacenter/PC)" as LOCAL {
+  rectangle "Oracle + APEX" as ORACLE_LOCAL {
+    database "Oracle DB" as ORA_DB
+    component "APEX / SQLcl / Jobs" as ORA_APEX
+  }
+}
+
+Chofer --> CH_UI : Usa app de chofer
+Operador --> CE_UI : Opera panel 
+
+CH_UI --> CH_API : Lecturas y eventos
+CH_API --> CH_GPS : Obtiene lat/lon
+CH_UI --> CH_UBI : Inicia reporte periódico
+CH_API --> CH_OFF : Encola/reintenta si offline
+
+CE_UI --> CE_API : Consulta/acciones
+CE_UI --> CE_POLL : Refresco automático
+CE_UI --> CE_MQTT : Suscripcion tiempo real
+CE_POLL --> CE_API : GET periódicos
+
+CH_UI --> BE_REC : HTTPS
+CE_UI --> BE_CEN : HTTPS
+
+OperadorLocal --> ORA_APEX : Carga/consulta operativa
+ORA_APEX --> BE_IN_RECORRIDOS : HTTPS POST/PUT\nPublica recorridos a cloud
+ORA_APEX ---> BE_IN_ESTADO : HTTPS GET\nConsulta estado arribos/descargas
+
+BE_IN_RECORRIDOS --> BE_STORE : Upsert recorridos/puntos
+BE_IN_ESTADO --> BE_STORE : Lee estados actuales
+
+' Ubicacion en tiempo real por MQTT
+CH_UBI --> MQTT : MQTT Publish\nchofer/{fleteId}/ubicacion
+
+CE_POLL --> BE_CEN : Polling para estado/progreso
+BE_CEN --> BE_STORE : Lee estado y progreso
+
+CE_MQTT --> MQTT : MQTT Subscribe\nchofer/+/ubicacion
+
+' Backend sigue suscribiendo para persistencia/analytics
+MQTT --> BE_MQ_BRIDGE : MQTT Subscribe\nchofer/+/ubicacion
+BE_MQ_BRIDGE --> BE_STORE : Persistencia de ubicacion
+
+note left of CLOUD
+Cloud NO se conecta a Oracle local.
+Toda sincronizacion Oracle/APEX <-> cloud
+se hace via endpoints HTTPS del backend.
+end note
+
+note top of MQTT
+Patron pub/sub:
+- Chofer publica ubicacion
+- Central consume ubicacion DIRECTO desde MQTT
+  (cliente MQTT sobre WebSocket)
+end note
+
+legend right
+== Flujos clave ==
+1. Oracle/APEX local envia recorridos al backend cloud.
+2. Oracle/APEX local consulta estado de arribo/descarga al backend cloud.
+3. Chofer publica ubicacion en MQTT.
+4. Frontend Central se suscribe directo al broker MQTT.
+5. Backend consume MQTT en paralelo para persistencia y consultas historicas.
+endlegend
+
+@enduml

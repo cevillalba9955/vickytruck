@@ -1,36 +1,29 @@
 <!--
 Sync Impact Report
-Version change: 1.1.0 → 2.0.0
+Version change: 2.0.0 → 3.0.0
 Modified principles:
-  - III. "Central Embebible en Oracle APEX (NON-NEGOTIABLE)" → "Central Compatible con
-    Embebido en Oracle APEX y con Acceso Directo (NON-NEGOTIABLE)" — REDEFINICIÓN
-    INCOMPATIBLE: se elimina la exigencia de que Central SOLO funcione embebida y de
-    que deba "degradar de forma segura" (bloquear/mostrar aviso) fuera de un iframe de
-    APEX. El acceso directo por URL pasa a ser un modo de uso válido y soportado, sin
-    perder la compatibilidad con el embebido en APEX cuando corresponda.
+  - IV. "Oracle como Fuente Única de Verdad" → "Fuentes de Verdad por Dominio y
+    Sincronización Explícita" — REDEFINICIÓN INCOMPATIBLE: se elimina la restricción de
+    Oracle como único almacenamiento autoritativo para toda operación y se establece un
+    modelo híbrido: Oracle local como maestro administrativo y store cloud como fuente
+    autoritativa del plano operativo en vivo, sincronizados por endpoints autenticados.
 Added sections: ninguna (modificación de un principio existente)
-Removed sections: ninguna (se retira una restricción dentro del Principio III, no una
+Removed sections: ninguna (se retira una restricción dentro del Principio IV, no una
   sección completa)
 Templates requiring updates:
   - .specify/templates/plan-template.md ✅ no changes needed (Constitution Check gate is derived dynamically from this file)
   - .specify/templates/spec-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/tasks-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/checklist-template.md ✅ no changes needed
-  - specs/002-panel-control-central/spec.md ⚠ pending manual update (FR-011/FR-012,
-    Edge Cases y Assumptions asumían bloqueo fuera de iframe; deben permitir acceso
-    directo)
-  - specs/002-panel-control-central/plan.md ⚠ pending manual update (Constitution Check
-    de Principio III y Constraints de Technical Context)
-  - specs/002-panel-control-central/research.md ⚠ pending manual update (§4, identidad
-    del operador: ya no corresponde bloquear fuera de iframe)
-  - specs/002-panel-control-central/quickstart.md ⚠ pending manual update (Escenario de
-    validación 5, ahora debe esperar que el acceso directo funcione)
-  - specs/002-panel-control-central/tasks.md ⚠ pending manual update (T009, T042, T044
-    describían el guard como bloqueante)
-  - central/src/services/embedGuard.js, central/src/main.jsx,
-    central/src/components/FueraDeIframeNotice.jsx ⚠ pending manual update (código de
-    la feature 002 implementaba el bloqueo que este principio ya no exige)
-Follow-up TODOs: ninguno
+  - specs/003-arquitectura-cloud-mqtt/spec.md ✅ updated
+  - specs/003-arquitectura-cloud-mqtt/plan.md ✅ updated
+  - specs/003-arquitectura-cloud-mqtt/research.md ✅ updated
+  - specs/003-arquitectura-cloud-mqtt/tasks.md ✅ updated
+  - specs/002-panel-control-central/plan.md ⚠ pending manual alignment de Principle IV
+  - specs/002-panel-control-central/spec.md ⚠ pending manual alignment de FR-005/FR-016
+Follow-up TODOs:
+  - Definir en implementación del feature 003 la política formal de reconciliación
+    entre store cloud y Oracle local para incidentes de desincronización.
 -->
 
 # VickyTruck Constitution
@@ -81,16 +74,19 @@ administrativo directo, pruebas manuales, entornos sin APEX disponible)
 sin aportar valor de seguridad real, ya que la identidad del operador no
 depende de estar dentro de un frame.
 
-### IV. Oracle como Fuente Única de Verdad
-La base de datos Oracle es la fuente autoritativa de recorridos
-precargados, asignaciones flete-recorrido, estados de entrega y ubicaciones
-reportadas. Ninguna funcionalidad DEBE mantener una copia divergente y
-persistente de estos datos fuera de Oracle. La asignación de un recorrido
-precargado a un flete determinado se realiza desde Central y se persiste de
-inmediato en Oracle antes de considerarse efectiva.
-Rationale: Central y el chofer deben ver siempre el mismo estado; múltiples
-fuentes de verdad producen inconsistencias entre lo que ve la Central y lo
-que reporta el chofer.
+### IV. Fuentes de Verdad por Dominio y Sincronización Explícita
+El sistema adopta un modelo híbrido con fuente autoritativa por dominio:
+Oracle local es el sistema maestro para datos administrativos y de precarga
+(recorridos base, catálogos y procesos internos), mientras el store
+operacional cloud es la fuente autoritativa para la ejecución en vivo
+(asignaciones activas, estado operativo y telemetría reciente). Ningún
+componente DEBE asumir consistencia implícita entre ambos planos: toda
+sincronización DEBE ser explícita, autenticada, auditable y trazable mediante
+endpoints/contratos de integración definidos.
+Rationale: en despliegue híbrido on-prem/cloud, forzar un único origen físico
+de datos degrada disponibilidad y latencia; separar la autoridad por dominio,
+con sincronización explícita, mantiene consistencia operativa sin acoplar red
+cloud con Oracle local.
 
 ### V. Trazabilidad de Estado y Ubicación en Tiempo (Casi) Real
 Cada evento relevante del chofer —arribo a destino, descarga completada— y
@@ -122,9 +118,11 @@ costo de mantenimiento y menor riesgo de privacidad/seguridad.
 
 ## Restricciones Técnicas y de Integración
 
-- **Base de datos**: Oracle es el motor de persistencia obligatorio para
-  recorridos, asignaciones, estados y ubicaciones; cualquier caché local es
-  efímera y no autoritativa.
+- **Persistencia híbrida**: Oracle local es obligatorio como maestro
+  administrativo y de precarga; el plano cloud DEBE contar con un store
+  operacional propio y autoritativo para la ejecución diaria. La integración
+  entre ambos planos DEBE hacerse por contratos HTTPS autenticados; no se
+  asume conectividad directa cloud→Oracle.
 - **Integración APEX (opcional, no exclusiva)**: la Central se sirve
   mediante una URL propia que puede embeberse dentro de una página Oracle
   APEX (soportando paso de contexto, p. ej. usuario/sesión, compatible con
@@ -157,9 +155,10 @@ costo de mantenimiento y menor riesgo de privacidad/seguridad.
 - Cambios que afecten el embebido en APEX, el acceso directo de Central
   (Principio III) o el límite de 10 puntos por recorrido (Principio II)
   requieren pruebas manuales o automatizadas explícitas antes de mergear.
-- Cambios en el modelo de datos Oracle (tablas de recorridos, asignaciones,
-  estados, mensajería) requieren revisión explícita de compatibilidad con
-  datos ya precargados en producción.
+- Cambios en el modelo de datos Oracle local o en el store operacional cloud
+  (recorridos, asignaciones, estados, telemetría, mensajería) requieren
+  revisión explícita de compatibilidad y del contrato de sincronización entre
+  ambos planos.
 
 ## Governance
 
@@ -181,4 +180,4 @@ semver:
 "Constitution Check" antes de la Fase 0 y volver a repasarla tras la Fase 1
 de diseño.
 
-**Version**: 2.0.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-03
+**Version**: 3.0.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-05

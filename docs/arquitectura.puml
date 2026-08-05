@@ -1,0 +1,110 @@
+@startuml
+title VickyTruck - Arquitectura General del Proyecto
+
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+left to right direction
+
+actor "Chofer" as Chofer
+actor "Operador Central" as Operador
+
+rectangle "Cliente Web Chofer\n(frontend/)" as FrontChofer {
+	component "UI React\nRouteView, DeliveryPointCard,\nProgressSummary" as CH_UI
+	component "API Client\nservices/api.js" as CH_API
+	component "GPS\nservices/geolocation.js" as CH_GPS
+	component "Reporte periódico\nservices/ubicacionPeriodica.js" as CH_UBI
+	component "Cola offline\nservices/offlineQueue.js" as CH_OFF
+}
+
+rectangle "Panel Web Central\n(central/)" as FrontCentral {
+	component "UI React\nMonitorView, AsignacionForm,\nRecorridoDetalle, HistorialView" as CE_UI
+	component "API Client\nservices/api.js" as CE_API
+	component "Polling\nservices/polling.js" as CE_POLL
+}
+
+rectangle "Backend Node.js / Express\n(backend/src)" as Backend {
+	component "server.js\ncreateApp()" as BE_APP
+
+	package "Rutas HTTP" as BE_ROUTES {
+		component "routes/recorrido.js\n/api/recorridos" as BE_R_REC
+		component "routes/central.js\n/api/central" as BE_R_CEN
+	}
+
+	package "Repositorios" as BE_REPOS {
+		component "db/recorridoRepository.js" as BE_REPO_REC
+		component "db/centralRepository.js" as BE_REPO_CEN
+		component "db/ubicacionResolver.js" as BE_RESOLVER
+	}
+
+	package "Infraestructura" as BE_INFRA {
+		component "db/pool.js\nOracle Pool" as BE_POOL
+		component "state/ubicacionEnMemoria.js\nMap en memoria compartido" as BE_MEM
+	}
+}
+
+database "Oracle" as ORACLE {
+	component "Vistas/Tablas\nRECORRIDOS, PUNTOS_ENTREGA, V_FLETES" as ORA_DATA
+	component "PL/SQL\nRECORRIDO_API" as ORA_PKG_REC
+	component "PL/SQL\nCENTRAL_API" as ORA_PKG_CEN
+}
+
+Chofer --> CH_UI : Usa app de recorrido
+Operador --> CE_UI : Monitorea y asigna
+
+CH_UI --> CH_API : Lecturas y eventos
+CH_API --> CH_GPS : Obtiene lat/lon
+CH_UI --> CH_UBI : Inicia reporte periódico
+CH_API --> CH_OFF : Encola/reintenta si offline
+
+CE_UI --> CE_API : Consulta/acciones
+CE_UI --> CE_POLL : Refresco automático
+CE_POLL --> CE_API : GET periódicos
+
+CH_API --> BE_APP : HTTP /api/recorridos
+CE_API --> BE_APP : HTTP /api/central
+
+BE_APP --> BE_R_REC : Routing
+BE_APP --> BE_R_CEN : Routing
+
+BE_R_REC --> BE_REPO_REC : obtenerPorToken(),\nmarcarArribo(), marcarDescarga()
+BE_R_REC --> BE_MEM : registrar() / obtener()
+
+BE_R_CEN --> BE_REPO_CEN : listar, asignar,\nreasignar, detalle, historial
+
+BE_REPO_CEN --> BE_RESOLVER : resolverUbicacion()
+BE_REPO_CEN --> BE_MEM : ultima ubicación en vivo
+
+BE_REPO_REC --> BE_POOL : withConnection()
+BE_REPO_CEN --> BE_POOL : withConnection()
+
+BE_POOL --> ORA_DATA : SELECT
+BE_REPO_REC --> ORA_PKG_REC : marcar_arribo(),\nmarcar_descarga()
+BE_REPO_CEN --> ORA_PKG_CEN : asignar_recorrido(),\nreasignar_recorrido()
+
+ORA_PKG_REC --> ORA_DATA : UPDATE transaccional
+ORA_PKG_CEN --> ORA_DATA : UPDATE transaccional
+
+note bottom of BE_MEM
+Estado efimero en proceso Node.js.
+Se pierde al reiniciar; Oracle mantiene
+el estado persistente de negocio.
+end note
+
+note right of BE_RESOLVER
+Prioridad de ubicación:
+1) en memoria (tiempo real)
+2) ultimo evento persistido en Oracle
+end note
+
+legend right
+== Convenciones ==
+Linea solida: llamada sincrona/logica principal
+Oracle: fuente persistente de verdad
+Memoria backend: cache efimero de ubicacion
+endlegend
+
+@enduml
