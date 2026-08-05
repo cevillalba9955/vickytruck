@@ -1,7 +1,10 @@
 import { obtenerUbicacionBestEffort } from "./geolocation.js";
 import { encolar, iniciarReintentoAutomatico } from "./offlineQueue.js";
 
-const BASE_URL = "/api/recorridos";
+// Vacío en dev (el proxy de vite.config.js reenvía /api a localhost:3001);
+// en producción (Cloudflare Workers) apunta al backend real en Fly.io, ver
+// .env.production.
+const BASE_URL = `${import.meta.env.VITE_API_BASE_URL || ""}/api/recorridos`;
 
 export class ApiError extends Error {
   constructor(codigo, status) {

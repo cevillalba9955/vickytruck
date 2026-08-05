@@ -5,6 +5,7 @@ import { createCentralRouter } from "./routes/central.js";
 import { createIntegracionRouter } from "./routes/integracion.js";
 import { integracionStoreCompartido } from "./state/integracionStore.js";
 import { startMqttBridge } from "./services/mqttBridge.js";
+import { cors } from "./middleware/cors.js";
 
 // `centralRepository` y `ubicacionStore` son opcionales para no romper los
 // tests existentes de 001-chofer-recorrido que llaman a createApp(repository)
@@ -12,6 +13,7 @@ import { startMqttBridge } from "./services/mqttBridge.js";
 // una instancia aislada de la posición en memoria).
 export function createApp(repository, centralRepository, ubicacionStore, integracionStore = integracionStoreCompartido) {
   const app = express();
+  app.use(cors);
   app.use(express.json());
 
   app.use("/api/recorridos", createRecorridoRouter(repository, ubicacionStore));
@@ -47,7 +49,9 @@ if (esModuloPrincipal) {
   startMqttBridge(integracionStore);
   const app = createApp(integracionStore, integracionStore, undefined, integracionStore);
   const port = Number(process.env.PORT || 3001);
-  app.listen(port, () => {
+  // Bind explícito a 0.0.0.0: en contenedores (Fly.io) el default de Node
+  // puede quedar solo en IPv6, y el proxy externo espera IPv4.
+  app.listen(port, "0.0.0.0", () => {
     console.log(`[vickytruck-chofer] API escuchando en http://localhost:${port}`);
   });
 }
