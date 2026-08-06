@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
     "test": "node --env-file-if-exists=.env --test tests/unit/*.test.js tests/contract/*.test.js tests/integration/*.test.js",
-    "emqx:setup": "node --env-file-if-exists=.env scripts/emqx-setup.js"
+    "emqx:setup": "node --env-file-if-exists=.env scripts/emqx-setup.js",
+    "deploy": "fly deploy"
   },
   "dependencies": {
     "express": "^4.19.2",
