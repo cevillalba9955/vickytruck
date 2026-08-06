@@ -125,6 +125,62 @@
 
 ---
 
+## Phase 7: Fixes de producción y credenciales MQTT por-flete (2026-08-06)
+
+**Purpose**: la primera pasada de US3 dejó la ubicación en vivo sin
+funcionar de punta a punta en producción — esta fase cubre el diagnóstico y
+arreglo completo, verificado en vivo contra Fly.io + EMQX Cloud + un
+celular real.
+
+- [X] T039 Corregir `iniciarReportePeriodico` para publicar MQTT con
+  `fleteId` en vez de `token` en `frontend/src/services/ubicacionPeriodica.js`
+  y `frontend/src/main.jsx` — el bug raíz original de por qué Central nunca
+  recibía ubicación.
+- [X] T040 Exponer `fleteId` en `GET /api/recorridos/:token`
+  (`backend/src/routes/recorrido.js`, `backend/src/state/integracionStore.js`).
+- [X] T041 Persistir GPS de arribo/descarga (`arriboLat/Lon`,
+  `descargaLat/Lon`) en `backend/src/state/integracionStore.js` y exponerlo
+  vía `GET /api/integracion/estado` (`backend/src/routes/integracion.js`).
+- [X] T042 Agregar `INTEGRACION_CLOUD_API.leer_estado_puntos` (pull
+  Cloud→Oracle) en `backend/sql/integracion-cloud/integracion_cloud_api.pkb.sql`
+  — **sin ejecutar todavía contra Oracle real** (ver Assumptions de spec.md).
+- [X] T043 Stack de error completo (`UTL_CALL_STACK`) en
+  `sincronizar_recorrido`/`leer_estado_puntos`, reemplazando `SQLERRM`
+  (solo primera línea) — `integracion_cloud_api.pkb.sql`.
+- [X] T044 Puerto de `emqxProvisioning.js` desde la rama vieja
+  `003-mqtt-broker-fletes` (aprovisionamiento por-token sobre
+  `vickytruck/fletes/{token}/#`) adaptado a por-`fleteId` sobre
+  `chofer/{fleteId}/ubicacion` — `backend/src/mqtt/emqxProvisioning.js`.
+- [X] T045 Disparar aprovisionamiento en `POST /api/integracion/recorridos`
+  (fire-and-forget) — `backend/src/routes/integracion.js`.
+- [X] T046 Exponer credencial aprovisionada en `GET /api/recorridos/:token`
+  → `recorrido.mqtt` — `backend/src/routes/recorrido.js`.
+- [X] T047 `frontend/src/services/ubicacionMqtt.js` deja de leer
+  `VITE_MQTT_*` de build; recibe `{url, username, password}` por parámetro.
+- [X] T048 Script de setup administrativo `npm run emqx:setup`
+  (`backend/scripts/emqx-setup.js`) — ACL de subscribe del backend sobre
+  `chofer/+/ubicacion` (confirmado: ya existía, sin cambios necesarios).
+- [X] T049 Fix iOS: reporte inmediato en `visibilitychange` además del
+  timer — `frontend/src/services/ubicacionPeriodica.js` (Safari/WebKit
+  pausa `setInterval` en pestañas de fondo, reproducido en vivo).
+- [X] T050 Verificación end-to-end en producción: recorrido real (Fly.io +
+  EMQX Cloud + celular), confirmado con `GET /clients?username=chofer-{id}`
+  de la Admin API de EMQX Cloud (cliente conectado y publicando) y
+  `GET /api/central/recorridos/activos` (`ultimaUbicacion` con `reciente: true`).
+- [X] T051 Documentación: `spec.md`, `research.md`, `data-model.md` (nuevo),
+  `plan.md`, `contracts/mqtt-topics.md` actualizados para reflejar lo
+  implementado; `docs/arquitectura-cloud.puml` actualizado.
+
+**Pendiente de esta fase** (no bloqueante, ver spec.md Assumptions):
+- Ejecutar `leer_estado_puntos` contra Oracle real al menos una vez.
+- Revisar el caveat de timezone (`SYSTIMESTAMP` local vs. UTC del cloud).
+- Conectar `revocarCredencial(fleteId)` a algún trigger de "recorrido
+  finalizado" — hoy no se llama desde ningún lado.
+- Configurar `VITE_MQTT_*` en `central/.env.production` si se decide activar
+  el consumo directo de Central (hoy dormant).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
