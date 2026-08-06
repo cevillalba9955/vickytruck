@@ -1,8 +1,28 @@
 import { Router } from "express";
 import { ubicacionEnMemoriaCompartida } from "../state/ubicacionEnMemoria.js";
+import { derivarCredencial, topicPara } from "../mqtt/emqxProvisioning.js";
 
 function intervaloReporteUbicacionMs() {
   return Number(process.env.UBICACION_REPORTE_INTERVALO_MS || 60000);
+}
+
+// Config de conexión MQTT publish-only para este fleteId, derivada sin
+// llamar a la API de EMQX Cloud (ver derivarCredencial — determinística, la
+// credencial ya se aprovisionó de antemano al recibir el push de Oracle, ver
+// POST /api/integracion/recorridos en integracion.js). Degrada a `null` sin
+// romper este endpoint si todavía no hay fleteId asignado o si el backend
+// corre sin EMQX configurado (dev/test) — el frontend ya trata `mqtt: null`
+// como "no reportar ubicación por MQTT", igual que hoy trata la ausencia de
+// fleteId.
+function mqttConfigPara(fleteId) {
+  const url = process.env.EMQX_WSS_URL;
+  if (!fleteId || !url) return null;
+  try {
+    const { username, password } = derivarCredencial(fleteId);
+    return { url, username, password, topic: topicPara(fleteId) };
+  } catch {
+    return null;
+  }
 }
 
 function serializePunto(punto, totalPuntos) {
@@ -35,7 +55,12 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
         return res.status(404).json({ error: "enlace_invalido" });
       }
       res.json({
-        recorrido: { estado: recorrido.estado, fleteId: recorrido.fleteId ?? null, intervaloUbicacionMs: intervaloReporteUbicacionMs() },
+        recorrido: {
+          estado: recorrido.estado,
+          fleteId: recorrido.fleteId ?? null,
+          intervaloUbicacionMs: intervaloReporteUbicacionMs(),
+          mqtt: mqttConfigPara(recorrido.fleteId),
+        },
         progreso: recorrido.progreso,
         puntos: recorrido.puntos.map((p) => serializePunto(p, recorrido.puntos.length)),
       });

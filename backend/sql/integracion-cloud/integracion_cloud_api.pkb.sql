@@ -21,12 +21,14 @@
 -- sincronizar_recorrido explota acá, p_respuesta/la excepción va a decir el
 -- motivo real.
 --
--- Se crea en el esquema VICKYTRUCK (el usuario que conecta el backend), no en
--- VIC: VICKYTRUCK no tiene privilegio CREATE en el esquema VIC (ORA-01031),
--- solo SELECT sobre sus vistas (igual que ya usa el backend Node). Las
--- referencias VIC.V_* de abajo quedan igual, son cross-schema de solo lectura.
+-- Se crea en el esquema VIC. El usuario VICKYTRUCK (que en la primera
+-- versión conectaba el backend directo a Oracle) ya no se usa — se eliminó
+-- al pasar a la arquitectura cloud (spec 003), donde el backend no tiene
+-- ningún acceso a Oracle. VIC ya tiene los privilegios (y la ACL de red,
+-- confirmada contra `localhost:8090` y `APEX_240100` el 2026-08-07) que este
+-- paquete necesita, así que no hace falta ningún GRANT cross-schema.
 
-CREATE OR REPLACE PACKAGE BODY INTEGRACION_CLOUD_API AS
+CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
 
   -- Vía relay nginx local (ver relay-rocky/README.md): esta Oracle no logra
   -- salir directo a internet (ORA-29273/ORA-24247 persistente pese a ACL
@@ -39,8 +41,46 @@ CREATE OR REPLACE PACKAGE BODY INTEGRACION_CLOUD_API AS
   -- el string literal del host, no son equivalentes para esa comparación
   -- aunque resuelvan a la misma IP (esto costó varias vueltas de ORA-24247
   -- "acceso de red denegado" con la ACL aparentemente bien configurada).
-  c_backend_url CONSTANT VARCHAR2(200) := 'http://localhost:8090/api/integracion/recorridos';
-  c_api_key     CONSTANT VARCHAR2(100) := 'b9gFJKRPl2eYf3SWgHDtvsV-6CIXfGHC';
+  c_backend_url        CONSTANT VARCHAR2(200) := 'http://localhost:8090/api/integracion/recorridos';
+  c_backend_url_estado CONSTANT VARCHAR2(200) := 'http://localhost:8090/api/integracion/estado';
+  c_api_key            CONSTANT VARCHAR2(100) := 'b9gFJKRPl2eYf3SWgHDtvsV-6CIXfGHC';
+
+  -- Mascara de los timestamps que manda el backend cloud: siempre
+  -- Date.prototype.toISOString() de JS, que SIEMPRE incluye milisegundos
+  -- (a diferencia del 'updatedAt' que arma armar_payload más abajo, que sale
+  -- de Oracle sin milisegundos) — sin el .FF3, TO_TIMESTAMP tira
+  -- ORA-01821 ante el primer punto con arriboEn/descargaEn seteado.
+  c_mascara_iso_utc CONSTANT VARCHAR2(40) := 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"';
+
+  -- Arma el stack de error completo (ORA-29273 + la causa real encadenada
+  -- detrás, ej. ORA-24247 de ACL, ORA-12541 de listener caído, timeout de
+  -- red) usando UTL_CALL_STACK.ERROR_MSG frame por frame, en vez de
+  -- DBMS_UTILITY.FORMAT_ERROR_STACK (esa ya se había descartado por tirar su
+  -- propio ORA-06502 con stacks largos).
+  --
+  -- CONFIRMADO CONTRA ORACLE REAL (2026-08-07): la primera versión de esta
+  -- función igual explotaba con ORA-06502 — armaba TODO el stack en un
+  -- v_stack VARCHAR2(32000) sin chequear el largo en cada vuelta, y con la
+  -- cadena de frames internos de APEX_240100.WWV_FLOW_WEB_SERVICES* (varios,
+  -- largos) se pasó igual. Esta versión corta ANTES de concatenar cada frame
+  -- (chequea el largo previo a agregar, no después) y limita cada frame
+  -- individual a 500 caracteres — nunca puede desbordar el buffer, aunque el
+  -- stack real tenga decenas de frames internos.
+  FUNCTION armar_error_encadenado RETURN VARCHAR2 IS
+    c_max_largo CONSTANT PLS_INTEGER := 3900; -- deja margen bajo el límite de p_respuesta (4000)
+    v_stack     VARCHAR2(4000);
+    v_frame     VARCHAR2(500);
+  BEGIN
+    FOR i IN 1 .. UTL_CALL_STACK.ERROR_DEPTH LOOP
+      v_frame := SUBSTR(UTL_CALL_STACK.ERROR_MSG(i), 1, 500);
+      EXIT WHEN LENGTH(v_stack) + LENGTH(v_frame) + 4 > c_max_largo;
+      v_stack := v_stack || CASE WHEN v_stack IS NOT NULL THEN ' <- ' END || v_frame;
+    END LOOP;
+    RETURN NVL(v_stack, SQLERRM);
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN SQLERRM;
+  END armar_error_encadenado;
 
   FUNCTION armar_payload(p_recorrido_id IN NUMBER) RETURN CLOB IS
     v_id            NUMBER;
@@ -138,17 +178,107 @@ CREATE OR REPLACE PACKAGE BODY INTEGRACION_CLOUD_API AS
     WHEN OTHERS THEN
       p_resultado   := 'ERROR';
       p_http_status := NULL;
-      -- SQLERRM solo trae la primera línea del stack (ej. "ORA-29273: fallo
-      -- de la solicitud HTTP"), sin la causa encadenada (ACL, wallet, etc.)
-      -- — pero es segura. FORMAT_ERROR_STACK se probó acá y con stacks muy
-      -- largos (APEX_WEB_SERVICE + UTL_HTTP + ACL, 15+ líneas) el propio
-      -- FORMAT_ERROR_STACK tira ORA-06502 "buffer demasiado pequeño" DENTRO
-      -- de este handler, y como no está protegido se escapa sin capturar —
-      -- se ve el volcado crudo en vez de p_resultado='ERROR' limpio. Para
-      -- ver la causa completa, revisar el log/consola en el momento del
-      -- error (ahí sí se imprime entero) en vez de confiar en p_respuesta.
-      p_respuesta   := SQLERRM;
+      -- Stack completo (causa real encadenada, no solo la primera línea),
+      -- ver armar_error_encadenado arriba.
+      p_respuesta   := armar_error_encadenado;
   END sincronizar_recorrido;
+
+  -- Trae de GET /api/integracion/estado?recorridoId=<id> el estado actual de
+  -- cada punto (estado + arriboEn/arriboLat/arriboLon +
+  -- descargaEn/descargaLat/descargaLon, ver serializarEstado en
+  -- backend/src/routes/integracion.js) y lo escribe sobre
+  -- T_PUNTOS_ENTREGA (propia del esquema VIC, dueño de este paquete — sin
+  -- privilegio cross-schema que otorgar). El cloud es la fuente de verdad de
+  -- estos eventos mientras el recorrido está en curso (el chofer nunca
+  -- escribe directo a Oracle en esta arquitectura, ver README.md de esta
+  -- carpeta) — por eso pisa sin comparar versiones, siempre gana el último
+  -- estado leído.
+  --
+  -- No validado tampoco: si ARRIBO_EN/DESCARGA_EN en T_PUNTOS_ENTREGA es
+  -- TIMESTAMP a secas (sin zona horaria) igual que asume RECORRIDO_API
+  -- (que las llena con SYSTIMESTAMP, hora local del server Oracle) mientras
+  -- que acá se parsean como UTC (el cloud manda todo en UTC) — si el server
+  -- Oracle no corre en UTC, los valores que entran por este camino van a
+  -- quedar unas horas corridos respecto de los que entran por
+  -- RECORRIDO_API. Revisar DBTIMEZONE/el timezone del server antes de
+  -- confiar en esta columna para reportes.
+  PROCEDURE leer_estado_puntos(
+    p_recorrido_id IN  NUMBER,
+    p_resultado    OUT VARCHAR2,
+    p_http_status  OUT NUMBER,
+    p_respuesta    OUT VARCHAR2
+  ) IS
+    v_response      CLOB;
+    v_actualizados  PLS_INTEGER := 0;
+  BEGIN
+    APEX_WEB_SERVICE.g_request_headers.DELETE;
+    APEX_WEB_SERVICE.g_request_headers(1).name := 'x-api-key';
+    APEX_WEB_SERVICE.g_request_headers(1).value := c_api_key;
+
+    v_response := APEX_WEB_SERVICE.MAKE_REST_REQUEST(
+      p_url         => c_backend_url_estado || '?recorridoId=' || TO_CHAR(p_recorrido_id),
+      p_http_method => 'GET'
+    );
+
+    p_http_status := APEX_WEB_SERVICE.g_status_code;
+
+    IF p_http_status = 404 THEN
+      p_resultado := 'NOT_FOUND';
+      p_respuesta := DBMS_LOB.SUBSTR(v_response, 4000, 1);
+      RETURN;
+    END IF;
+
+    IF p_http_status NOT BETWEEN 200 AND 299 THEN
+      p_resultado := 'ERROR';
+      p_respuesta := DBMS_LOB.SUBSTR(v_response, 4000, 1);
+      RETURN;
+    END IF;
+
+    FOR rec IN (
+      SELECT jt.punto_id, jt.estado, jt.arribo_en, jt.arribo_lat, jt.arribo_lon,
+             jt.descarga_en, jt.descarga_lat, jt.descarga_lon
+        FROM JSON_TABLE(
+               v_response, '$.recorridos[0].puntos[*]'
+               COLUMNS (
+                 punto_id     NUMBER        PATH '$.id',
+                 estado       VARCHAR2(40)  PATH '$.estado',
+                 arribo_en    VARCHAR2(40)  PATH '$.arriboEn',
+                 arribo_lat   NUMBER        PATH '$.arriboLat',
+                 arribo_lon   NUMBER        PATH '$.arriboLon',
+                 descarga_en  VARCHAR2(40)  PATH '$.descargaEn',
+                 descarga_lat NUMBER        PATH '$.descargaLat',
+                 descarga_lon NUMBER        PATH '$.descargaLon'
+               )
+             ) jt
+    ) LOOP
+      UPDATE T_PUNTOS_ENTREGA
+         SET estado       = rec.estado,
+             arribo_en    = CASE WHEN rec.arribo_en IS NOT NULL
+                                  THEN TO_TIMESTAMP(rec.arribo_en, c_mascara_iso_utc) END,
+             arribo_lat   = rec.arribo_lat,
+             arribo_lon   = rec.arribo_lon,
+             descarga_en  = CASE WHEN rec.descarga_en IS NOT NULL
+                                  THEN TO_TIMESTAMP(rec.descarga_en, c_mascara_iso_utc) END,
+             descarga_lat = rec.descarga_lat,
+             descarga_lon = rec.descarga_lon
+       WHERE id = rec.punto_id
+         AND flt_viaje_id = p_recorrido_id;
+
+      v_actualizados := v_actualizados + SQL%ROWCOUNT;
+    END LOOP;
+
+    COMMIT;
+    p_resultado := 'OK';
+    p_respuesta := 'puntos_actualizados: ' || v_actualizados;
+  EXCEPTION
+    WHEN OTHERS THEN
+      ROLLBACK;
+      p_resultado   := 'ERROR';
+      p_http_status := NULL;
+      -- Stack completo (ACL, ORA-01031 de privilegio faltante en el UPDATE,
+      -- etc.), ver armar_error_encadenado arriba.
+      p_respuesta   := armar_error_encadenado;
+  END leer_estado_puntos;
 
 END INTEGRACION_CLOUD_API;
 /

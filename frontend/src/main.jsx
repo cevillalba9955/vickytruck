@@ -50,10 +50,11 @@ function App() {
   // está activo; el intervalo lo decide el backend (recorrido.intervaloUbicacionMs).
   const intervaloUbicacionMs = recorrido?.recorrido?.intervaloUbicacionMs ?? INTERVALO_UBICACION_DEFAULT_MS;
   const fleteId = recorrido?.recorrido?.fleteId ?? null;
+  const mqttConfig = recorrido?.recorrido?.mqtt ?? null;
   useEffect(() => {
     if (!token || !fleteId) return undefined;
-    return iniciarReportePeriodico(token, fleteId, intervaloUbicacionMs);
-  }, [token, fleteId, intervaloUbicacionMs]);
+    return iniciarReportePeriodico(token, fleteId, mqttConfig, intervaloUbicacionMs);
+  }, [token, fleteId, mqttConfig, intervaloUbicacionMs]);
 
   const actualizarPuntoLocal = (puntoId, cambios) => {
     setRecorrido((actual) => {

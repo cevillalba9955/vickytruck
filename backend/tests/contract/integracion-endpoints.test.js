@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { iniciarServidorDePrueba } from "../helpers/testServer.js";
 import { createIntegracionStore } from "../../src/state/integracionStore.js";
+import { createFakeEmqxProvisioning } from "../helpers/fakeEmqxProvisioning.js";
 
 function withApiKey(init = {}) {
   return {
@@ -111,6 +112,40 @@ test("GET /api/integracion/estado — expone el GPS capturado al marcar arribo/d
     assert.equal(punto.arriboLon, -58.41);
     assert.equal(punto.descargaLat, -34.62);
     assert.equal(punto.descargaLon, -58.42);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
+test("POST /api/integracion/recorridos — aprovisiona la credencial MQTT del fleteId recibido", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const emqxProvisioning = createFakeEmqxProvisioning();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store, emqxProvisioning);
+
+  try {
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({
+          source: "oracle-apex",
+          recorridos: [
+            { id: "R-3001", fleteId: "13", estado: "activo", puntos: [] },
+            { id: "R-3002", fleteId: null, estado: "activo", puntos: [] }, // sin flete asignado: no debe aprovisionar
+          ],
+        }),
+      }),
+    );
+
+    // provisionarCredencial se dispara fire-and-forget (no bloquea la
+    // respuesta del POST) — darle un tick al event loop antes de chequear.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.ok(emqxProvisioning._tieneCredencial("13"));
+    assert.equal(emqxProvisioning._tieneCredencial(null), false);
   } finally {
     process.env.INTEGRACION_API_KEY = prev;
     await server.cerrar();

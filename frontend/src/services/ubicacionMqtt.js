@@ -6,9 +6,17 @@ function topicPara(fleteId) {
   return TOPIC_TEMPLATE.replace("{fleteId}", encodeURIComponent(String(fleteId)));
 }
 
-export function createPublisherUbicacionMqtt(fleteId) {
-  const brokerUrl = import.meta.env.VITE_MQTT_BROKER_URL;
-  if (!brokerUrl || !fleteId) {
+/**
+ * `mqttConfig` viene de GET /api/recorridos/:token (campo `recorrido.mqtt`,
+ * ver backend/src/routes/recorrido.js): credencial publish-only aprovisionada
+ * por-flete en EMQX Cloud (backend/src/mqtt/emqxProvisioning.js), no una
+ * credencial fija de build — así el bundle público del chofer nunca embebe
+ * una credencial con alcance más amplio que "publicar la ubicación de este
+ * flete". `mqttConfig` es `null` si el backend todavía no tiene `fleteId`
+ * para este recorrido, o si EMQX no está configurado: en ese caso, no-op.
+ */
+export function createPublisherUbicacionMqtt(fleteId, mqttConfig) {
+  if (!fleteId || !mqttConfig?.url) {
     return {
       async publicar() {
         return false;
@@ -17,14 +25,16 @@ export function createPublisherUbicacionMqtt(fleteId) {
     };
   }
 
-  const client = mqtt.connect(brokerUrl, {
+  const client = mqtt.connect(mqttConfig.url, {
     clientId: `chofer-${Math.random().toString(16).slice(2)}`,
-    username: import.meta.env.VITE_MQTT_USERNAME || undefined,
-    password: import.meta.env.VITE_MQTT_PASSWORD || undefined,
+    username: mqttConfig.username || undefined,
+    password: mqttConfig.password || undefined,
     reconnectPeriod: Number(import.meta.env.VITE_MQTT_RECONNECT_MS || 3000),
     protocolVersion: 5,
     clean: true,
   });
+
+  const topic = mqttConfig.topic || topicPara(fleteId);
 
   return {
     publicar({ lat, lon, recorridoId }) {
@@ -37,7 +47,7 @@ export function createPublisherUbicacionMqtt(fleteId) {
           lon,
           en: new Date().toISOString(),
         });
-        client.publish(topicPara(fleteId), payload, { qos: 1 }, (err) => resolve(!err));
+        client.publish(topic, payload, { qos: 1 }, (err) => resolve(!err));
       });
     },
     cerrar() {

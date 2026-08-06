@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { validarAuthIntegracion } from "../middleware/integracionAuth.js";
+import { emqxProvisioningCompartido } from "../mqtt/emqxProvisioning.js";
 
 function serializarEstado(recorrido) {
   return {
@@ -22,7 +23,7 @@ function serializarEstado(recorrido) {
   };
 }
 
-export function createIntegracionRouter(store) {
+export function createIntegracionRouter(store, emqxProvisioning = emqxProvisioningCompartido) {
   const router = Router();
 
   router.use(validarAuthIntegracion);
@@ -34,6 +35,21 @@ export function createIntegracionRouter(store) {
     }
 
     const upserted = store.upsertRecorridos(payload.recorridos);
+
+    // Aprovisiona (o refresca) la credencial MQTT publish-only de cada flete
+    // recibido, para que ya esté lista en EMQX Cloud antes de que el chofer
+    // abra el link (ver emqxProvisioning.js). Fire-and-forget: un EMQX Cloud
+    // lento/caído no debe bloquear ni fallar este push de Oracle/APEX — se
+    // reintenta solo en el próximo push del mismo recorrido (idempotente).
+    for (const raw of payload.recorridos) {
+      if (!raw?.id) continue;
+      const [actual] = store.listarEstado(String(raw.id));
+      if (!actual?.fleteId) continue;
+      emqxProvisioning.provisionarCredencial(actual.fleteId).catch((err) => {
+        console.error(`[integracion] no se pudo aprovisionar MQTT para fleteId=${actual.fleteId}:`, err.message);
+      });
+    }
+
     return res.status(200).json({ ok: true, upserted, rejected: payload.recorridos.length - upserted });
   });
 

@@ -11,7 +11,17 @@ Resuelve el token y devuelve el recorrido completo con sus puntos, en el orden d
 **200 OK**
 ```json
 {
-  "recorrido": { "estado": "activo", "fleteId": "7", "intervaloUbicacionMs": 60000 },
+  "recorrido": {
+    "estado": "activo",
+    "fleteId": "7",
+    "intervaloUbicacionMs": 60000,
+    "mqtt": {
+      "url": "wss://<host-emqx-cloud>:8084/mqtt",
+      "username": "chofer-7",
+      "password": "<credencial publish-only derivada del fleteId>",
+      "topic": "chofer/7/ubicacion"
+    }
+  },
   "progreso": { "pendientes": 6, "arribados": 1, "completados": 3 },
   "puntos": [
     {
@@ -32,6 +42,17 @@ Resuelve el token y devuelve el recorrido completo con sus puntos, en el orden d
 **410 Gone** — token revocado o recorrido finalizado hace más de lo esperado.
 Ambos casos devuelven `{ "error": "enlace_invalido" }` sin exponer datos de otros
 recorridos (FR-012).
+
+`mqtt` es la credencial publish-only del flete para el reporte periódico de
+ubicación (ver `ubicacionPeriodica.js`/`ubicacionMqtt.js`), aprovisionada en
+EMQX Cloud al recibir el recorrido de Oracle/APEX (`backend/src/mqtt/emqxProvisioning.js`,
+ver `integracion-api.md` de 003-arquitectura-cloud-mqtt) y derivada acá sin
+volver a llamar a la API de EMQX (`password` es determinística — mismo
+`fleteId`, misma `password`, siempre). Es `null` si el recorrido todavía no
+tiene `fleteId` asignado, o si el backend corre sin EMQX configurado. La
+credencial solo puede publicar en su propio `topic` (`chofer/{fleteId}/ubicacion`),
+nunca en el de otro flete — el bundle público del chofer nunca embebe una
+credencial de alcance más amplio.
 
 ## POST /api/recorridos/:token/puntos/:puntoId/arribo
 

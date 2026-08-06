@@ -34,10 +34,11 @@ async function reportarUnaVez(token, publisher) {
  *
  * El reporte HTTP usa `token` (identifica el recorrido vía enlace). El
  * publisher MQTT usa `fleteId` (identifica el flete real) porque Central lo
- * busca por `fleteId`, no por token — ver mqttBridge.js.
+ * busca por `fleteId`, no por token — ver mqttBridge.js. `mqttConfig` es la
+ * credencial publish-only por-flete que devuelve GET /:token (`recorrido.mqtt`).
  */
-export function iniciarReportePeriodico(token, fleteId, intervaloMs) {
-  const publisher = createPublisherUbicacionMqtt(fleteId);
+export function iniciarReportePeriodico(token, fleteId, mqttConfig, intervaloMs) {
+  const publisher = createPublisherUbicacionMqtt(fleteId, mqttConfig);
 
   const timer = setInterval(() => {
     reportarUnaVez(token, publisher);

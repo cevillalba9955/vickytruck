@@ -9,8 +9,8 @@ import { createApp } from "../../src/server.js";
  * instancia aislada (`createUbicacionEnMemoria()`) para no compartir estado
  * con otros tests vía el singleton compartido.
  */
-export async function iniciarServidorDePrueba(recorridoRepository, centralRepository, ubicacionStore, integracionStore) {
-  const app = createApp(recorridoRepository, centralRepository, ubicacionStore, integracionStore);
+export async function iniciarServidorDePrueba(recorridoRepository, centralRepository, ubicacionStore, integracionStore, emqxProvisioning) {
+  const app = createApp(recorridoRepository, centralRepository, ubicacionStore, integracionStore, emqxProvisioning);
   const server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   const { port } = server.address();

@@ -47,6 +47,16 @@ en Oracle/APEX antes de este push (un recorrido llega siempre con `fleteId`
 ya definido, o sin él si todavía no fue asignado, en cuyo caso no aparece en
 el monitoreo de Central hasta que Oracle/APEX lo re-envíe con `fleteId`).
 
+**Efecto colateral en EMQX Cloud**: por cada recorrido recibido con `fleteId`,
+el backend aprovisiona (o refresca) en EMQX Cloud una credencial MQTT
+publish-only scoped a `chofer/{fleteId}/ubicacion`
+(`backend/src/mqtt/emqxProvisioning.js`) — así ya está lista antes de que el
+chofer abra su link. Es *fire-and-forget*: no bloquea ni hace fallar este
+POST si EMQX Cloud está lento o caído (se reintenta solo en el próximo push
+del mismo recorrido, la operación es idempotente). El resultado se expone al
+chofer en `GET /api/recorridos/:token` → `recorrido.mqtt` (ver `chofer-api.md`
+de 001-chofer-recorrido).
+
 ### Response 200
 
 ```json

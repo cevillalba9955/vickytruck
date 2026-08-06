@@ -35,6 +35,57 @@ test("GET /api/recorridos/:token — 200 con puntos ordenados y progreso", async
   }
 });
 
+test("GET /api/recorridos/:token — expone recorrido.mqtt derivado del fleteId cuando EMQX está configurado", async () => {
+  const prevUrl = process.env.EMQX_WSS_URL;
+  const prevSecret = process.env.EMQX_TOKEN_PASSWORD_SECRET;
+  process.env.EMQX_WSS_URL = "wss://broker-test.emqxsl.com:8084/mqtt";
+  process.env.EMQX_TOKEN_PASSWORD_SECRET = "secreto-test";
+
+  const repository = createInMemoryRecorridoRepository([
+    { token: "tok-con-flete", fleteId: "13", estado: "activo", puntos: [{ id: "p1", orden: 1, latitud: 0, longitud: 0, estado: "pendiente" }] },
+  ]);
+  const server = await iniciarServidorDePrueba(repository);
+
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-con-flete`);
+    const body = await res.json();
+
+    assert.deepEqual(body.recorrido.mqtt, {
+      url: "wss://broker-test.emqxsl.com:8084/mqtt",
+      username: "chofer-13",
+      password: body.recorrido.mqtt.password, // determinística, no se hardcodea el hash acá
+      topic: "chofer/13/ubicacion",
+    });
+    assert.ok(body.recorrido.mqtt.password.length > 0);
+  } finally {
+    if (prevUrl === undefined) delete process.env.EMQX_WSS_URL;
+    else process.env.EMQX_WSS_URL = prevUrl;
+    if (prevSecret === undefined) delete process.env.EMQX_TOKEN_PASSWORD_SECRET;
+    else process.env.EMQX_TOKEN_PASSWORD_SECRET = prevSecret;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/recorridos/:token — recorrido.mqtt es null sin fleteId o sin EMQX configurado", async () => {
+  const prevUrl = process.env.EMQX_WSS_URL;
+  delete process.env.EMQX_WSS_URL;
+
+  const repository = createInMemoryRecorridoRepository([
+    { token: "tok-sin-flete", fleteId: null, estado: "activo", puntos: [{ id: "p1", orden: 1, latitud: 0, longitud: 0, estado: "pendiente" }] },
+  ]);
+  const server = await iniciarServidorDePrueba(repository);
+
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-sin-flete`);
+    const body = await res.json();
+    assert.equal(body.recorrido.mqtt, null);
+  } finally {
+    if (prevUrl === undefined) delete process.env.EMQX_WSS_URL;
+    else process.env.EMQX_WSS_URL = prevUrl;
+    await server.cerrar();
+  }
+});
+
 test("GET /api/recorridos/:token — 404 con token inválido", async () => {
   const repository = createInMemoryRecorridoRepository([
     { token: "tok-valido", puntos: [{ id: "p1", orden: 1, latitud: 0, longitud: 0, estado: "pendiente" }] },

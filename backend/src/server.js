@@ -6,19 +6,28 @@ import { createIntegracionRouter } from "./routes/integracion.js";
 import { integracionStoreCompartido } from "./state/integracionStore.js";
 import { startMqttBridge } from "./services/mqttBridge.js";
 import { cors } from "./middleware/cors.js";
+import { emqxProvisioningCompartido } from "./mqtt/emqxProvisioning.js";
 
 // `centralRepository` y `ubicacionStore` son opcionales para no romper los
 // tests existentes de 001-chofer-recorrido que llaman a createApp(repository)
 // con un solo argumento (nunca ejercitan las rutas /api/central ni necesitan
-// una instancia aislada de la posición en memoria).
-export function createApp(repository, centralRepository, ubicacionStore, integracionStore = integracionStoreCompartido) {
+// una instancia aislada de la posición en memoria). `emqxProvisioning` es
+// inyectable para poder testear el disparo del aprovisionamiento MQTT sin
+// llamar a la API real de EMQX Cloud (ver tests/helpers/fakeEmqxProvisioning.js).
+export function createApp(
+  repository,
+  centralRepository,
+  ubicacionStore,
+  integracionStore = integracionStoreCompartido,
+  emqxProvisioning = emqxProvisioningCompartido,
+) {
   const app = express();
   app.use(cors);
   app.use(express.json());
 
   app.use("/api/recorridos", createRecorridoRouter(repository, ubicacionStore));
   app.use("/api/central", createCentralRouter(centralRepository));
-  app.use("/api/integracion", createIntegracionRouter(integracionStore));
+  app.use("/api/integracion", createIntegracionRouter(integracionStore, emqxProvisioning));
 
   app.use((req, res) => {
     res.status(404).json({ error: "ruta_no_encontrada" });
