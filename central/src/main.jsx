@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import "leaflet/dist/leaflet.css";
 import "./styles.css";
 import { MonitorView } from "./components/MonitorView.jsx";
 import { RecorridoDetalle } from "./components/RecorridoDetalle.jsx";
 import { HistorialView } from "./components/HistorialView.jsx";
+import { MapaSeguimiento } from "./components/MapaSeguimiento.jsx";
 import { listarActivos, obtenerDetalle } from "./services/api.js";
 import { pollEvery } from "./services/polling.js";
 import { conectarUbicacionEnTiempoReal } from "./services/mqttClient.js";
+import { construirMarcadoresFlete } from "./services/marcadores.js";
 
 const INTERVALO_POLLING_MS = 5000;
 
@@ -65,6 +68,9 @@ function App() {
         <button type="button" aria-pressed={vista === "monitor"} onClick={() => setVista("monitor")}>
           Monitoreo
         </button>
+        <button type="button" aria-pressed={vista === "mapa"} onClick={() => setVista("mapa")}>
+          Mapa
+        </button>
         <button type="button" aria-pressed={vista === "historial"} onClick={() => setVista("historial")}>
           Historial
         </button>
@@ -74,12 +80,24 @@ function App() {
       {mqttEstado !== "disabled" && <p role="status">Canal tiempo real MQTT: {mqttEstado}</p>}
 
       {vista === "monitor" && <MonitorView recorridos={activos} onSeleccionar={abrirDetalle} />}
+      {vista === "mapa" && (
+        <MapaSeguimiento
+          marcadoresFlete={construirMarcadoresFlete(activos)}
+          hayDatos={activos.length > 0}
+          onSeleccionarFlete={abrirDetalle}
+        />
+      )}
       {vista === "detalle" && (
         <>
           <button type="button" onClick={() => setVista("monitor")}>
             ← Volver al monitoreo
           </button>
-          <RecorridoDetalle detalle={detalle} />
+          <RecorridoDetalle
+            detalle={detalle}
+            marcadorFlete={construirMarcadoresFlete(activos).find(
+              (m) => String(m.recorridoId) === String(detalle?.recorrido?.id),
+            )}
+          />
         </>
       )}
       {vista === "historial" && <HistorialView />}

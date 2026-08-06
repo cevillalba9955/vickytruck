@@ -13,8 +13,8 @@ actor "Chofer" as Chofer
 actor "Operador Central" as Operador
 actor "Operador Local Oracle/APEX" as OperadorLocal
 
-cloud "Cloud (Internet/VPC)" as CLOUD {
-  rectangle "Frontend Chofer\n(frontend/)" as FrontChofer {
+node "CloudFlare (vite)" as FRONTEND {
+  rectangle "Frontend Chofer (vickytruck)" as FrontChofer {
 	component "UI React" as CH_UI
 	component "API Client\nservices/api.js" as CH_API
 	component "GPS\nservices/geolocation.js" as CH_GPS
@@ -23,13 +23,15 @@ cloud "Cloud (Internet/VPC)" as CLOUD {
   }
 
 
-  rectangle "Frontend Central\n(central/)" as FrontCentral {
+  rectangle "Frontend Central (vickytruck-central)" as FrontCentral {
     component "App React Central" as CE_UI
   	component "API Client\nservices/api.js" as CE_API
   	component "Polling\nservices/polling.js" as CE_POLL
 	component "MQTT Client\nWebSocket MQTT" as CE_MQTT
   }
+}
 
+node "Cloud (Internet/VPC)" as BACKEND {
   rectangle "Backend API\n(backend/)" as Backend {
     component "REST API Recorridos\n/api/recorridos\n(GET :token incluye recorrido.mqtt)" as BE_REC
     component "REST API Central\n/api/central" as BE_CEN
@@ -42,7 +44,10 @@ cloud "Cloud (Internet/VPC)" as CLOUD {
     component "Aprovisionamiento MQTT por-flete\nmqtt/emqxProvisioning.js" as BE_PROV
   }
 
-  queue "EMQX Cloud\n(broker MQTT gestionado)" as MQTT
+}
+
+cloud "EMQX Cloud" as EMQX {
+  queue "broker MQTT" as MQTT
 }
 
 node "Sitio Local (Datacenter/PC)" as LOCAL {
@@ -52,21 +57,21 @@ node "Sitio Local (Datacenter/PC)" as LOCAL {
   }
 }
 
-Chofer --> CH_UI : Usa app de chofer
-Operador --> CE_UI : Opera panel 
+Chofer --> CH_UI 
+Operador --> CE_UI
 
-CH_UI --> CH_API : Lecturas y eventos
-CH_API --> CH_GPS : Obtiene lat/lon
-CH_UI --> CH_UBI : Inicia reporte periódico
-CH_API --> CH_OFF : Encola/reintenta si offline
+CH_UI -> CH_API 
+CH_API --> CH_GPS
+CH_UI --> CH_UBI 
+CH_API --> CH_OFF 
 
-CE_UI --> CE_API : Consulta/acciones
+CE_UI --> CE_API
 CE_UI --> CE_POLL : Refresco automático
-CE_UI --> CE_MQTT : Suscripcion tiempo real
-CE_POLL --> CE_API : GET periódicos
+CE_UI -> CE_MQTT
+CE_POLL -> CE_API : GET periódicos
 
-CH_UI --> BE_REC : HTTPS
-CE_UI --> BE_CEN : HTTPS
+FrontChofer --> Backend : get /api/recorridos/:token\nincluye recorrido.mqtt
+FrontCentral --> BE_CEN 
 
 OperadorLocal --> ORA_APEX : Carga/consulta operativa
 ORA_APEX --> BE_IN_RECORRIDOS : HTTPS POST/PUT\nPublica recorridos a cloud
@@ -77,36 +82,25 @@ BE_IN_ESTADO --> BE_STORE : Lee estados actuales (incl. GPS arribo/descarga)
 
 ' Aprovisionamiento de credencial MQTT por-flete (2026-08-06)
 BE_IN_RECORRIDOS ..> BE_PROV : Dispara al recibir\nfleteId (fire-and-forget)
-BE_PROV ..> MQTT : Admin API HTTP (v5)\ncrea usuario publish-only\n"chofer-{fleteId}" + regla ACL\nscoped a chofer/{fleteId}/ubicacion
+FrontCentral ..> EMQX : Admin API HTTP (v5)\ncrea usuario publish-only\n"chofer-{fleteId}" + regla ACL\nscoped a chofer/{fleteId}/ubicacion
 BE_REC ..> BE_PROV : Deriva credencial\n(determinística, sin llamar a EMQX)
 
 ' Ubicacion en tiempo real por MQTT
-CH_UBI --> MQTT : MQTT Publish\nchofer/{fleteId}/ubicacion\n(credencial por-flete obtenida\nde GET /:token -> recorrido.mqtt)
+FrontChofer --> MQTT 
 
 CE_POLL --> BE_CEN : Polling para estado/progreso
 BE_CEN --> BE_STORE : Lee estado y progreso
 
-CE_MQTT --> MQTT : MQTT Subscribe\nchofer/+/ubicacion\n(implementado, SIN credenciales\nconfiguradas en produccion)
+FrontCentral --> EMQX : MQTT Subscribe\nchofer/+/ubicacion\n(implementado, SIN credenciales\nconfiguradas en produccion)
 
 ' Backend sigue suscribiendo para persistencia/analytics
 MQTT --> BE_MQ_BRIDGE : MQTT Subscribe\nchofer/+/ubicacion
 BE_MQ_BRIDGE --> BE_STORE : Persistencia de ubicacion
 
-note left of CLOUD
-Cloud NO se conecta a Oracle local.
+note right of FRONTEND
+Frontend NO se conecta a Oracle local.
 Toda sincronizacion Oracle/APEX <-> cloud
 se hace via endpoints HTTPS del backend.
-end note
-
-note top of MQTT
-Patron pub/sub, credenciales scoped:
-- Chofer publica con credencial publish-only
-  propia de su fleteId (nunca compartida)
-- Backend se suscribe con credencial de
-  servicio (subscribe-only, chofer/+/ubicacion)
-- Central PODRIA suscribirse directo (codigo
-  listo) pero hoy depende 100% del polling
-  REST via backend -> BE_STORE
 end note
 
 note bottom of BE_STORE

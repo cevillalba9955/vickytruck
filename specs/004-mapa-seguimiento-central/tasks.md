@@ -18,8 +18,8 @@
 
 **Purpose**: Instalar y preparar la biblioteca de mapas
 
-- [ ] T001 Agregar dependencias `leaflet` y `react-leaflet` (compatible con React 18) en `central/package.json`
-- [ ] T002 [P] Importar `leaflet/dist/leaflet.css` y aplicar el workaround estándar de íconos default de marcador (rotos por el empaquetado de Vite) en `central/src/main.jsx`
+- [X] T001 Agregar dependencias `leaflet` y `react-leaflet` (compatible con React 18) en `central/package.json`
+- [X] T002 [P] Importar `leaflet/dist/leaflet.css` en `central/src/main.jsx` — se usó `CircleMarker` en vez de `Marker`/`Icon` por defecto (más simple, sin assets de ícono que parchear; ver nota de implementación)
 
 ---
 
@@ -29,8 +29,8 @@
 
 **⚠️ CRITICAL**: Ninguna historia debe cerrarse sin esta fase completa
 
-- [ ] T003 Crear el componente base `central/src/components/MapaSeguimiento.jsx`: contenedor Leaflet (`MapContainer`/`TileLayer` sobre tiles públicos de OpenStreetMap, ver research.md Decisión 1) sin marcadores todavía, reutilizable por ambas historias
-- [ ] T004 Agregar alternancia lista/mapa (toggle) en `central/src/main.jsx`, preservando qué recorrido está seleccionado al cambiar de vista (FR-004)
+- [X] T003 Crear el componente base `central/src/components/MapaSeguimiento.jsx`: contenedor Leaflet (`MapContainer`/`TileLayer` sobre tiles públicos de OpenStreetMap, ver research.md Decisión 1) sin marcadores todavía, reutilizable por ambas historias
+- [X] T004 Agregar alternancia lista/mapa (toggle) en `central/src/main.jsx`, preservando qué recorrido está seleccionado al cambiar de vista (FR-004)
 
 **Checkpoint**: Mapa base vacío renderiza y el toggle lista/mapa funciona; listo para US1/US2
 
@@ -44,17 +44,17 @@
 
 ### Tests for User Story 1
 
-- [ ] T005 [P] [US1] Test unitario de `construirMarcadoresFlete` (filtra fletes sin ubicación FR-007, distingue reciente/no-reciente FR-003) en `central/tests/components/marcadores.test.js`
-- [ ] T006 [P] [US1] Test de `MapaSeguimiento` (mockeando `react-leaflet`) verificando que recibe un marcador por flete con ubicación y ninguno para los que no tienen, en `central/tests/components/MapaSeguimiento.test.jsx`
+- [X] T005 [P] [US1] Test unitario de `construirMarcadoresFlete` (filtra fletes sin ubicación FR-007, distingue reciente/no-reciente FR-003) en `central/tests/components/marcadores.test.js`
+- [X] T006 [P] [US1] Test de `MapaSeguimiento` (mockeando `react-leaflet`) verificando que recibe un marcador por flete con ubicación y ninguno para los que no tienen, en `central/tests/components/MapaSeguimiento.test.jsx`
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Implementar `construirMarcadoresFlete(recorridosActivos)` en `central/src/services/marcadores.js`
-- [ ] T008 [US1] Extender `MapaSeguimiento.jsx` para recibir y dibujar `marcadoresFlete` con estilo distinto para reciente/no-reciente (FR-003)
-- [ ] T009 [US1] Conectar `MapaSeguimiento` en `central/src/main.jsx` con el estado `activos` ya mantenido por polling/MQTT (FR-002, mismo estado que ya usa `MonitorView`)
-- [ ] T010 [US1] Al seleccionar un marcador de flete, abrir el detalle de su recorrido (FR-005), reutilizando `abrirDetalle` ya existente en `central/src/main.jsx`
-- [ ] T011 [US1] Manejar fletes con ubicaciones muy próximas o coincidentes para que ningún marcador oculte a otro sin poder distinguirlos/seleccionarlos (FR-009) en `central/src/components/MapaSeguimiento.jsx`
-- [ ] T012 [US1] Mostrar mensaje claro cuando no hay recorridos activos, consistente con el mensaje ya existente en `MonitorView` (Edge Case de spec.md) en `central/src/components/MapaSeguimiento.jsx`
+- [X] T007 [US1] Implementar `construirMarcadoresFlete(recorridosActivos)` en `central/src/services/marcadores.js`
+- [X] T008 [US1] Extender `MapaSeguimiento.jsx` para recibir y dibujar `marcadoresFlete` con estilo distinto para reciente/no-reciente (FR-003)
+- [X] T009 [US1] Conectar `MapaSeguimiento` en `central/src/main.jsx` con el estado `activos` ya mantenido por polling/MQTT (FR-002, mismo estado que ya usa `MonitorView`)
+- [X] T010 [US1] Al seleccionar un marcador de flete, abrir el detalle de su recorrido (FR-005), reutilizando `abrirDetalle` ya existente en `central/src/main.jsx`
+- [X] T011 [US1] Manejar fletes con ubicaciones muy próximas o coincidentes para que ningún marcador oculte a otro sin poder distinguirlos/seleccionarlos (FR-009) en `central/src/components/MapaSeguimiento.jsx`
+- [X] T012 [US1] Mostrar mensaje claro cuando no hay recorridos activos, consistente con el mensaje ya existente en `MonitorView` (Edge Case de spec.md) en `central/src/components/MapaSeguimiento.jsx`
 
 **Checkpoint**: US1 funcional y demostrable de forma independiente
 
@@ -68,16 +68,16 @@
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] Contract test verificando que `GET /api/central/recorridos/:id` incluye `lat`/`lon` por punto en `backend/tests/integration/central-cloud-monitoreo.test.js` (ver `contracts/central-map-api.md`)
-- [ ] T014 [P] [US2] Test unitario de `construirPuntosEnMapa` (mapea cada punto a su indicador visual de estado) en `central/tests/components/marcadores.test.js`
-- [ ] T015 [P] [US2] Test de `MapaSeguimiento` en modo detalle (puntos + marcador de flete) en `central/tests/components/MapaSeguimiento.test.jsx`
+- [X] T013 [P] [US2] Contract test verificando que `GET /api/central/recorridos/:id` incluye `lat`/`lon` por punto en `backend/tests/integration/central-cloud-monitoreo.test.js` (ver `contracts/central-map-api.md`)
+- [X] T014 [P] [US2] Test unitario de `construirPuntosEnMapa` (mapea cada punto a su indicador visual de estado) en `central/tests/components/marcadores.test.js`
+- [X] T015 [P] [US2] Test de `MapaSeguimiento` en modo detalle (puntos + marcador de flete) en `central/tests/components/MapaSeguimiento.test.jsx`
 
 ### Implementation for User Story 2
 
-- [ ] T016 [US2] Extender `serializarPuntosCentral` en `backend/src/state/integracionStore.js` para incluir `lat`/`lon` por punto (ver `contracts/central-map-api.md`)
-- [ ] T017 [US2] Implementar `construirPuntosEnMapa(puntos)` en `central/src/services/marcadores.js`
-- [ ] T018 [US2] Extender `MapaSeguimiento.jsx` para aceptar y dibujar `puntos`, indicando visualmente el estado de cada uno (pendiente/arribado/completado, FR-006)
-- [ ] T019 [US2] Integrar `MapaSeguimiento` en `central/src/components/RecorridoDetalle.jsx`, pasando los puntos del detalle y el marcador del flete si tiene ubicación conocida
+- [X] T016 [US2] Extender `serializarPuntosCentral` en `backend/src/state/integracionStore.js` para incluir `lat`/`lon` por punto (ver `contracts/central-map-api.md`)
+- [X] T017 [US2] Implementar `construirPuntosEnMapa(puntos)` en `central/src/services/marcadores.js`
+- [X] T018 [US2] Extender `MapaSeguimiento.jsx` para aceptar y dibujar `puntos`, indicando visualmente el estado de cada uno (pendiente/arribado/completado, FR-006)
+- [X] T019 [US2] Integrar `MapaSeguimiento` en `central/src/components/RecorridoDetalle.jsx`, pasando los puntos del detalle y el marcador del flete si tiene ubicación conocida (derivado de `activos` en `main.jsx`, sin pedido de red adicional)
 
 **Checkpoint**: US2 funcional e independiente
 
@@ -87,8 +87,10 @@
 
 **Purpose**: Validación de compatibilidad y criterios de éxito
 
-- [ ] T020 [P] Verificar compatibilidad de la vista de mapa embebida en iframe de Oracle APEX (Principio III), siguiendo Escenario 3 de `quickstart.md`
+- [X] T020 [P] Verificar compatibilidad de la vista de mapa embebida en iframe de Oracle APEX (Principio III), siguiendo Escenario 3 de `quickstart.md` — verificado en vivo 2026-08-06: Central cargada dentro de un `<iframe>` muestra el nav, la tabla y el mapa (`.leaflet-container` + tiles) correctamente, sin errores de consola nuevos.
 - [ ] T021 Ejecutar validación de Success Criteria (SC-001 a SC-005) siguiendo `quickstart.md` y registrar evidencia
+
+**Pendiente de esta fase** (no bloqueante, mismo criterio que 003-arquitectura-cloud-mqtt): T021 requiere un entorno con broker MQTT real y telemetría (para medir p95 de SC-002 y el % de éxito de SC-001, que no aplica directamente a esta feature pero SC-002/SC-004 sí heredan el mismo mecanismo de tiempo real) — no ejecutado en esta pasada. Verificación funcional ya cubierta: SC-001 (distinción visual reciente/no-reciente, tests T005/T006), SC-003 (1 click de marcador a detalle, test T006), SC-004 (iframe + acceso directo, T020), SC-005 (sin marcadores inventados, tests T005/T006). Falta evidencia cuantitativa de latencia en vivo (SC-002).
 
 ---
 

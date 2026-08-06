@@ -195,9 +195,20 @@ export function createIntegracionStore() {
   };
 }
 
+// `lat`/`lon` (004-mapa-seguimiento-central, FR-006): topología fija del
+// punto (destino de entrega), no el GPS de auditoría de arribo/descarga
+// (arriboLat/arriboLon), que sigue sin exponerse a Central.
 function serializarPuntosCentral(puntos) {
   return puntos
-    .map((p) => ({ id: p.id, orden: p.orden, estado: p.estado, arriboEn: p.arriboEn, descargaEn: p.descargaEn }))
+    .map((p) => ({
+      id: p.id,
+      orden: p.orden,
+      lat: p.lat,
+      lon: p.lon,
+      estado: p.estado,
+      arriboEn: p.arriboEn,
+      descargaEn: p.descargaEn,
+    }))
     .sort((a, b) => a.orden - b.orden);
 }
 

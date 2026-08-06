@@ -37,7 +37,7 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
               fleteId: "F-77",
               fleteNombre: "Roberto Gómez",
               estado: "activo",
-              puntos: [{ id: "p1", orden: 1, estado: "pendiente" }],
+              puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41 }],
             },
           ],
         }),
@@ -57,6 +57,11 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
     // 4. Central ve el progreso actualizado sin haber tocado Oracle.
     const detalle = await (await fetch(`${server.centralBaseUrl}/recorridos/R-3001`)).json();
     assert.equal(detalle.puntos[0].estado, "arribado");
+
+    // 5. El detalle incluye lat/lon del punto (004-mapa-seguimiento-central,
+    // FR-006) — topología fija, no el GPS de auditoría del evento arribo.
+    assert.equal(detalle.puntos[0].lat, -34.61);
+    assert.equal(detalle.puntos[0].lon, -58.41);
   } finally {
     process.env.INTEGRACION_API_KEY = prev;
     await server.cerrar();

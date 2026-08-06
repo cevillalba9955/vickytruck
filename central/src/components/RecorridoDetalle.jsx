@@ -1,3 +1,6 @@
+import { MapaSeguimiento } from "./MapaSeguimiento.jsx";
+import { construirPuntosEnMapa } from "../services/marcadores.js";
+
 const ETIQUETAS_ESTADO = {
   pendiente: "Pendiente",
   arribado: "Arribado",
@@ -9,8 +12,14 @@ const ETIQUETAS_ESTADO = {
  * eventos registrados. Solo lectura — la asignación/reasignación de flete
  * ocurre en Oracle/APEX antes del push a cloud (ver
  * specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md).
+ *
+ * `marcadorFlete` (004-mapa-seguimiento-central, Historia 2): última
+ * ubicación conocida del flete de este recorrido, si tiene una — se recibe
+ * ya calculada desde `activos` (el mismo estado que alimenta el mapa
+ * general) para no requerir otro pedido de red; `null`/`undefined` si el
+ * flete todavía no reportó ubicación o el recorrido ya no está activo.
  */
-export function RecorridoDetalle({ detalle }) {
+export function RecorridoDetalle({ detalle, marcadorFlete }) {
   if (!detalle) return null;
   const { recorrido, puntos } = detalle;
 
@@ -34,6 +43,8 @@ export function RecorridoDetalle({ detalle }) {
           </li>
         ))}
       </ol>
+
+      <MapaSeguimiento marcadoresFlete={marcadorFlete ? [marcadorFlete] : []} puntos={construirPuntosEnMapa(puntos)} />
     </section>
   );
 }
