@@ -49,10 +49,11 @@ function App() {
   // FR-014: reporte periódico de ubicación instantánea mientras el recorrido
   // está activo; el intervalo lo decide el backend (recorrido.intervaloUbicacionMs).
   const intervaloUbicacionMs = recorrido?.recorrido?.intervaloUbicacionMs ?? INTERVALO_UBICACION_DEFAULT_MS;
+  const fleteId = recorrido?.recorrido?.fleteId ?? null;
   useEffect(() => {
-    if (!token) return undefined;
-    return iniciarReportePeriodico(token, intervaloUbicacionMs);
-  }, [token, intervaloUbicacionMs]);
+    if (!token || !fleteId) return undefined;
+    return iniciarReportePeriodico(token, fleteId, intervaloUbicacionMs);
+  }, [token, fleteId, intervaloUbicacionMs]);
 
   const actualizarPuntoLocal = (puntoId, cambios) => {
     setRecorrido((actual) => {

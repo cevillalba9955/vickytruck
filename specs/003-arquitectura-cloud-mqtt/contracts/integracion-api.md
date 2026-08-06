@@ -79,13 +79,24 @@ el monitoreo de Central hasta que Oracle/APEX lo re-envíe con `fleteId`).
           "id": "P-1",
           "estado": "arribado",
           "arriboEn": "2026-08-05T13:31:00Z",
-          "descargaEn": null
+          "arriboLat": -34.61,
+          "arriboLon": -58.41,
+          "descargaEn": null,
+          "descargaLat": null,
+          "descargaLon": null
         }
       ]
     }
   ]
 }
 ```
+
+`arriboLat`/`arriboLon`/`descargaLat`/`descargaLon` son el GPS del celular del
+chofer en el momento exacto de marcar cada evento (no la topología del punto,
+que es fija y ya viaja en el Endpoint 1 como `lat`/`lon`) — dato de auditoría
+de "desde dónde" confirmó el chofer. Vienen en `null` hasta que el chofer
+marca el evento; una vez capturados en la primera transición no se pisan en
+repeticiones idempotentes ni en re-pushes de topología desde Oracle/APEX.
 
 ### Response 200 (sin `recorridoId`, paginado)
 

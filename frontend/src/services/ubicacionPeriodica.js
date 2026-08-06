@@ -31,9 +31,13 @@ async function reportarUnaVez(token, publisher) {
 /**
  * Arranca el reporte periódico de ubicación instantánea (FR-014) mientras el
  * recorrido está activo. Devuelve una función para detener el temporizador.
+ *
+ * El reporte HTTP usa `token` (identifica el recorrido vía enlace). El
+ * publisher MQTT usa `fleteId` (identifica el flete real) porque Central lo
+ * busca por `fleteId`, no por token — ver mqttBridge.js.
  */
-export function iniciarReportePeriodico(token, intervaloMs) {
-  const publisher = createPublisherUbicacionMqtt(token);
+export function iniciarReportePeriodico(token, fleteId, intervaloMs) {
+  const publisher = createPublisherUbicacionMqtt(fleteId);
 
   const timer = setInterval(() => {
     reportarUnaVez(token, publisher);

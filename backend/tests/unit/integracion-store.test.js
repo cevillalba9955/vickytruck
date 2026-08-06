@@ -62,6 +62,44 @@ test("marcarArribo — repetirlo es idempotente (no cambia el timestamp a error)
   assert.equal(segundo.punto.arriboEn, primero.punto.arriboEn);
 });
 
+test("marcarArribo — captura el GPS del chofer al marcar (dato para Oracle/APEX)", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+
+  await store.marcarArribo("tok-1", "p1", { lat: -34.61, lon: -58.41 });
+
+  const [recorrido] = store.listarEstado("R-1");
+  const p1 = recorrido.puntos.find((p) => p.id === "p1");
+  assert.equal(p1.arriboLat, -34.61);
+  assert.equal(p1.arriboLon, -58.41);
+});
+
+test("marcarArribo — sin GPS (lat/lon ausentes) no rompe, solo no captura posición", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+
+  const resultado = await store.marcarArribo("tok-1", "p1", {});
+  assert.equal(resultado.outcome, "ok");
+
+  const [recorrido] = store.listarEstado("R-1");
+  const p1 = recorrido.puntos.find((p) => p.id === "p1");
+  assert.equal(p1.arriboLat, null);
+  assert.equal(p1.arriboLon, null);
+});
+
+test("marcarArribo — repetirlo no pisa la posición GPS ya capturada", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+
+  await store.marcarArribo("tok-1", "p1", { lat: -34.61, lon: -58.41 });
+  await store.marcarArribo("tok-1", "p1", { lat: -34.99, lon: -58.99 });
+
+  const [recorrido] = store.listarEstado("R-1");
+  const p1 = recorrido.puntos.find((p) => p.id === "p1");
+  assert.equal(p1.arriboLat, -34.61);
+  assert.equal(p1.arriboLon, -58.41);
+});
+
 test("marcarArribo — conflict si el punto ya está completado", async () => {
   const store = createIntegracionStore();
   seedRecorrido(store);
@@ -102,6 +140,20 @@ test("marcarDescarga — pendiente -> arribado -> completado, idempotente al rep
   const segundo = await store.marcarDescarga("tok-1", "p1");
   assert.equal(segundo.outcome, "ok");
   assert.equal(segundo.punto.descargaEn, primero.punto.descargaEn);
+});
+
+test("marcarDescarga — captura el GPS del chofer al marcar (dato para Oracle/APEX)", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+  await store.marcarArribo("tok-1", "p1", { lat: -34.61, lon: -58.41 });
+
+  await store.marcarDescarga("tok-1", "p1", { lat: -34.62, lon: -58.42 });
+
+  const [recorrido] = store.listarEstado("R-1");
+  const p1 = recorrido.puntos.find((p) => p.id === "p1");
+  assert.equal(p1.arriboLat, -34.61, "el GPS de arribo no se pisa al marcar descarga");
+  assert.equal(p1.descargaLat, -34.62);
+  assert.equal(p1.descargaLon, -58.42);
 });
 
 test("upsert — un re-push con puntos 'pendiente' no pisa el progreso ya confirmado por el chofer", async () => {

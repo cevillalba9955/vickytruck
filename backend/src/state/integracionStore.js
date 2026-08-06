@@ -5,8 +5,22 @@ function umbralUbicacionMs() {
 }
 
 const PUNTO_ESTADO_TRANSICION = {
-  arribo: { estadoOrigen: "pendiente", estadoDestino: "arribado", estadoIdempotente: "arribado", campoTimestamp: "arriboEn" },
-  descarga: { estadoOrigen: "arribado", estadoDestino: "completado", estadoIdempotente: "completado", campoTimestamp: "descargaEn" },
+  arribo: {
+    estadoOrigen: "pendiente",
+    estadoDestino: "arribado",
+    estadoIdempotente: "arribado",
+    campoTimestamp: "arriboEn",
+    campoLat: "arriboLat",
+    campoLon: "arriboLon",
+  },
+  descarga: {
+    estadoOrigen: "arribado",
+    estadoDestino: "completado",
+    estadoIdempotente: "completado",
+    campoTimestamp: "descargaEn",
+    campoLat: "descargaLat",
+    campoLon: "descargaLon",
+  },
 };
 
 function calcularProgreso(puntos) {
@@ -35,7 +49,11 @@ function mergearPunto(entrante, previo) {
     orden: Number(entrante.orden),
     estado: entrante.estado || "pendiente",
     arriboEn: entrante.arriboEn ?? null,
+    arriboLat: entrante.arriboLat ?? null,
+    arriboLon: entrante.arriboLon ?? null,
     descargaEn: entrante.descargaEn ?? null,
+    descargaLat: entrante.descargaLat ?? null,
+    descargaLon: entrante.descargaLon ?? null,
     lat: entrante.lat ?? null,
     lon: entrante.lon ?? null,
   };
@@ -123,15 +141,15 @@ export function createIntegracionStore() {
           descargaEn: p.descargaEn,
         }))
         .sort((a, b) => a.orden - b.orden);
-      return { id: r.id, estado: r.estado, puntos, progreso: calcularProgreso(puntos) };
+      return { id: r.id, fleteId: r.fleteId, estado: r.estado, puntos, progreso: calcularProgreso(puntos) };
     },
 
     async marcarArribo(token, puntoId, ubicacion) {
-      return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, PUNTO_ESTADO_TRANSICION.arribo);
+      return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, PUNTO_ESTADO_TRANSICION.arribo);
     },
 
     async marcarDescarga(token, puntoId, ubicacion) {
-      return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, PUNTO_ESTADO_TRANSICION.descarga);
+      return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, PUNTO_ESTADO_TRANSICION.descarga);
     },
 
     // Contrato compatible con `repository` de createCentralRouter (ver
@@ -183,7 +201,24 @@ function serializarPuntosCentral(puntos) {
     .sort((a, b) => a.orden - b.orden);
 }
 
-function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, { estadoOrigen, estadoDestino, estadoIdempotente, campoTimestamp }) {
+function serializarPuntoTransicion(punto) {
+  return {
+    id: punto.id,
+    orden: punto.orden,
+    latitud: punto.lat,
+    longitud: punto.lon,
+    estado: punto.estado,
+    arriboEn: punto.arriboEn,
+    descargaEn: punto.descargaEn,
+  };
+}
+
+// `ubicacion` es el GPS del celular del chofer en el momento de marcar (no la
+// topología del punto): dato de auditoría — de dónde vino el chofer al
+// marcar arribo/descarga — que Oracle/APEX consume vía GET /api/integracion/estado.
+// Solo se captura en la transición real, no en repeticiones idempotentes, para
+// no pisar el primer registro con una posición GPS posterior.
+function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, { estadoOrigen, estadoDestino, estadoIdempotente, campoTimestamp, campoLat, campoLon }) {
   const id = recorridoPorToken.get(token);
   const r = id ? recorridos.get(id) : null;
   if (!r) return { outcome: "invalid_token" };
@@ -193,17 +228,15 @@ function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, { esta
   if (punto.estado === estadoOrigen) {
     punto.estado = estadoDestino;
     punto[campoTimestamp] = new Date().toISOString();
+    if (ubicacion?.lat != null && ubicacion?.lon != null) {
+      punto[campoLat] = ubicacion.lat;
+      punto[campoLon] = ubicacion.lon;
+    }
   } else if (punto.estado !== estadoIdempotente) {
-    return {
-      outcome: "conflict",
-      punto: { id: punto.id, orden: punto.orden, latitud: punto.lat, longitud: punto.lon, estado: punto.estado, arriboEn: punto.arriboEn, descargaEn: punto.descargaEn },
-    };
+    return { outcome: "conflict", punto: serializarPuntoTransicion(punto) };
   }
 
-  return {
-    outcome: "ok",
-    punto: { id: punto.id, orden: punto.orden, latitud: punto.lat, longitud: punto.lon, estado: punto.estado, arriboEn: punto.arriboEn, descargaEn: punto.descargaEn },
-  };
+  return { outcome: "ok", punto: serializarPuntoTransicion(punto) };
 }
 
 export const integracionStoreCompartido = createIntegracionStore();

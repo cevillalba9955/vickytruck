@@ -35,7 +35,7 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
         return res.status(404).json({ error: "enlace_invalido" });
       }
       res.json({
-        recorrido: { estado: recorrido.estado, intervaloUbicacionMs: intervaloReporteUbicacionMs() },
+        recorrido: { estado: recorrido.estado, fleteId: recorrido.fleteId ?? null, intervaloUbicacionMs: intervaloReporteUbicacionMs() },
         progreso: recorrido.progreso,
         puntos: recorrido.puntos.map((p) => serializePunto(p, recorrido.puntos.length)),
       });

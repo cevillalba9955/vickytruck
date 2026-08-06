@@ -13,7 +13,11 @@ function serializarEstado(recorrido) {
       orden: p.orden,
       estado: p.estado,
       arriboEn: p.arriboEn,
+      arriboLat: p.arriboLat ?? null,
+      arriboLon: p.arriboLon ?? null,
       descargaEn: p.descargaEn,
+      descargaLat: p.descargaLat ?? null,
+      descargaLon: p.descargaLon ?? null,
     })),
   };
 }

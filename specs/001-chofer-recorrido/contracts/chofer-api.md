@@ -11,7 +11,7 @@ Resuelve el token y devuelve el recorrido completo con sus puntos, en el orden d
 **200 OK**
 ```json
 {
-  "recorrido": { "estado": "activo" },
+  "recorrido": { "estado": "activo", "fleteId": "7", "intervaloUbicacionMs": 60000 },
   "progreso": { "pendientes": 6, "arribados": 1, "completados": 3 },
   "puntos": [
     {

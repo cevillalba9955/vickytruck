@@ -16,7 +16,7 @@ export function createInMemoryRecorridoRepository(seedRecorridos) {
   const recorridos = new Map(
     seedRecorridos.map((r) => [
       r.token,
-      { id: r.id ?? r.token, estado: r.estado ?? "activo", puntos: r.puntos.map((p) => ({ ...p })) },
+      { id: r.id ?? r.token, fleteId: r.fleteId ?? null, estado: r.estado ?? "activo", puntos: r.puntos.map((p) => ({ ...p })) },
     ]),
   );
 
@@ -44,7 +44,7 @@ export function createInMemoryRecorridoRepository(seedRecorridos) {
       // Mismo contrato que el repositorio Oracle: los puntos vienen ordenados
       // por `orden` (ORDER BY orden en la query real).
       const puntos = r.puntos.map((p) => ({ ...p })).sort((a, b) => a.orden - b.orden);
-      return { id: r.id, estado: r.estado, puntos, progreso: calcularProgreso(puntos) };
+      return { id: r.id, fleteId: r.fleteId, estado: r.estado, puntos, progreso: calcularProgreso(puntos) };
     },
 
     async marcarArribo(token, puntoId, ubicacion) {

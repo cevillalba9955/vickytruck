@@ -75,6 +75,48 @@ test("POST+GET /api/integracion/* — upsert y consulta de estado", async () => 
   }
 });
 
+test("GET /api/integracion/estado — expone el GPS capturado al marcar arribo/descarga", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store);
+
+  try {
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({
+          source: "oracle-apex",
+          recorridos: [
+            {
+              id: "R-2001",
+              token: "tok-2001",
+              fleteId: "F-1",
+              estado: "activo",
+              puntos: [{ id: "P-1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4 }],
+            },
+          ],
+        }),
+      }),
+    );
+
+    await store.marcarArribo("tok-2001", "P-1", { lat: -34.61, lon: -58.41 });
+    await store.marcarDescarga("tok-2001", "P-1", { lat: -34.62, lon: -58.42 });
+
+    const estado = await fetch(`${server.integracionBaseUrl}/estado?recorridoId=R-2001`, withApiKey());
+    const estadoBody = await estado.json();
+    const punto = estadoBody.recorridos[0].puntos[0];
+    assert.equal(punto.arriboLat, -34.61);
+    assert.equal(punto.arriboLon, -58.41);
+    assert.equal(punto.descargaLat, -34.62);
+    assert.equal(punto.descargaLon, -58.42);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
 test("GET /api/integracion/estado — 404 para recorrido inexistente", async () => {
   const prev = process.env.INTEGRACION_API_KEY;
   process.env.INTEGRACION_API_KEY = "test-key";
