@@ -44,8 +44,23 @@ export function iniciarReportePeriodico(token, fleteId, mqttConfig, intervaloMs)
     reportarUnaVez(token, publisher);
   }, intervaloMs);
 
+  // iOS (Safari/WebKit — Chrome en iOS usa el mismo motor por regla de
+  // Apple) pausa los timers de JS de una pestaña en segundo plano (pantalla
+  // bloqueada, cambio de app): el setInterval de arriba prácticamente no
+  // dispara mientras tanto, reproducido en vivo el 2026-08-06 (cliente MQTT
+  // conectado varios minutos sin publicar nada). Al volver a estar visible,
+  // se dispara un reporte inmediato en vez de esperar el próximo tick del
+  // timer (que además siguió corriendo "de fondo" desalineado).
+  const alCambiarVisibilidad = () => {
+    if (document.visibilityState === "visible") {
+      reportarUnaVez(token, publisher);
+    }
+  };
+  document.addEventListener("visibilitychange", alCambiarVisibilidad);
+
   return () => {
     clearInterval(timer);
+    document.removeEventListener("visibilitychange", alCambiarVisibilidad);
     publisher.cerrar();
   };
 }
