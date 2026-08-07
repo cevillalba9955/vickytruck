@@ -181,6 +181,14 @@ para esta primera versión manual, pero antes de atar esto a un trigger o a
 un job programado conviene moverla al credential store de APEX
 (`APEX_CREDENTIAL.CREATE_CREDENTIAL`) en vez de dejarla en el código fuente.
 
+`armar_payload` manda `estado: 'activo'` hardcodeado (no `V_RECORRIDOS.ESTADO`
+real) — decisión intencional (2026-08-07) para poder reactivar un recorrido
+de prueba re-sincronizándolo aunque ya haya quedado `finalizado`. Efecto
+colateral: este push nunca mueve un recorrido a "historial" en Central
+(`listarHistorial()` filtra por `estado='finalizado'`). Revisar si hace
+falta volver a leer el estado real antes de operar en serio (ver comentario
+en `armar_payload`, `integracion_cloud_api.pkb.sql`).
+
 ## Dirección inversa: leer estado (Cloud -> Oracle)
 
 `leer_estado_puntos(p_recorrido_id)` hace el camino inverso a

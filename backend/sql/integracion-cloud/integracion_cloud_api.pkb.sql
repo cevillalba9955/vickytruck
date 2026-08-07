@@ -101,6 +101,12 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
   -- 005-chofer-estados-viaje, FR-001/FR-004a. Requiere APEX_STRING (paquete
   -- estándar de APEX, ya asumido disponible por este package vía
   -- APEX_WEB_SERVICE más abajo).
+  --
+  -- Declarada en el SPEC (no solo acá en el body) A PROPÓSITO: armar_payload
+  -- la llama desde DENTRO de un SELECT (JSON_OBJECT), y el motor SQL solo
+  -- puede resolver funciones públicas del package — una función privada del
+  -- body da ORA-00904 + PLS-00231 al intentar usarla en SQL (confirmado
+  -- contra Oracle real, 2026-08-07).
   FUNCTION armar_remito_ids(p_remito_ids IN VARCHAR2) RETURN CLOB IS
     v_json CLOB;
   BEGIN
@@ -125,7 +131,19 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
     v_recorrido     CLOB;
     v_payload       CLOB;
   BEGIN
-    SELECT r.id, r.token, r.estado, r.flete_id, f.nombre
+    -- 'activo' hardcodeado A PROPÓSITO en vez de r.estado (decisión del
+    -- 2026-08-07, no un bug): sincronizar_recorrido siempre debe poder
+    -- reactivar un recorrido en el cloud, aunque V_RECORRIDOS.ESTADO ya lo
+    -- tenga como 'finalizado' por una corrida anterior — si no, volver a
+    -- sincronizar el mismo recorrido de prueba durante el desarrollo lo deja
+    -- fuera de "activos" en Central sin forma de recuperarlo desde acá.
+    -- OJO: esto significa que ESTE push nunca manda 'finalizado' — Central
+    -- solo movería un recorrido a "historial" (listarHistorial(), que filtra
+    -- por estado='finalizado') si algún otro camino llega a mandarlo. Por
+    -- ahora es aceptable porque posiblemente esto solo se usa durante
+    -- pruebas; revisar antes de operar en serio si hace falta que
+    -- sincronizar_recorrido respete el estado real cuando corresponda.
+    SELECT r.id, r.token, 'activo' estado, r.flete_id, f.nombre
       INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre
       FROM VIC.V_RECORRIDOS r
       LEFT JOIN DB_ENTIDADES.V_FLETES f ON f.id = r.flete_id
