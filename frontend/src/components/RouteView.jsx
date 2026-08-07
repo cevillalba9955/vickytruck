@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { DeliveryPointCard } from "./DeliveryPointCard.jsx";
 
 /**
@@ -21,6 +22,12 @@ export function RouteView({
   puedeCancelar,
   procesando,
 }) {
+  // FINALIZAR (US5, FR-012/FR-013): puramente client-side — el recorrido ya
+  // queda `finalizado` a nivel de datos apenas se completa el último punto
+  // (regla derivada de 001-chofer-recorrido); este estado solo controla si
+  // ya se mostró la confirmación explícita al chofer.
+  const [finalizarConfirmado, setFinalizarConfirmado] = useState(false);
+
   const puntosOrdenados = [...puntos].sort((a, b) => a.orden - b.orden);
   const recorridoFinalizado = puntosOrdenados.length > 0 && puntosOrdenados.every((p) => p.estado === "completado");
 
@@ -34,10 +41,17 @@ export function RouteView({
   );
 
   if (recorridoFinalizado) {
+    if (finalizarConfirmado) {
+      return (
+        <p className="route-view__finalizado" role="status">
+          Recorrido finalizado — todas las entregas fueron completadas.
+        </p>
+      );
+    }
     return (
-      <p className="route-view__finalizado" role="status">
-        Recorrido finalizado — todas las entregas fueron completadas.
-      </p>
+      <button type="button" className="route-view__finalizar" onClick={() => setFinalizarConfirmado(true)}>
+        FINALIZAR
+      </button>
     );
   }
 

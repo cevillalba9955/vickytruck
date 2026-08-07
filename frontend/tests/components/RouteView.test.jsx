@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RouteView } from "../../src/components/RouteView.jsx";
 
 afterEach(cleanup);
@@ -53,12 +53,6 @@ describe("RouteView — estado de viaje guiado (005-chofer-estados-viaje, US2)",
     expect(screen.getAllByRole("button", { name: "DESCARGA COMPLETA" })).toHaveLength(1);
   });
 
-  it("muestra la confirmación cuando todos los puntos están completados (FR-009 de 001-chofer-recorrido)", () => {
-    const puntos = puntosDePrueba().map((p) => ({ ...p, estado: "completado" }));
-    render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} {...handlers()} procesando={false} />);
-    expect(screen.getByRole("status")).toHaveTextContent(/recorrido finalizado/i);
-  });
-
   it("no muestra la confirmación si falta un punto por completar", () => {
     render(<RouteView puntos={puntosDePrueba()} viajeEstado="detenido" puntoActivoId={null} {...handlers()} procesando={false} />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -95,5 +89,26 @@ describe("RouteView — CANCELAR (005-chofer-estados-viaje, US4)", () => {
     const puntos = puntosDePrueba().map((p) => ({ ...p, estado: "completado" }));
     render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} puedeCancelar {...handlers()} procesando={false} />);
     expect(screen.queryByRole("button", { name: "CANCELAR" })).not.toBeInTheDocument();
+  });
+});
+
+describe("RouteView — FINALIZAR (005-chofer-estados-viaje, US5)", () => {
+  it("cuando no quedan pendientes muestra el botón FINALIZAR en vez de la lista (FR-012)", () => {
+    const puntos = puntosDePrueba().map((p) => ({ ...p, estado: "completado" }));
+    render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} {...handlers()} procesando={false} />);
+
+    expect(screen.getByRole("button", { name: "FINALIZAR" })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+  });
+
+  it("al tocar FINALIZAR muestra la confirmación de recorrido finalizado (FR-013)", () => {
+    const puntos = puntosDePrueba().map((p) => ({ ...p, estado: "completado" }));
+    render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} {...handlers()} procesando={false} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "FINALIZAR" }));
+
+    expect(screen.queryByRole("button", { name: "FINALIZAR" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/recorrido finalizado/i);
   });
 });

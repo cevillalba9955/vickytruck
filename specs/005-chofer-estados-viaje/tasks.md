@@ -172,11 +172,11 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 
 ### Tests for User Story 5
 
-- [ ] T051 [P] [US5] Component test en `frontend/tests/components/RouteView.test.jsx`: con `progreso.pendientes === 0` y `viajeEstado === 'detenido'`, muestra el botón FINALIZAR en lugar de la lista; al hacer click, muestra la confirmación
+- [X] T051 [P] [US5] Component test en `frontend/tests/components/RouteView.test.jsx`: con todos los puntos `completado`, muestra el botón FINALIZAR en lugar de la lista; al hacer click, muestra la confirmación
 
 ### Implementation for User Story 5
 
-- [ ] T052 [US5] En `frontend/src/components/RouteView.jsx`, agregar el botón FINALIZAR (visible cuando `progreso.pendientes === 0 && viajeEstado === 'detenido'`) y el mensaje de confirmación al tocarlo — puramente client-side, sin llamada nueva al backend (research.md, Decisión 2; el recorrido ya queda `finalizado` por la regla derivada existente de 001-chofer-recorrido)
+- [X] T052 [US5] En `frontend/src/components/RouteView.jsx`, agregar el botón FINALIZAR (visible cuando todos los puntos están `completado`, equivalente a `pendientes === 0 && viajeEstado === 'detenido'` dado el state-machine) y el mensaje de confirmación al tocarlo — puramente client-side (`useState` local, sin llamada nueva al backend, research.md Decisión 2) — verificado end-to-end en navegador real
 
 **Checkpoint**: las 5 historias de usuario funcionales — feature completa
 
