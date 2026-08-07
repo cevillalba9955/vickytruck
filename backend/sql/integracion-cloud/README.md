@@ -145,14 +145,19 @@ El backend cloud ya implementa su mitad del contrato para la nueva feature
 (ver `specs/005-chofer-estados-viaje/contracts/sincronizacion-oracle-central.md`
 y `research.md`, Decisiones 4-5); del lado Oracle/APEX falta:
 
-1. **`armar_payload`/`sincronizar_recorrido` debe empezar a enviar, por
-   punto**: `cliente`, `direccion`, `rangoHorario`, `notasEntrega` (strings,
-   opcionales) y `remitoIds` (array de strings, puede ser `[]`) —
-   `JSON_ARRAYAGG`/`JSON_OBJECT` en `armar_payload` (este archivo,
-   `integracion_cloud_api.pkb.sql`) necesita extenderse para incluir estas
-   columnas de `V_PUNTOS_ENTREGA` (o la vista que corresponda una vez que
-   existan del lado Oracle — hoy esa vista no las tiene, ver query de
-   `all_tab_columns` antes de tocar el package).
+1. ~~`armar_payload`/`sincronizar_recorrido` debe empezar a enviar, por
+   punto, `cliente`/`direccion`/`rangoHorario`/`notasEntrega`/`remitoIds`~~
+   — **hecho** (2026-08-07). Columnas reales confirmadas en
+   `VIC.V_PUNTOS_ENTREGA`: `CLIENTE`, `DIRECCION`, `HORARIO` (texto ya
+   formateado, ej. "09:00-12:00"), `NOTAS`, `REMITO_IDS` (ids numéricos
+   separados por coma, ej. "1001,1002", `NULL` si no hay ninguno).
+   `armar_remito_ids()` (nuevo, en `integracion_cloud_api.pkb.sql`) explota
+   `REMITO_IDS` a un JSON array de strings vía `APEX_STRING.SPLIT` — nunca
+   se manda la columna delimitada cruda. **No probado todavía contra Oracle
+   real** (a diferencia del resto del package, que sí tiene validación
+   confirmada) — antes de dar esto por cerrado, correr `sincronizar_recorrido`
+   contra un recorrido de prueba con remitos y confirmar en
+   `GET /api/central/recorridos/:id` que `remitoIds` llega como array.
 2. **`leer_estado_puntos` debe empezar a leer también `orden`** de
    `GET /api/integracion/estado` (ya lo expone, ver
    `contracts/sincronizacion-oracle-central.md` § 2) y persistirlo en
