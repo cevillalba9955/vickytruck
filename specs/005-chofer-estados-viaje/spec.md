@@ -15,22 +15,25 @@
 - Q: El botón "IR PRIMERO" mueve un punto de entrega al primer puesto. El Principio II de la constitución establece que "el orden de la lista es autoritativo y solo puede modificarse desde la Central; el chofer no puede reordenar". ¿Qué alcance tiene este reordenamiento? → A: Reordenamiento persistente — IR PRIMERO actualiza el orden autoritativo (se sincroniza hacia Oracle/Central), no solo la vista local del chofer. **Esto requiere enmendar el Principio II de la constitución** (hoy prohíbe explícitamente que el chofer reordene); ver nota en Assumptions.
 - Q: El botón "CANCELAR" debe permitir "revertir la última operación". ¿Qué se revierte exactamente y hasta cuándo puede usarse? → A: Solo antes de que la operación (evento de arribo/descarga o cambio de orden) se haya confirmado/sincronizado con éxito hacia el backend/Oracle. Una vez confirmada la sincronización, CANCELAR deja de estar disponible para esa operación.
 - Q: El nuevo estado de viaje (Manejando/Descargando/Detenido) ¿debe ser visible para Central en tiempo real, o es un estado local de la app del chofer? → A: Sí, se sincroniza a Central: el estado de viaje y el punto activo del chofer se ven en vivo desde Central, como dato adicional de seguimiento.
+- Q: ¿El remito_id debe mostrarse al chofer en la interfaz para que controle la mercadería, o es un dato interno que el sistema conserva sin exponerlo al chofer? → A: Es código interno; NO debe mostrarse al chofer en ningún momento. Se conserva únicamente para control interno de Central.
+- Q: ¿Cada punto de entrega tiene como máximo un remito_id, o puede estar asociado a varios (incluyendo ninguno)? → A: Cada punto puede tener múltiples remito_id asociados — cero, uno o más — sin límite superior definido en esta especificación.
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Ver información completa del cliente y del remito en cada punto (Priority: P1)
+### User Story 1 - Ver información completa del cliente en cada punto de entrega (Priority: P1)
 
-Al abrir su recorrido, el chofer ve para cada punto de entrega, además de la ubicación, el nombre del cliente, la dirección, el rango horario acordado para la entrega, las notas de entrega dejadas por Central y el número de remito asociado, para poder identificar y controlar la entrega sin llamar a Central.
+Al abrir su recorrido, el chofer ve para cada punto de entrega, además de la ubicación, el nombre del cliente, la dirección, el rango horario acordado para la entrega y las notas de entrega dejadas por Central, para poder identificar la entrega sin llamar a Central. El o los remito_id asociados a cada punto viajan junto con esta información pero son un dato interno de control: el sistema los recibe y conserva sin mostrarlos en ningún momento en la interfaz del chofer.
 
-**Why this priority**: Sin esta información el chofer no puede verificar que está en el destino correcto ni controlar el remito contra la mercadería física; es la base de datos que sostiene todas las demás historias de esta feature.
+**Why this priority**: Sin esta información el chofer no puede verificar que está en el destino correcto; es la base de datos que sostiene todas las demás historias de esta feature. Los remito_id, aunque no se muestran al chofer, viajan en el mismo payload y deben quedar disponibles para el control interno de Central.
 
-**Independent Test**: Se sincroniza un recorrido con puntos que incluyen cliente, dirección, rango horario, notas y remito_id; al abrir el enlace se verifica que los 5 campos se muestran correctamente por cada punto.
+**Independent Test**: Se sincroniza un recorrido con puntos que incluyen cliente, dirección, rango horario, notas y uno o más remito_id (incluyendo un punto sin ningún remito_id); al abrir el enlace se verifica que los cuatro campos visibles se muestran correctamente por cada punto y que ningún remito_id aparece en la interfaz.
 
 **Acceptance Scenarios**:
 
-1. **Given** un recorrido sincronizado desde Oracle con datos completos de cliente, dirección, rango horario, notas de entrega y remito_id por punto, **When** el chofer abre su enlace, **Then** ve esos cinco datos junto a cada punto de entrega.
+1. **Given** un recorrido sincronizado desde Oracle con datos completos de cliente, dirección, rango horario y notas de entrega por punto, **When** el chofer abre su enlace, **Then** ve esos cuatro datos junto a cada punto de entrega.
 2. **Given** un punto de entrega cuyo campo "notas de entrega" viene vacío desde Oracle, **When** el chofer lo visualiza, **Then** la app no muestra un espacio vacío confuso ni un error, sino que omite u oculta ese campo con normalidad.
-3. **Given** un remito_id provisto para un punto, **When** el chofer revisa ese punto, **Then** puede leer el número de remito con claridad para contrastarlo contra la mercadería antes de descargar.
+3. **Given** un punto de entrega con uno o más remito_id asociados, **When** el chofer revisa ese punto, **Then** no ve en ningún lugar de la pantalla el/los remito_id: son datos internos, no de cara al chofer.
+4. **Given** un punto de entrega sin ningún remito_id asociado, **When** se sincroniza el recorrido, **Then** el sistema lo acepta con normalidad, sin error ni bloqueo, igual que un punto con uno o varios remitos.
 
 ---
 
@@ -104,23 +107,25 @@ Cuando ya no quedan puntos de entrega pendientes, en lugar de la lista de pendie
 
 ### Edge Cases
 
-- ¿Qué pasa si Central sincroniza un recorrido nuevo (`sincronizar_recorrido`) mientras el chofer ya está en estado Manejando o Descargando sobre un punto? El punto activo y su estado de viaje en curso no deben perderse ni reiniciarse por la sincronización de datos informativos (cliente/dirección/rango horario/notas/remito) de otros puntos.
+- ¿Qué pasa si Central sincroniza un recorrido nuevo (`sincronizar_recorrido`) mientras el chofer ya está en estado Manejando o Descargando sobre un punto? El punto activo y su estado de viaje en curso no deben perderse ni reiniciarse por la sincronización de datos informativos (cliente/dirección/rango horario/notas/remitos) de otros puntos.
 - ¿Qué pasa si el recorrido llega con un solo punto pendiente? El chofer ve ese punto con INICIAR (sin IR PRIMERO, ya que no hay otro punto), y al completarlo pasa directo a FINALIZAR.
 - ¿Qué pasa si dos dispositivos abren el mismo enlace único? El estado de viaje activo (Detenido/Manejando/Descargando) y el punto activo deben verse igual desde ambos, igual que hoy ocurre con el estado por punto.
 - ¿Qué pasa si el chofer pierde conectividad justo al tocar LLEGUE, DESCARGA COMPLETA o CANCELAR? La acción debe comportarse igual que las acciones existentes de arribo/descarga: quedar encolada y reintentarse al recuperar señal, sin duplicarse ni perderse.
-- ¿Qué pasa si el campo remito_id, notas de entrega o rango horario no vienen en el payload de `sincronizar_recorrido` para un punto? La app debe mostrar el punto igual, omitiendo con normalidad los campos ausentes, sin bloquear ninguna acción.
+- ¿Qué pasa si la dirección, el rango horario o las notas de entrega no vienen en el payload de `sincronizar_recorrido` para un punto? La app debe mostrar el punto igual, omitiendo con normalidad los campos ausentes, sin bloquear ninguna acción.
+- ¿Qué pasa si un punto de entrega no tiene ningún remito_id asociado? Es un caso normal (lista vacía), no un error: el sistema procesa el punto igual que cualquier otro, sin mostrar ni requerir ningún remito.
 - ¿Qué pasa si el chofer toca CANCELAR sin ninguna operación previa que revertir (por ejemplo, recién abrió la app)? El botón no debe estar disponible o no debe tener efecto.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-**Información de recorrido y remito**
+**Información de recorrido y remitos (dato interno)**
 
-- **FR-001**: El sistema MUST recibir, para cada punto de entrega dentro del payload de `sincronizar_recorrido` provisto por Oracle, los campos nombre del cliente, dirección, rango horario de entrega, notas de entrega y remito_id, además de los datos ya existentes (posición, ubicación, estado).
+- **FR-001**: El sistema MUST recibir, para cada punto de entrega dentro del payload de `sincronizar_recorrido` provisto por Oracle, los campos nombre del cliente, dirección, rango horario de entrega, notas de entrega y una lista de cero o más remito_id asociados, además de los datos ya existentes (posición, ubicación, estado).
 - **FR-002**: El sistema MUST mostrar al chofer, por cada punto de entrega, el nombre del cliente, la dirección, el rango horario y las notas de entrega, de forma legible sin necesidad de navegar a otra pantalla.
-- **FR-003**: El sistema MUST mostrar el remito_id de cada punto de forma que el chofer pueda contrastarlo contra la mercadería antes de marcar la descarga como completa.
-- **FR-004**: Cuando alguno de los campos informativos (dirección, rango horario, notas de entrega, remito_id) no venga provisto para un punto, el sistema MUST mostrar el punto igualmente, omitiendo el campo ausente sin generar error ni bloquear ninguna acción sobre ese punto.
+- **FR-003**: El sistema MUST conservar el/los remito_id recibidos para cada punto como dato interno de control (uso de Central), sin mostrarlos en ningún momento ni en ninguna pantalla de la interfaz del chofer.
+- **FR-004**: Cuando alguno de los campos informativos visibles (dirección, rango horario, notas de entrega) no venga provisto para un punto, el sistema MUST mostrar el punto igualmente, omitiendo el campo ausente sin generar error ni bloquear ninguna acción sobre ese punto.
+- **FR-004a**: Un punto de entrega MAY no tener ningún remito_id asociado (lista vacía); el sistema MUST aceptar y procesar ese punto con normalidad, igual que uno con uno o más remito_id.
 
 **Estado de viaje**
 
@@ -155,7 +160,7 @@ Cuando ya no quedan puntos de entrega pendientes, en lugar de la lista de pendie
 
 ### Key Entities
 
-- **Punto de entrega (extendido)**: Además de los campos ya existentes (posición, ubicación, estado, marcas de arribo/descarga), incorpora nombre del cliente, dirección, rango horario de entrega, notas de entrega y remito_id, provistos por Oracle en el payload de `sincronizar_recorrido`.
+- **Punto de entrega (extendido)**: Además de los campos ya existentes (posición, ubicación, estado, marcas de arribo/descarga), incorpora nombre del cliente, dirección, rango horario de entrega y notas de entrega (visibles para el chofer), y una lista de cero o más remito_id (código interno, NO visible en la interfaz del chofer), todos provistos por Oracle en el payload de `sincronizar_recorrido`.
 - **Estado de viaje**: Estado operativo del recorrido activo desde la perspectiva del chofer, con valor Detenido, Manejando o Descargando, y una referencia al punto de entrega activo (relevante solo en Manejando/Descargando).
 - **Última operación (para CANCELAR)**: Registro de la operación de estado de viaje más reciente (INICIAR, LLEGUE, DESCARGA COMPLETA o IR PRIMERO) junto con la información necesaria para revertirla; se descarta o reemplaza en cuanto ocurre una nueva operación.
 
@@ -163,7 +168,7 @@ Cuando ya no quedan puntos de entrega pendientes, en lugar de la lista de pendie
 
 ### Measurable Outcomes
 
-- **SC-001**: El chofer puede identificar el cliente, la dirección, el rango horario y el remito del punto activo sin necesidad de scrollear ni cambiar de pantalla.
+- **SC-001**: El chofer puede identificar el cliente, la dirección y el rango horario del punto activo sin necesidad de scrollear ni cambiar de pantalla.
 - **SC-002**: El chofer completa el ciclo INICIAR → LLEGUE → DESCARGA COMPLETA de un punto con exactamente tres toques, sin pasos ni pantallas intermedias.
 - **SC-003**: En estado Manejando, la pantalla muestra como máximo un botón de acción habilitado (LLEGUE) a la vez, reduciendo a cero los botones de acción sobre puntos no activos.
 - **SC-004**: El chofer puede priorizar cualquier punto pendiente con IR PRIMERO y ver reflejado el cambio de orden en la lista de forma inmediata (sin recargar la página).
@@ -173,7 +178,7 @@ Cuando ya no quedan puntos de entrega pendientes, en lugar de la lista de pendie
 ## Assumptions
 
 - Esta especificación reemplaza, para la pantalla principal del chofer, el modelo de "marcado libre" de la feature 001 (cualquier punto pendiente puede marcarse arribo en cualquier momento) por el flujo guiado de un único punto activo por vez descrito aquí; el modelo de datos subyacente por punto (pendiente → arribado → completado) y los eventos que se persisten hacia Oracle no cambian de forma, solo cambia qué acciones ofrece la interfaz y cuándo.
-- Los campos nuevos de información (cliente, dirección, rango horario, notas de entrega, remito_id) son de solo lectura para el chofer: se muestran tal como los provee Oracle, sin edición desde la app del chofer.
+- Los campos nuevos de información visibles para el chofer (cliente, dirección, rango horario, notas de entrega) son de solo lectura: se muestran tal como los provee Oracle, sin edición desde la app del chofer. El/los remito_id, en cambio, no son un dato de cara al chofer: viajan en el mismo payload pero el sistema los conserva únicamente para control interno de Central, sin renderizarlos en ninguna pantalla de la app del chofer.
 - El rango horario de entrega se recibe como texto/dato ya formateado desde Oracle (por ejemplo "09:00–12:00"), sin que esta app deba validar ni calcular ventanas horarias.
 - FINALIZAR marca el cierre visible del recorrido para el chofer; el estado `finalizado` del recorrido a nivel de datos sigue derivándose de que todos los puntos estén `completado`, tal como ya define la feature 001.
 - El límite de 10 puntos por recorrido y el resto de restricciones ya vigentes (Principio VII de datos mínimos) siguen aplicando sin cambios.

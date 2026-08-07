@@ -31,5 +31,5 @@
 
 ## Notes
 
-- Las 3 clarificaciones se resolvieron en la sesión 2026-08-07 (ver spec.md § Clarifications) y quedaron incorporadas en FR-016/FR-016a, FR-020/FR-020a y FR-021.
+- Las 5 clarificaciones se resolvieron en la sesión 2026-08-07 (ver spec.md § Clarifications) y quedaron incorporadas en FR-003/FR-004a (remito_id interno, lista 0..N), FR-016/FR-016a, FR-020/FR-020a y FR-021.
 - El Principio II de la constitución se enmendó (2026-08-07, versión 3.0.0 → 4.0.0) para permitir el reordenamiento del chofer requerido por FR-016. Ya no hay bloqueantes de constitución para `/speckit-plan`.
