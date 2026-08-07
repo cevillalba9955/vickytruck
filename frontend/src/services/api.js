@@ -1,5 +1,5 @@
 import { obtenerUbicacionBestEffort } from "./geolocation.js";
-import { encolar, iniciarReintentoAutomatico } from "./offlineQueue.js";
+import { encolar, quitar, iniciarReintentoAutomatico } from "./offlineQueue.js";
 
 // Vacío en dev (el proxy de vite.config.js reenvía /api a localhost:3001);
 // en producción (Cloudflare Workers) apunta al backend real en Fly.io, ver
@@ -49,6 +49,8 @@ export function rutaAccion(item) {
       return `${base}/viaje/descarga-completa`;
     case "viaje-ir-primero":
       return `${base}/viaje/ir-primero`;
+    case "viaje-cancelar":
+      return `${base}/viaje/cancelar`;
     default:
       throw new Error(`tipo de acción offline desconocido: ${item.tipo}`);
   }
@@ -115,6 +117,25 @@ export function marcarDescargaCompleta(token) {
 /** Mueve `puntoId` (pendiente, no el primero) al frente, en Detenido (FR-014). */
 export function irPrimero(token, puntoId) {
   return enviarAccion("viaje-ir-primero", token, { puntoId });
+}
+
+/**
+ * Revierte la última operación de viaje aplicada, si el servidor todavía no
+ * la dio por sincronizada hacia Oracle (FR-017 a FR-020). No confundir con
+ * `descartarAccionEncolada`: esta llama al backend porque la operación a
+ * revertir ya fue enviada y aplicada allí.
+ */
+export function cancelarUltimaOperacion(token) {
+  return enviarAccion("viaje-cancelar", token, {});
+}
+
+/**
+ * Descarta (sin enviarla nunca) una acción que todavía está en la cola
+ * offline — CANCELAR sobre una acción que ni siquiera salió del dispositivo
+ * (FR-020a) es 100% local, no requiere ni admite respuesta del servidor.
+ */
+export function descartarAccionEncolada(id) {
+  quitar(id);
 }
 
 /**

@@ -18,6 +18,7 @@ function handlers() {
     onIrPrimero: vi.fn(),
     onLlegue: vi.fn(),
     onDescargaCompleta: vi.fn(),
+    onCancelar: vi.fn(),
   };
 }
 
@@ -61,5 +62,38 @@ describe("RouteView — estado de viaje guiado (005-chofer-estados-viaje, US2)",
   it("no muestra la confirmación si falta un punto por completar", () => {
     render(<RouteView puntos={puntosDePrueba()} viajeEstado="detenido" puntoActivoId={null} {...handlers()} procesando={false} />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
+describe("RouteView — CANCELAR (005-chofer-estados-viaje, US4)", () => {
+  it("muestra CANCELAR cuando puedeCancelar es true, en cualquiera de los 3 estados de viaje", () => {
+    const { rerender } = render(
+      <RouteView puntos={puntosDePrueba()} viajeEstado="detenido" puntoActivoId={null} puedeCancelar {...handlers()} procesando={false} />,
+    );
+    expect(screen.getByRole("button", { name: "CANCELAR" })).toBeInTheDocument();
+
+    rerender(<RouteView puntos={puntosDePrueba()} viajeEstado="manejando" puntoActivoId="p1" puedeCancelar {...handlers()} procesando={false} />);
+    expect(screen.getByRole("button", { name: "CANCELAR" })).toBeInTheDocument();
+
+    rerender(<RouteView puntos={puntosDePrueba()} viajeEstado="descargando" puntoActivoId="p1" puedeCancelar {...handlers()} procesando={false} />);
+    expect(screen.getByRole("button", { name: "CANCELAR" })).toBeInTheDocument();
+  });
+
+  it("oculta CANCELAR cuando puedeCancelar es false (FR-019)", () => {
+    render(<RouteView puntos={puntosDePrueba()} viajeEstado="detenido" puntoActivoId={null} puedeCancelar={false} {...handlers()} procesando={false} />);
+    expect(screen.queryByRole("button", { name: "CANCELAR" })).not.toBeInTheDocument();
+  });
+
+  it("llama a onCancelar al tocar el botón", () => {
+    const onCancelar = vi.fn();
+    render(<RouteView puntos={puntosDePrueba()} viajeEstado="detenido" puntoActivoId={null} puedeCancelar {...handlers()} onCancelar={onCancelar} procesando={false} />);
+    screen.getByRole("button", { name: "CANCELAR" }).click();
+    expect(onCancelar).toHaveBeenCalledTimes(1);
+  });
+
+  it("nunca muestra CANCELAR en el recorrido ya finalizado, aunque puedeCancelar sea true", () => {
+    const puntos = puntosDePrueba().map((p) => ({ ...p, estado: "completado" }));
+    render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} puedeCancelar {...handlers()} procesando={false} />);
+    expect(screen.queryByRole("button", { name: "CANCELAR" })).not.toBeInTheDocument();
   });
 });

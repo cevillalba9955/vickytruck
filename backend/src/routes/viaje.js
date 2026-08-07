@@ -56,7 +56,23 @@ export function createViajeRouter(repository) {
       if (resultado.outcome === "conflict") {
         return res.status(409).json({ error: "transicion_invalida", motivo: resultado.motivo ?? null });
       }
-      return res.status(200).json({ ok: true, puntos: resultado.puntos });
+      return res.status(200).json({ ok: true, puntos: resultado.puntos, puedeCancelar: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /api/recorridos/:token/viaje/cancelar — FR-017 a FR-020
+  router.post("/:token/viaje/cancelar", async (req, res, next) => {
+    try {
+      const resultado = await repository.cancelarUltimaOperacion(req.params.token);
+      if (resultado.outcome === "invalid_token") {
+        return res.status(404).json({ error: "enlace_invalido" });
+      }
+      if (resultado.outcome === "conflict") {
+        return res.status(409).json({ error: "nada_para_cancelar" });
+      }
+      return res.status(200).json({ viajeEstado: resultado.viajeEstado, puntoActivoId: resultado.puntoActivoId, puedeCancelar: false });
     } catch (err) {
       next(err);
     }
@@ -79,10 +95,12 @@ function responderViaje(res, resultado) {
       puntoActivoId: resultado.puntoActivoId ?? null,
     });
   }
-  // outcome === "ok"
+  // outcome === "ok" — iniciar/llegue/descarga-completa siempre dejan
+  // ultimaOperacion seteado (FR-017), así que puedeCancelar es siempre true acá.
   return res.status(200).json({
     viajeEstado: resultado.viajeEstado,
     puntoActivoId: resultado.puntoActivoId,
+    puedeCancelar: true,
     ...(resultado.punto ? { puntoEstado: resultado.punto.estado, arriboEn: resultado.punto.arriboEn, descargaEn: resultado.punto.descargaEn } : {}),
   });
 }

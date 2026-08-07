@@ -189,6 +189,11 @@ export function createIntegracionStore() {
         progreso: calcularProgreso(puntos),
         viajeEstado: r.viajeEstado,
         puntoActivoId: r.puntoActivoId,
+        // FR-019: el botón CANCELAR solo se ofrece si hay una operación
+        // reciente todavía no leída por Oracle — sobrevive a un reload de
+        // página, a diferencia de una acción encolada offline (FR-020a, que
+        // el servidor ni siquiera llegó a ver).
+        puedeCancelar: Boolean(r.ultimaOperacion && !r.ultimaOperacion.sincronizada),
       };
     },
 
@@ -216,6 +221,13 @@ export function createIntegracionStore() {
       if (!primerPendiente) {
         return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: null };
       }
+      r.ultimaOperacion = {
+        tipo: "iniciar",
+        puntoId: primerPendiente.id,
+        snapshotPrevio: { viajeEstado: "detenido", puntoActivoId: null },
+        sincronizada: false,
+        en: new Date().toISOString(),
+      };
       r.puntoActivoId = primerPendiente.id;
       r.viajeEstado = "manejando";
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
@@ -227,9 +239,17 @@ export function createIntegracionStore() {
       if (r.viajeEstado !== "manejando") {
         return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
       }
-      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, r.puntoActivoId, ubicacion, PUNTO_ESTADO_TRANSICION.arribo);
+      const puntoActivoId = r.puntoActivoId;
+      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, puntoActivoId, ubicacion, PUNTO_ESTADO_TRANSICION.arribo);
       if (resultado.outcome !== "ok") return resultado;
       r.viajeEstado = "descargando";
+      r.ultimaOperacion = {
+        tipo: "llegue",
+        puntoId: puntoActivoId,
+        snapshotPrevio: { viajeEstado: "manejando", puntoActivoId, puntoEstado: "pendiente", arriboEn: null, arriboLat: null, arriboLon: null },
+        sincronizada: false,
+        en: new Date().toISOString(),
+      };
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId, punto: resultado.punto };
     },
 
@@ -239,11 +259,61 @@ export function createIntegracionStore() {
       if (r.viajeEstado !== "descargando") {
         return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
       }
-      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, r.puntoActivoId, ubicacion, PUNTO_ESTADO_TRANSICION.descarga);
+      const puntoActivoId = r.puntoActivoId;
+      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, puntoActivoId, ubicacion, PUNTO_ESTADO_TRANSICION.descarga);
       if (resultado.outcome !== "ok") return resultado;
       r.viajeEstado = "detenido";
       r.puntoActivoId = null;
+      r.ultimaOperacion = {
+        tipo: "descarga-completa",
+        puntoId: puntoActivoId,
+        snapshotPrevio: { viajeEstado: "descargando", puntoActivoId, puntoEstado: "arribado", descargaEn: null, descargaLat: null, descargaLon: null },
+        sincronizada: false,
+        en: new Date().toISOString(),
+      };
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: null, punto: resultado.punto };
+    },
+
+    // CANCELAR (005-chofer-estados-viaje, FR-017 a FR-020): revierte
+    // `ultimaOperacion` desde su `snapshotPrevio`, solo si Oracle todavía no
+    // la leyó (`sincronizada === false`, research.md Decisión 3). No es una
+    // transición pública nueva del state-machine de puntos — es una
+    // restauración puntual acotada a la última operación.
+    async cancelarUltimaOperacion(token) {
+      const r = recorridoDeToken(recorridoPorToken, recorridos, token);
+      if (!r) return { outcome: "invalid_token" };
+      const op = r.ultimaOperacion;
+      if (!op || op.sincronizada) {
+        return { outcome: "conflict" };
+      }
+
+      if (op.tipo === "ir-primero") {
+        const ordenPorId = new Map(op.snapshotPrevio.ordenPrevio.map((x) => [x.puntoId, x.orden]));
+        for (const p of r.puntos) {
+          if (ordenPorId.has(p.id)) p.orden = ordenPorId.get(p.id);
+        }
+      } else {
+        const snap = op.snapshotPrevio;
+        r.viajeEstado = snap.viajeEstado;
+        r.puntoActivoId = snap.puntoActivoId ?? null;
+        const punto = r.puntos.find((p) => p.id === op.puntoId);
+        if (punto && snap.puntoEstado) {
+          punto.estado = snap.puntoEstado;
+          if ("arriboEn" in snap) {
+            punto.arriboEn = snap.arriboEn;
+            punto.arriboLat = snap.arriboLat;
+            punto.arriboLon = snap.arriboLon;
+          }
+          if ("descargaEn" in snap) {
+            punto.descargaEn = snap.descargaEn;
+            punto.descargaLat = snap.descargaLat;
+            punto.descargaLon = snap.descargaLon;
+          }
+        }
+      }
+
+      r.ultimaOperacion = null;
+      return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
     },
 
     // IR PRIMERO (005-chofer-estados-viaje, FR-014 a FR-016): mueve `puntoId`

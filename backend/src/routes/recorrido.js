@@ -70,6 +70,8 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
           // Estado de viaje guiado (005-chofer-estados-viaje, FR-005).
           viajeEstado: recorrido.viajeEstado ?? "detenido",
           puntoActivoId: recorrido.puntoActivoId ?? null,
+          // FR-019: visibilidad de CANCELAR persistida en el servidor.
+          puedeCancelar: recorrido.puedeCancelar ?? false,
         },
         progreso: recorrido.progreso,
         puntos: recorrido.puntos.map((p) => serializePunto(p, recorrido.puntos.length)),

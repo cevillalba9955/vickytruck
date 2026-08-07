@@ -136,6 +136,46 @@ test("US3 — IR PRIMERO sobrevive a un re-push de Oracle con el orden viejo, ha
   }
 });
 
+test("US4 — CANCELAR deja de estar disponible después de que Oracle lee el estado (GET /estado)", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(store, undefined, undefined, store);
+
+  function withApiKey(init = {}) {
+    return { ...init, headers: { "Content-Type": "application/json", "x-api-key": "test-key", ...(init.headers || {}) } };
+  }
+
+  try {
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({ source: "oracle-apex", recorridos: [{ id: "R-4", token: "tok-4", fleteId: "F-4", estado: "activo", puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] }] }),
+      }),
+    );
+
+    await fetch(`${server.baseUrl}/tok-4/viaje/iniciar`, { method: "POST" });
+
+    // Antes de que Oracle sondee: CANCELAR disponible, y el GET del chofer
+    // ya refleja puedeCancelar=true (sobrevive a un reload de página).
+    let recorrido = await (await fetch(`${server.baseUrl}/tok-4`)).json();
+    assert.equal(recorrido.recorrido.puedeCancelar, true);
+
+    // Oracle sondea (simula su próximo poll) — a partir de acá, confirmado.
+    await fetch(`${server.integracionBaseUrl}/estado?recorridoId=R-4`, withApiKey());
+
+    recorrido = await (await fetch(`${server.baseUrl}/tok-4`)).json();
+    assert.equal(recorrido.recorrido.puedeCancelar, false);
+
+    const res = await fetch(`${server.baseUrl}/tok-4/viaje/cancelar`, { method: "POST" });
+    assert.equal(res.status, 409);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
 test("US2 — LLEGUE/DESCARGA COMPLETA operan siempre sobre el punto activo, no sobre cualquier pendiente", async () => {
   const store = createIntegracionStore();
   store.upsertRecorridos([

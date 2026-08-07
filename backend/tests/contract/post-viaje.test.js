@@ -234,3 +234,114 @@ test("POST /viaje/ir-primero — 409 si el punto no está pendiente (ya arribado
     await server.cerrar();
   }
 });
+
+test("POST /viaje/cancelar — revierte INICIAR (vuelve a Detenido, sin punto activo)", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, { method: "POST" });
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/cancelar`, { method: "POST" });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.viajeEstado, "detenido");
+    assert.equal(body.puntoActivoId, null);
+
+    const recorrido = await (await fetch(`${server.baseUrl}/tok-1`)).json();
+    assert.equal(recorrido.puntos[0].estado, "pendiente");
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/cancelar — revierte LLEGUE (vuelve a Manejando, punto pendiente de nuevo)", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-1/viaje/llegue`, { method: "POST" });
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/cancelar`, { method: "POST" });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.viajeEstado, "manejando");
+    assert.equal(body.puntoActivoId, "p1");
+
+    const recorrido = await (await fetch(`${server.baseUrl}/tok-1`)).json();
+    assert.equal(recorrido.puntos[0].estado, "pendiente");
+    assert.equal(recorrido.puntos[0].arriboEn, null);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/cancelar — revierte DESCARGA COMPLETA (vuelve a Descargando, punto arribado de nuevo)", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-1/viaje/llegue`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-1/viaje/descarga-completa`, { method: "POST" });
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/cancelar`, { method: "POST" });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.viajeEstado, "descargando");
+    assert.equal(body.puntoActivoId, "p1");
+
+    const recorrido = await (await fetch(`${server.baseUrl}/tok-1`)).json();
+    assert.equal(recorrido.puntos[0].estado, "arribado");
+    assert.equal(recorrido.puntos[0].descargaEn, null);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/cancelar — revierte IR PRIMERO (restaura el orden previo)", async () => {
+  const { server } = await servidorConRecorrido([
+    { id: "p1", orden: 1, estado: "pendiente" },
+    { id: "p2", orden: 2, estado: "pendiente" },
+    { id: "p3", orden: 3, estado: "pendiente" },
+  ]);
+  try {
+    await fetch(`${server.baseUrl}/tok-1/viaje/ir-primero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntoId: "p3" }),
+    });
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/cancelar`, { method: "POST" });
+    assert.equal(res.status, 200);
+
+    const recorrido = await (await fetch(`${server.baseUrl}/tok-1`)).json();
+    assert.deepEqual(
+      recorrido.puntos.map((p) => p.id),
+      ["p1", "p2", "p3"],
+    );
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/cancelar — 409 nada_para_cancelar sin operación previa", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/cancelar`, { method: "POST" });
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).error, "nada_para_cancelar");
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/cancelar — FR-018: solo revierte la última operación, no una anterior", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-1/viaje/llegue`, { method: "POST" }); // 2da operación reemplaza a la 1ra
+
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/cancelar`, { method: "POST" });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.viajeEstado, "manejando", "cancela LLEGUE (la última), no INICIAR");
+
+    // Ya no queda nada para cancelar de nuevo.
+    const segundoCancelar = await fetch(`${server.baseUrl}/tok-1/viaje/cancelar`, { method: "POST" });
+    assert.equal(segundoCancelar.status, 409);
+  } finally {
+    await server.cerrar();
+  }
+});

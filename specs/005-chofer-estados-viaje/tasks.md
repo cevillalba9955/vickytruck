@@ -144,19 +144,19 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 
 ### Tests for User Story 4
 
-- [ ] T041 [P] [US4] Contract test en `backend/tests/contract/post-viaje.test.js`: `POST /viaje/cancelar` revierte INICIAR/LLEGUE/DESCARGA COMPLETA/IR PRIMERO cuando `ultimaOperacion.sincronizada === false`; devuelve `409 nada_para_cancelar` si no hay operación o ya está sincronizada
-- [ ] T042 [P] [US4] Integration test en `backend/tests/integration/viaje-estados-guiados.test.js`: INICIAR → CANCELAR (vuelve a `detenido`); INICIAR → LLEGUE → `GET /estado` → CANCELAR devuelve 409; una segunda operación después de la primera hace que la primera ya no sea cancelable (FR-018)
-- [ ] T043 [P] [US4] Test en `frontend/tests/services/offlineQueue.test.js` (si no existe, crear): cancelar una acción todavía en la cola offline la descarta sin enviarla a red
+- [X] T041 [P] [US4] Contract test en `backend/tests/contract/post-viaje.test.js`: `POST /viaje/cancelar` revierte INICIAR/LLEGUE/DESCARGA COMPLETA/IR PRIMERO cuando `ultimaOperacion.sincronizada === false`; devuelve `409 nada_para_cancelar` si no hay operación o ya está sincronizada
+- [X] T042 [P] [US4] Integration test en `backend/tests/integration/viaje-estados-guiados.test.js`: INICIAR → CANCELAR (vuelve a `detenido`); INICIAR → LLEGUE → `GET /estado` → CANCELAR devuelve 409; una segunda operación después de la primera hace que la primera ya no sea cancelable (FR-018, ver test de contrato dedicado)
+- [X] T043 [P] [US4] `frontend/tests/services/offlineQueue.test.js` (nuevo): `quitar(id)` descarta el ítem sin afectar a los demás ni disparar red
 
 ### Implementation for User Story 4
 
-- [ ] T044 [US4] En `backend/src/state/integracionStore.js`, agregar `snapshotPrevio` a `ultimaOperacion` en cada mutador de viaje (`iniciarViaje`/`registrarLlegue`/`registrarDescargaCompleta` de T017-T019, y `moverPrimero` de T034 ya lo hace), reemplazando cualquier `ultimaOperacion` previa (FR-018)
-- [ ] T045 [US4] En `backend/src/state/integracionStore.js`, agregar mutador `cancelarUltimaOperacion(token)`: valida `ultimaOperacion existe && !sincronizada`, restaura `viajeEstado`/`puntoActivoId`/campos del punto (o `orden`) desde `snapshotPrevio` según `ultimaOperacion.tipo`, limpia `ultimaOperacion`
-- [ ] T046 [US4] Agregar `POST /:token/viaje/cancelar` en `backend/src/routes/viaje.js` (T020)
-- [ ] T047 [US4] En `frontend/src/services/offlineQueue.js`, agregar función para descartar (sin enviar) el ítem encolado más reciente de un tipo/token dado, dado su `id` de cola
-- [ ] T048 [US4] En `frontend/src/services/api.js`, agregar `cancelarUltimaOperacion(token)`, y exponer desde cada llamada de viaje (`iniciarViaje`/`marcarLlegue`/`marcarDescargaCompleta`/`irPrimero`) el `id` de cola cuando la acción quedó encolada offline (para que CANCELAR pueda descartarla, T047)
-- [ ] T049 [US4] En `frontend/src/main.jsx`, agregar estado "última operación pendiente" (tipo + si está encolada offline o en tránsito) y handler `handleCancelar`: si está encolada offline, descarta vía T047 y revierte estado local; si no, llama a `cancelarUltimaOperacion` y aplica la respuesta (o ignora un 409, dejando el estado actual)
-- [ ] T050 [US4] En `frontend/src/components/RouteView.jsx` (o un componente nuevo `EstadoViajeBanner.jsx`), agregar el botón CANCELAR visible en los tres estados de viaje cuando hay una última operación disponible para revertir, oculto/deshabilitado en caso contrario (FR-019)
+- [X] T044 [US4] En `backend/src/state/integracionStore.js`, agregar `snapshotPrevio` a `ultimaOperacion` en cada mutador de viaje (`iniciarViaje`/`registrarLlegue`/`registrarDescargaCompleta` de T017-T019; `moverPrimero` de T034 ya lo hacía), reemplazando cualquier `ultimaOperacion` previa (FR-018)
+- [X] T045 [US4] En `backend/src/state/integracionStore.js`, agregar mutador `cancelarUltimaOperacion(token)`: valida `ultimaOperacion existe && !sincronizada`, restaura `viajeEstado`/`puntoActivoId`/campos del punto (o `orden`) desde `snapshotPrevio` según `ultimaOperacion.tipo`, limpia `ultimaOperacion` — también se agregó `puedeCancelar` a `obtenerPorToken()` (persiste el flag a través de un reload de página, distinto de una acción encolada offline)
+- [X] T046 [US4] Agregar `POST /:token/viaje/cancelar` en `backend/src/routes/viaje.js` (T020); los 3 endpoints de T020 y `ir-primero` ahora también devuelven `puedeCancelar` en su respuesta 200 (bug encontrado en verificación manual: sin esto, el botón no aparecía hasta el próximo reload)
+- [X] T047 [US4] Usa el `quitar(id)` ya existente en `frontend/src/services/offlineQueue.js` (no hizo falta función nueva); expuesto vía `descartarAccionEncolada(id)` en `api.js`
+- [X] T048 [US4] En `frontend/src/services/api.js`, agregar `cancelarUltimaOperacion(token)` y `descartarAccionEncolada(id)`; `enviarAccion` ya devolvía `id` al encolar (T024)
+- [X] T049 [US4] En `frontend/src/main.jsx`, agregar estado `ultimaAccionEncolada` (snapshot para revertir localmente si nunca salió del dispositivo) y handler `handleCancelar`: si hay acción encolada, descarta + revierte local sin red; si no, llama a `cancelarUltimaOperacion` y hace `cargarRecorrido()` completo (más simple y correcto que reconstruir a mano el revert de IR PRIMERO, que afecta varios puntos)
+- [X] T050 [US4] Botón CANCELAR en `RouteView.jsx`, visible en los 3 estados de viaje cuando `puedeCancelar` (oculto en el recorrido finalizado) — verificado end-to-end en navegador real: INICIAR→CANCELAR vuelve a Detenido; tras simular un poll de Oracle (`GET /estado`), CANCELAR desaparece
 
 **Checkpoint**: US1–US4 funcionales; el chofer puede corregir toques accidentales
 
