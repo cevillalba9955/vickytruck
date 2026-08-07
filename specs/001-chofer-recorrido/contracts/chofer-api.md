@@ -126,3 +126,15 @@ llama a este endpoint es configurable (valor por defecto: 60 segundos).
   frontend pueda distinguir "enlace inválido" de "conflicto de estado" sin parsear texto.
 - Ninguna ruta acepta reordenar puntos ni modificar `latitud`/`longitud`: esos datos son
   de solo lectura desde la perspectiva del chofer (Principio II).
+  > **Superseded parcialmente por 005-chofer-estados-viaje**: el Principio II se
+  > enmendó (v3.0.0 → v4.0.0) para permitir que el chofer mueva un punto pendiente al
+  > frente vía `IR PRIMERO` (`POST /viaje/ir-primero`, ver
+  > `specs/005-chofer-estados-viaje/contracts/chofer-viaje-api.md`); `latitud`/
+  > `longitud` siguen siendo de solo lectura sin excepción.
+
+**Superseded por 005-chofer-estados-viaje**: los endpoints `POST .../puntos/:puntoId/arribo`
+y `.../descarga` documentados arriba siguen existiendo y funcionando igual (los reusan
+internamente `POST /viaje/llegue` y `.../descarga-completa`), pero la pantalla principal
+del chofer ya no los llama directo — pasa por el flujo guiado nuevo. Ver
+`specs/005-chofer-estados-viaje/contracts/chofer-viaje-api.md` para los endpoints
+`/viaje/*` vigentes.

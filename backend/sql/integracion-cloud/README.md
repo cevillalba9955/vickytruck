@@ -139,6 +139,36 @@ END;
     `c_api_key` no coincide con la configurada en el backend
     (`INTEGRACION_API_KEY`).
 
+## Pendiente del lado Oracle para 005-chofer-estados-viaje
+
+El backend cloud ya implementa su mitad del contrato para la nueva feature
+(ver `specs/005-chofer-estados-viaje/contracts/sincronizacion-oracle-central.md`
+y `research.md`, Decisiones 4-5); del lado Oracle/APEX falta:
+
+1. **`armar_payload`/`sincronizar_recorrido` debe empezar a enviar, por
+   punto**: `cliente`, `direccion`, `rangoHorario`, `notasEntrega` (strings,
+   opcionales) y `remitoIds` (array de strings, puede ser `[]`) —
+   `JSON_ARRAYAGG`/`JSON_OBJECT` en `armar_payload` (este archivo,
+   `integracion_cloud_api.pkb.sql`) necesita extenderse para incluir estas
+   columnas de `V_PUNTOS_ENTREGA` (o la vista que corresponda una vez que
+   existan del lado Oracle — hoy esa vista no las tiene, ver query de
+   `all_tab_columns` antes de tocar el package).
+2. **`leer_estado_puntos` debe empezar a leer también `orden`** de
+   `GET /api/integracion/estado` (ya lo expone, ver
+   `contracts/sincronizacion-oracle-central.md` § 2) y persistirlo en
+   `V_PUNTOS_ENTREGA`/su tabla base **antes** del próximo
+   `sincronizar_recorrido` de ese recorrido — si no se hace esto, un
+   reordenamiento del chofer vía `IR PRIMERO` puede perderse en el primer
+   push posterior a que `sincronizar` original ya viera Oracle (research.md,
+   Decisión 4: el cloud protege el `orden` del chofer solo hasta que
+   `GET /estado` lo sirve una vez; después de eso, un push con el orden
+   viejo sí lo pisa).
+3. Sin este trabajo, `IR PRIMERO` sigue funcionando de cara al chofer
+   (persiste en el cloud, que es la fuente autoritativa del plano
+   operativo en vivo — Principio IV), pero Oracle quedaría con una
+   copia de `orden` desactualizada hasta que alguien la corrija a mano o se
+   implemente este punto.
+
 ## Pendiente antes de automatizar
 
 `c_api_key` está hardcodeada como constante en el package body — está bien

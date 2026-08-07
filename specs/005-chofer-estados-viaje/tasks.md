@@ -186,10 +186,10 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 
 **Purpose**: mejoras transversales tras completar las historias que se quieran entregar
 
-- [ ] T053 [P] Actualizar `specs/001-chofer-recorrido/data-model.md` y `specs/001-chofer-recorrido/contracts/chofer-api.md` con una nota de "superseded por 005-chofer-estados-viaje" en las secciones de marcado libre, sin borrar el histórico
-- [ ] T054 [P] Revisar `frontend/src/styles.css` para el tamaño reducido de puntos no activos (FR-008) y la variante visual del botón CANCELAR
-- [ ] T055 Correr `quickstart.md` completo de punta a punta (los 6 escenarios) contra un backend local con datos de prueba
-- [ ] T056 [P] Documentar en `backend/sql/integracion-cloud/README.md` la dependencia externa señalada en research.md (Decisión 4): el proceso Oracle/APEX debe leer `orden` de `GET /api/integracion/estado` y persistirlo en `V_PUNTOS_ENTREGA.ORDEN` antes de su próximo `sincronizar_recorrido`, y los 5 campos nuevos que `sincronizar_recorrido` debe empezar a enviar (`cliente`/`direccion`/`rangoHorario`/`notasEntrega`/`remitoIds`)
+- [X] T053 [P] Actualizar `specs/001-chofer-recorrido/data-model.md` y `specs/001-chofer-recorrido/contracts/chofer-api.md` con una nota de "superseded por 005-chofer-estados-viaje" en las secciones de marcado libre, sin borrar el histórico
+- [X] T054 [P] Revisar `frontend/src/styles.css` para el tamaño reducido de puntos no activos (FR-008) y la variante visual del botón CANCELAR — ya cubierto durante US2/US4/US5 (`.delivery-point-card--reducido`, `.route-view__cancelar`, `.route-view__finalizar`)
+- [X] T055 Corrí `quickstart.md` completo de punta a punta contra un backend local: Escenarios 1-2 y 4-5 vía navegador real (screenshots/DOM verificados), Escenario 3 (IR PRIMERO sobreviviendo un re-push y liberándose tras `GET /estado`) y Escenario 4 (CANCELAR 200 antes / 409 después de `GET /estado`) también vía curl paso a paso siguiendo el documento textualmente, Escenario 6 (Central) vía navegador — todos coinciden con lo documentado
+- [X] T056 [P] Documentado en `backend/sql/integracion-cloud/README.md` § "Pendiente del lado Oracle para 005-chofer-estados-viaje": qué campos debe enviar `sincronizar_recorrido` y que `leer_estado_puntos` debe empezar a leer `orden` y persistirlo antes del próximo push, con la consecuencia concreta si no se hace
 
 ---
 
