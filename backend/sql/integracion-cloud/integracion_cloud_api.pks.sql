@@ -19,6 +19,14 @@
 
 CREATE OR REPLACE PACKAGE VIC.INTEGRACION_CLOUD_API AS
 
+  -- Pública a propósito (no solo de uso interno del package body): una
+  -- función invocada DESDE SQL (dentro de un SELECT, como hace armar_payload
+  -- con esta) tiene que estar declarada acá, en el spec — el motor SQL no
+  -- puede resolver una función privada del body. Sin esto: ORA-00904 +
+  -- PLS-00231 "no se puede utilizar en SQL" (confirmado contra Oracle real,
+  -- 2026-08-07, ver README.md de esta carpeta).
+  FUNCTION armar_remito_ids(p_remito_ids IN VARCHAR2) RETURN CLOB;
+
   PROCEDURE sincronizar_recorrido(
     p_recorrido_id IN  NUMBER,
     p_resultado    OUT VARCHAR2,  -- 'OK' | 'ERROR'

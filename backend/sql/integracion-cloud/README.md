@@ -139,12 +139,55 @@ END;
     `c_api_key` no coincide con la configurada en el backend
     (`INTEGRACION_API_KEY`).
 
+## Pendiente del lado Oracle para 005-chofer-estados-viaje
+
+El backend cloud ya implementa su mitad del contrato para la nueva feature
+(ver `specs/005-chofer-estados-viaje/contracts/sincronizacion-oracle-central.md`
+y `research.md`, Decisiones 4-5); del lado Oracle/APEX falta:
+
+1. ~~`armar_payload`/`sincronizar_recorrido` debe empezar a enviar, por
+   punto, `cliente`/`direccion`/`rangoHorario`/`notasEntrega`/`remitoIds`~~
+   — **hecho** (2026-08-07). Columnas reales confirmadas en
+   `VIC.V_PUNTOS_ENTREGA`: `CLIENTE`, `DIRECCION`, `HORARIO` (texto ya
+   formateado, ej. "09:00-12:00"), `NOTAS`, `REMITO_IDS` (ids numéricos
+   separados por coma, ej. "1001,1002", `NULL` si no hay ninguno).
+   `armar_remito_ids()` (nuevo, en `integracion_cloud_api.pkb.sql`) explota
+   `REMITO_IDS` a un JSON array de strings vía `APEX_STRING.SPLIT` — nunca
+   se manda la columna delimitada cruda. **No probado todavía contra Oracle
+   real** (a diferencia del resto del package, que sí tiene validación
+   confirmada) — antes de dar esto por cerrado, correr `sincronizar_recorrido`
+   contra un recorrido de prueba con remitos y confirmar en
+   `GET /api/central/recorridos/:id` que `remitoIds` llega como array.
+2. **`leer_estado_puntos` debe empezar a leer también `orden`** de
+   `GET /api/integracion/estado` (ya lo expone, ver
+   `contracts/sincronizacion-oracle-central.md` § 2) y persistirlo en
+   `V_PUNTOS_ENTREGA`/su tabla base **antes** del próximo
+   `sincronizar_recorrido` de ese recorrido — si no se hace esto, un
+   reordenamiento del chofer vía `IR PRIMERO` puede perderse en el primer
+   push posterior a que `sincronizar` original ya viera Oracle (research.md,
+   Decisión 4: el cloud protege el `orden` del chofer solo hasta que
+   `GET /estado` lo sirve una vez; después de eso, un push con el orden
+   viejo sí lo pisa).
+3. Sin este trabajo, `IR PRIMERO` sigue funcionando de cara al chofer
+   (persiste en el cloud, que es la fuente autoritativa del plano
+   operativo en vivo — Principio IV), pero Oracle quedaría con una
+   copia de `orden` desactualizada hasta que alguien la corrija a mano o se
+   implemente este punto.
+
 ## Pendiente antes de automatizar
 
 `c_api_key` está hardcodeada como constante en el package body — está bien
 para esta primera versión manual, pero antes de atar esto a un trigger o a
 un job programado conviene moverla al credential store de APEX
 (`APEX_CREDENTIAL.CREATE_CREDENTIAL`) en vez de dejarla en el código fuente.
+
+`armar_payload` manda `estado: 'activo'` hardcodeado (no `V_RECORRIDOS.ESTADO`
+real) — decisión intencional (2026-08-07) para poder reactivar un recorrido
+de prueba re-sincronizándolo aunque ya haya quedado `finalizado`. Efecto
+colateral: este push nunca mueve un recorrido a "historial" en Central
+(`listarHistorial()` filtra por `estado='finalizado'`). Revisar si hace
+falta volver a leer el estado real antes de operar en serio (ver comentario
+en `armar_payload`, `integracion_cloud_api.pkb.sql`).
 
 ## Dirección inversa: leer estado (Cloud -> Oracle)
 

@@ -1,12 +1,26 @@
 -- Package BODY: INTEGRACION_CLOUD_API
 --
 -- Arma el payload de POST /api/integracion/recorridos (ver contrato en
--- specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md) leyendo
--- las vistas ya validadas contra este esquema real (mismas que usa
+-- specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md, extendido
+-- por specs/005-chofer-estados-viaje/contracts/sincronizacion-oracle-central.md)
+-- leyendo las vistas ya validadas contra este esquema real (mismas que usa
 -- RECORRIDO_API, ver recorrido_api.pkb.sql):
 --   VIC.V_RECORRIDOS(ID, TOKEN, ESTADO, FLETE_ID)
---   VIC.V_PUNTOS_ENTREGA(ID, RECORRIDO_ID, ORDEN, LATITUD, LONGITUD, ESTADO)
+--   VIC.V_PUNTOS_ENTREGA(ID, RECORRIDO_ID, ORDEN, LATITUD, LONGITUD, ESTADO,
+--                         CLIENTE, DIRECCION, HORARIO, NOTAS, REMITO_IDS)
 --   VIC.V_FLETES(ID, NOMBRE)
+--
+-- CLIENTE/DIRECCION/HORARIO/NOTAS (005-chofer-estados-viaje, FR-001/FR-002):
+-- columnas de texto, nullable — se omiten del JSON cuando vienen NULL
+-- (ABSENT ON NULL más abajo), el chofer las ve tal cual (FR-004). HORARIO ya
+-- viaja formateado como texto (ej. "09:00-12:00"); este package no arma
+-- desde/hasta.
+--
+-- REMITO_IDS (FR-001, FR-003 — dato interno, nunca lo ve el chofer): columna
+-- VARCHAR2 con ids numéricos separados por coma (ej. "1001,1002"), NULL si
+-- el punto no tiene remitos. Se explota acá a un JSON array de strings
+-- (armar_remito_ids abajo) porque el backend cloud espera `remitoIds` como
+-- lista, no como valor único — nunca se manda la columna cruda.
 --
 -- IMPORTANTE (primera versión — sincronización manual, ver README.md de esta
 -- carpeta): c_api_key queda hardcodeada acá como constante. Antes de atar esto a un
@@ -82,6 +96,31 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
       RETURN SQLERRM;
   END armar_error_encadenado;
 
+  -- Convierte la columna delimitada REMITO_IDS ("1001,1002", NULL si no hay
+  -- ninguno) en un JSON array de strings ('["1001","1002"]', '[]' si NULL) —
+  -- 005-chofer-estados-viaje, FR-001/FR-004a. Requiere APEX_STRING (paquete
+  -- estándar de APEX, ya asumido disponible por este package vía
+  -- APEX_WEB_SERVICE más abajo).
+  --
+  -- Declarada en el SPEC (no solo acá en el body) A PROPÓSITO: armar_payload
+  -- la llama desde DENTRO de un SELECT (JSON_OBJECT), y el motor SQL solo
+  -- puede resolver funciones públicas del package — una función privada del
+  -- body da ORA-00904 + PLS-00231 al intentar usarla en SQL (confirmado
+  -- contra Oracle real, 2026-08-07).
+  FUNCTION armar_remito_ids(p_remito_ids IN VARCHAR2) RETURN CLOB IS
+    v_json CLOB;
+  BEGIN
+    IF p_remito_ids IS NULL THEN
+      RETURN TO_CLOB('[]');
+    END IF;
+
+    SELECT JSON_ARRAYAGG(TRIM(COLUMN_VALUE) RETURNING CLOB)
+      INTO v_json
+      FROM TABLE(APEX_STRING.SPLIT(p_remito_ids, ','));
+
+    RETURN NVL(v_json, TO_CLOB('[]'));
+  END armar_remito_ids;
+
   FUNCTION armar_payload(p_recorrido_id IN NUMBER) RETURN CLOB IS
     v_id            NUMBER;
     v_token         VARCHAR2(64);
@@ -92,7 +131,19 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
     v_recorrido     CLOB;
     v_payload       CLOB;
   BEGIN
-    SELECT r.id, r.token, r.estado, r.flete_id, f.nombre
+    -- 'activo' hardcodeado A PROPÓSITO en vez de r.estado (decisión del
+    -- 2026-08-07, no un bug): sincronizar_recorrido siempre debe poder
+    -- reactivar un recorrido en el cloud, aunque V_RECORRIDOS.ESTADO ya lo
+    -- tenga como 'finalizado' por una corrida anterior — si no, volver a
+    -- sincronizar el mismo recorrido de prueba durante el desarrollo lo deja
+    -- fuera de "activos" en Central sin forma de recuperarlo desde acá.
+    -- OJO: esto significa que ESTE push nunca manda 'finalizado' — Central
+    -- solo movería un recorrido a "historial" (listarHistorial(), que filtra
+    -- por estado='finalizado') si algún otro camino llega a mandarlo. Por
+    -- ahora es aceptable porque posiblemente esto solo se usa durante
+    -- pruebas; revisar antes de operar en serio si hace falta que
+    -- sincronizar_recorrido respete el estado real cuando corresponda.
+    SELECT r.id, r.token, 'activo' estado, r.flete_id, f.nombre
       INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre
       FROM VIC.V_RECORRIDOS r
       LEFT JOIN DB_ENTIDADES.V_FLETES f ON f.id = r.flete_id
@@ -104,7 +155,12 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
                'orden' VALUE p.orden,
                'estado' VALUE p.estado,
                'lat' VALUE p.latitud,
-               'lon' VALUE p.longitud
+               'lon' VALUE p.longitud,
+               'cliente' VALUE p.cliente,
+               'direccion' VALUE p.direccion,
+               'rangoHorario' VALUE p.horario,
+               'notasEntrega' VALUE p.notas,
+               'remitoIds' VALUE armar_remito_ids(p.remito_ids) FORMAT JSON
                ABSENT ON NULL
              )
              ORDER BY p.orden

@@ -125,66 +125,18 @@ get_highest_from_specs() {
     echo "$highest"
 }
 
-# Function to get highest number from git branches
-get_highest_from_branches() {
-    git branch -a 2>/dev/null | sed -E 's/^[+*][[:space:]]+//; s/^[[:space:]]+//; s|^remotes/[^/]*/||' | _extract_highest_number
-}
-
-# Extract the highest sequential feature number from a list of ref names (one per line).
-_extract_highest_number() {
-    local highest=0
-    while IFS= read -r name; do
-        [ -z "$name" ] && continue
-        if echo "$name" | grep -Eq '^[0-9]{3,}-' && ! echo "$name" | grep -Eq '^[0-9]{8}-[0-9]{6}-'; then
-            number=$(echo "$name" | grep -Eo '^[0-9]+' || echo "0")
-            number=$((10#$number))
-            if [ "$number" -gt "$highest" ]; then
-                highest=$number
-            fi
-        fi
-    done
-    echo "$highest"
-}
-
-# Function to get highest number from remote branches without fetching (side-effect-free)
-get_highest_from_remote_refs() {
-    local highest=0
-
-    for remote in $(git remote 2>/dev/null); do
-        local remote_highest
-        remote_highest=$(GIT_TERMINAL_PROMPT=0 git ls-remote --heads "$remote" 2>/dev/null | sed 's|.*refs/heads/||' | _extract_highest_number)
-        if [ "$remote_highest" -gt "$highest" ]; then
-            highest=$remote_highest
-        fi
-    done
-
-    echo "$highest"
-}
-
-# Function to check existing branches and return next available number.
+# Branch numbering is derived exclusively from specs/ (the same directory
+# /speckit-specify scans to pick the next spec folder number), so the branch
+# number always matches its spec folder. Earlier revisions of this script also
+# folded in the highest number seen across local/remote git branches, which
+# let stale or renamed branches (e.g. an abandoned "005-*" branch with no
+# matching spec folder) push new branches out of sync with their spec
+# directory — that's why 005-mapa-seguimiento-central and
+# 006-chofer-estados-viaje don't match specs/004-* and specs/005-*.
 check_existing_branches() {
     local specs_dir="$1"
-    local skip_fetch="${2:-false}"
-
-    if [ "$skip_fetch" = true ]; then
-        local highest_remote=$(get_highest_from_remote_refs)
-        local highest_branch=$(get_highest_from_branches)
-        if [ "$highest_remote" -gt "$highest_branch" ]; then
-            highest_branch=$highest_remote
-        fi
-    else
-        git fetch --all --prune >/dev/null 2>&1 || true
-        local highest_branch=$(get_highest_from_branches)
-    fi
-
     local highest_spec=$(get_highest_from_specs "$specs_dir")
-
-    local max_num=$highest_branch
-    if [ "$highest_spec" -gt "$max_num" ]; then
-        max_num=$highest_spec
-    fi
-
-    echo $((max_num + 1))
+    echo $((highest_spec + 1))
 }
 
 # Function to clean and format a branch name
@@ -350,17 +302,7 @@ else
         BRANCH_NAME="${FEATURE_NUM}-${BRANCH_SUFFIX}"
     else
         if [ -z "$BRANCH_NUMBER" ]; then
-            if [ "$DRY_RUN" = true ] && [ "$HAS_GIT" = true ]; then
-                BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR" true)
-            elif [ "$DRY_RUN" = true ]; then
-                HIGHEST=$(get_highest_from_specs "$SPECS_DIR")
-                BRANCH_NUMBER=$((HIGHEST + 1))
-            elif [ "$HAS_GIT" = true ]; then
-                BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR")
-            else
-                HIGHEST=$(get_highest_from_specs "$SPECS_DIR")
-                BRANCH_NUMBER=$((HIGHEST + 1))
-            fi
+            BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR")
         fi
 
         FEATURE_NUM=$(printf "%03d" "$((10#$BRANCH_NUMBER))")
