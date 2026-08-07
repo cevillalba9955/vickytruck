@@ -9,14 +9,34 @@ function enlaceMapa(latitud, longitud) {
 }
 
 /**
- * Tarjeta de un punto de entrega. El chofer puede marcar arribo (US2) o
- * descarga completa (US3) desde acá; ambas acciones están disponibles para
- * cualquier punto pendiente/arribado, sin depender del orden de los demás
- * puntos (marcado libre, ver Clarifications de spec.md).
+ * Tarjeta de un punto de entrega. Los botones disponibles dependen del
+ * estado de viaje guiado (005-chofer-estados-viaje, US2) y del rol del
+ * punto dentro de ese estado — reemplaza el modelo de "marcado libre" de
+ * 001-chofer-recorrido (cualquier punto pendiente/arribado en cualquier
+ * momento):
+ *  - Detenido: el primer punto pendiente (`esPrimeroPendiente`) muestra
+ *    INICIAR; el resto muestra IR PRIMERO (FR-006, FR-014).
+ *  - Manejando/Descargando: solo el punto activo (`esActivo`) muestra
+ *    LLEGUE/DESCARGA COMPLETA; los demás pendientes se renderizan
+ *    `reducido` (desactivados y en tamaño menor, FR-008).
  */
-export function DeliveryPointCard({ punto, onMarcarArribo, onMarcarDescarga, procesando }) {
+export function DeliveryPointCard({
+  punto,
+  viajeEstado,
+  esPrimeroPendiente = false,
+  esActivo = false,
+  reducido = false,
+  onIniciar = () => {},
+  onIrPrimero = () => {},
+  onLlegue = () => {},
+  onDescargaCompleta = () => {},
+  procesando,
+}) {
+  const clases = ["delivery-point-card"];
+  if (reducido) clases.push("delivery-point-card--reducido");
+
   return (
-    <li className="delivery-point-card" data-estado={punto.estado} aria-busy={procesando || undefined}>
+    <li className={clases.join(" ")} data-estado={punto.estado} aria-busy={procesando || undefined}>
       <div className="delivery-point-card__header">
         <span className="delivery-point-card__orden">
           {punto.orden} de {punto.totalPuntos}
@@ -24,19 +44,21 @@ export function DeliveryPointCard({ punto, onMarcarArribo, onMarcarDescarga, pro
         <span className="delivery-point-card__estado">{ETIQUETAS_ESTADO[punto.estado] ?? punto.estado}</span>
       </div>
 
-      <a
-        className="delivery-point-card__ubicacion"
-        href={enlaceMapa(punto.latitud, punto.longitud)}
-        target="_blank"
-        rel="noreferrer"
-      >
-        Ver ubicación en el mapa
-      </a>
+      {!reducido && (
+        <a
+          className="delivery-point-card__ubicacion"
+          href={enlaceMapa(punto.latitud, punto.longitud)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Ver ubicación en el mapa
+        </a>
+      )}
 
       {/* Info provista por Central vía sincronizar_recorrido (005-chofer-estados-viaje,
           FR-002). Cada campo se omite con normalidad si no vino (FR-004);
           remitoIds NUNCA llega hasta acá — ver serializePunto en recorrido.js (FR-003). */}
-      {(punto.cliente || punto.direccion || punto.rangoHorario || punto.notasEntrega) && (
+      {!reducido && (punto.cliente || punto.direccion || punto.rangoHorario || punto.notasEntrega) && (
         <dl className="delivery-point-card__info">
           {punto.cliente && (
             <div className="delivery-point-card__info-fila">
@@ -65,19 +87,31 @@ export function DeliveryPointCard({ punto, onMarcarArribo, onMarcarDescarga, pro
         </dl>
       )}
 
-      <div className="delivery-point-card__acciones">
-        {punto.estado === "pendiente" && (
-          <button type="button" disabled={procesando} onClick={() => onMarcarArribo(punto.id)}>
-            Llegué
-          </button>
-        )}
-        {punto.estado === "arribado" && (
-          <button type="button" disabled={procesando} onClick={() => onMarcarDescarga(punto.id)}>
-            Descarga completa
-          </button>
-        )}
-        {punto.estado === "completado" && <span className="delivery-point-card__ok">Completado ✓</span>}
-      </div>
+      {!reducido && (
+        <div className="delivery-point-card__acciones">
+          {viajeEstado === "detenido" && esPrimeroPendiente && (
+            <button type="button" disabled={procesando} onClick={onIniciar}>
+              INICIAR
+            </button>
+          )}
+          {viajeEstado === "detenido" && !esPrimeroPendiente && (
+            <button type="button" disabled={procesando} onClick={() => onIrPrimero(punto.id)}>
+              IR PRIMERO
+            </button>
+          )}
+          {viajeEstado === "manejando" && esActivo && (
+            <button type="button" disabled={procesando} onClick={onLlegue}>
+              LLEGUE
+            </button>
+          )}
+          {viajeEstado === "descargando" && esActivo && (
+            <button type="button" disabled={procesando} onClick={onDescargaCompleta}>
+              DESCARGA COMPLETA
+            </button>
+          )}
+          {punto.estado === "completado" && <span className="delivery-point-card__ok">Completado ✓</span>}
+        </div>
+      )}
     </li>
   );
 }

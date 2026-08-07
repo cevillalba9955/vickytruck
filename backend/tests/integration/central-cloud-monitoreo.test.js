@@ -37,7 +37,10 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
               fleteId: "F-77",
               fleteNombre: "Roberto Gómez",
               estado: "activo",
-              puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41 }],
+              puntos: [
+                { id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41 },
+                { id: "p2", orden: 2, estado: "pendiente", lat: -34.62, lon: -58.42 },
+              ],
             },
           ],
         }),
@@ -62,6 +65,14 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
     // FR-006) — topología fija, no el GPS de auditoría del evento arribo.
     assert.equal(detalle.puntos[0].lat, -34.61);
     assert.equal(detalle.puntos[0].lon, -58.41);
+
+    // 6. Central ve el estado de viaje del chofer en (casi) tiempo real, vía
+    // el mismo polling (005-chofer-estados-viaje, FR-021). p1 ya está
+    // "arribado" (paso 3), así que INICIAR activa p2, el único pendiente.
+    await fetch(`${server.baseUrl}/tok-central-e2e/viaje/iniciar`, { method: "POST" });
+    const activosTrasIniciar = await (await fetch(`${server.centralBaseUrl}/recorridos/activos`)).json();
+    assert.equal(activosTrasIniciar.recorridos[0].viajeEstado, "manejando");
+    assert.equal(activosTrasIniciar.recorridos[0].puntoActivoId, "p2");
   } finally {
     process.env.INTEGRACION_API_KEY = prev;
     await server.cerrar();

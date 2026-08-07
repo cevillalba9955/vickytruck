@@ -21,19 +21,12 @@ function puntoDePrueba(overrides = {}) {
 
 describe("DeliveryPointCard — información de recorrido (005-chofer-estados-viaje, US1)", () => {
   it("muestra cliente, dirección, rango horario y notas de entrega cuando están presentes (FR-002)", () => {
-    render(
-      <DeliveryPointCard
-        punto={puntoDePrueba({
-          cliente: "Distribuidora Sur SRL",
-          direccion: "Av. Rivadavia 1234, CABA",
-          rangoHorario: "09:00–12:00",
-          notasEntrega: "Tocar timbre de depósito",
-        })}
-        onMarcarArribo={vi.fn()}
-        onMarcarDescarga={vi.fn()}
-        procesando={false}
-      />,
-    );
+    render(<DeliveryPointCard punto={puntoDePrueba({
+      cliente: "Distribuidora Sur SRL",
+      direccion: "Av. Rivadavia 1234, CABA",
+      rangoHorario: "09:00–12:00",
+      notasEntrega: "Tocar timbre de depósito",
+    })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
 
     expect(screen.getByText("Distribuidora Sur SRL")).toBeInTheDocument();
     expect(screen.getByText("Av. Rivadavia 1234, CABA")).toBeInTheDocument();
@@ -45,8 +38,8 @@ describe("DeliveryPointCard — información de recorrido (005-chofer-estados-vi
     const { container } = render(
       <DeliveryPointCard
         punto={puntoDePrueba({ cliente: "Cliente B", rangoHorario: null, notasEntrega: null })}
-        onMarcarArribo={vi.fn()}
-        onMarcarDescarga={vi.fn()}
+        viajeEstado="detenido"
+        esPrimeroPendiente
         procesando={false}
       />,
     );
@@ -58,22 +51,59 @@ describe("DeliveryPointCard — información de recorrido (005-chofer-estados-vi
   });
 
   it("no renderiza ningún bloque de información cuando el punto no trae ningún campo informativo", () => {
-    const { container } = render(
-      <DeliveryPointCard punto={puntoDePrueba()} onMarcarArribo={vi.fn()} onMarcarDescarga={vi.fn()} procesando={false} />,
-    );
+    const { container } = render(<DeliveryPointCard punto={puntoDePrueba()} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
     expect(container.querySelector(".delivery-point-card__info")).not.toBeInTheDocument();
   });
 
   it("nunca renderiza remitoIds aunque el objeto punto lo traiga (FR-003, defensa en profundidad de UI)", () => {
     const { container } = render(
-      <DeliveryPointCard
-        punto={puntoDePrueba({ cliente: "Cliente C", remitoIds: ["R-1", "R-2"] })}
-        onMarcarArribo={vi.fn()}
-        onMarcarDescarga={vi.fn()}
-        procesando={false}
-      />,
+      <DeliveryPointCard punto={puntoDePrueba({ cliente: "Cliente C", remitoIds: ["R-1", "R-2"] })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />,
     );
 
     expect(container.textContent).not.toMatch(/remito/i);
+  });
+});
+
+describe("DeliveryPointCard — botones según estado de viaje (005-chofer-estados-viaje, US2)", () => {
+  it("Detenido + primer pendiente: muestra INICIAR y no IR PRIMERO", () => {
+    const onIniciar = vi.fn();
+    render(<DeliveryPointCard punto={puntoDePrueba()} viajeEstado="detenido" esPrimeroPendiente onIniciar={onIniciar} procesando={false} />);
+
+    const boton = screen.getByRole("button", { name: "INICIAR" });
+    expect(screen.queryByRole("button", { name: "IR PRIMERO" })).not.toBeInTheDocument();
+    boton.click();
+    expect(onIniciar).toHaveBeenCalledTimes(1);
+  });
+
+  it("Detenido + no es el primero: muestra IR PRIMERO con el id del punto", () => {
+    const onIrPrimero = vi.fn();
+    render(<DeliveryPointCard punto={puntoDePrueba({ id: "p7" })} viajeEstado="detenido" esPrimeroPendiente={false} onIrPrimero={onIrPrimero} procesando={false} />);
+
+    expect(screen.queryByRole("button", { name: "INICIAR" })).not.toBeInTheDocument();
+    screen.getByRole("button", { name: "IR PRIMERO" }).click();
+    expect(onIrPrimero).toHaveBeenCalledWith("p7");
+  });
+
+  it("Manejando + activo: muestra LLEGUE", () => {
+    const onLlegue = vi.fn();
+    render(<DeliveryPointCard punto={puntoDePrueba()} viajeEstado="manejando" esActivo onLlegue={onLlegue} procesando={false} />);
+    screen.getByRole("button", { name: "LLEGUE" }).click();
+    expect(onLlegue).toHaveBeenCalledTimes(1);
+  });
+
+  it("Manejando + no activo (reducido): no muestra ningún botón ni info", () => {
+    const { container } = render(
+      <DeliveryPointCard punto={puntoDePrueba({ cliente: "Cliente D" })} viajeEstado="manejando" esActivo={false} reducido procesando={false} />,
+    );
+    expect(container.querySelector(".delivery-point-card__acciones")).not.toBeInTheDocument();
+    expect(container.querySelector(".delivery-point-card__info")).not.toBeInTheDocument();
+    expect(container.querySelector(".delivery-point-card--reducido")).toBeInTheDocument();
+  });
+
+  it("Descargando + activo: muestra DESCARGA COMPLETA", () => {
+    const onDescargaCompleta = vi.fn();
+    render(<DeliveryPointCard punto={puntoDePrueba()} viajeEstado="descargando" esActivo onDescargaCompleta={onDescargaCompleta} procesando={false} />);
+    screen.getByRole("button", { name: "DESCARGA COMPLETA" }).click();
+    expect(onDescargaCompleta).toHaveBeenCalledTimes(1);
   });
 });

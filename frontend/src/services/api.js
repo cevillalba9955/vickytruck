@@ -32,26 +32,43 @@ export async function obtenerRecorrido(token) {
   return res.json();
 }
 
-function rutaEvento(token, puntoId, tipo) {
-  return `${BASE_URL}/${encodeURIComponent(token)}/puntos/${encodeURIComponent(puntoId)}/${tipo}`;
+// Construye la URL de cada tipo de acción encolable (005-chofer-estados-viaje)
+// — se usa tanto al enviar en el momento como al reintentar desde la cola
+// offline (FR-010 de 001-chofer-recorrido, FR-020a de esta feature).
+export function rutaAccion(item) {
+  const base = `${BASE_URL}/${encodeURIComponent(item.token)}`;
+  switch (item.tipo) {
+    case "arribo":
+    case "descarga":
+      return `${base}/puntos/${encodeURIComponent(item.puntoId)}/${item.tipo}`;
+    case "viaje-iniciar":
+      return `${base}/viaje/iniciar`;
+    case "viaje-llegue":
+      return `${base}/viaje/llegue`;
+    case "viaje-descarga-completa":
+      return `${base}/viaje/descarga-completa`;
+    default:
+      throw new Error(`tipo de acción offline desconocido: ${item.tipo}`);
+  }
 }
 
-async function enviarEvento(tipo, token, puntoId) {
-  const ubicacion = await obtenerUbicacionBestEffort();
+async function enviarAccion(tipo, token, { puntoId, conUbicacion = false } = {}) {
+  const ubicacion = conUbicacion ? await obtenerUbicacionBestEffort() : null;
   const body = JSON.stringify(ubicacion ? { lat: ubicacion.lat, lon: ubicacion.lon } : {});
+  const item = { tipo, token, puntoId, ubicacion };
 
   let res;
   try {
-    res = await fetch(rutaEvento(token, puntoId, tipo), {
+    res = await fetch(rutaAccion(item), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
     });
   } catch {
-    // Fallo de red (offline): encolar para reintento automático (FR-010),
-    // sin bloquear ni marcar la acción como error para el chofer.
-    encolar({ tipo, token, puntoId, ubicacion });
-    return { queued: true };
+    // Fallo de red (offline): encolar para reintento automático, sin
+    // bloquear ni marcar la acción como error para el chofer.
+    const id = encolar(item);
+    return { queued: true, id };
   }
 
   if (!res.ok) {
@@ -61,14 +78,29 @@ async function enviarEvento(tipo, token, puntoId) {
   return { queued: false, data: await res.json() };
 }
 
-/** Marca "arribo" sobre un punto (US2). No exige orden entre puntos. */
+/** Marca "arribo" sobre un punto directo (no vía el flujo guiado). */
 export function marcarArribo(token, puntoId) {
-  return enviarEvento("arribo", token, puntoId);
+  return enviarAccion("arribo", token, { puntoId, conUbicacion: true });
 }
 
-/** Marca "descarga completa" sobre un punto (US3). Requiere arribo previo. */
+/** Marca "descarga completa" sobre un punto directo (no vía el flujo guiado). */
 export function marcarDescarga(token, puntoId) {
-  return enviarEvento("descarga", token, puntoId);
+  return enviarAccion("descarga", token, { puntoId, conUbicacion: true });
+}
+
+/** Detenido -> Manejando sobre el primer punto pendiente (FR-007). */
+export function iniciarViaje(token) {
+  return enviarAccion("viaje-iniciar", token, {});
+}
+
+/** Manejando -> Descargando; marca arribo sobre el punto activo (FR-008, FR-009). */
+export function marcarLlegue(token) {
+  return enviarAccion("viaje-llegue", token, { conUbicacion: true });
+}
+
+/** Descargando -> Detenido; marca descarga sobre el punto activo (FR-010, FR-011). */
+export function marcarDescargaCompleta(token) {
+  return enviarAccion("viaje-descarga-completa", token, { conUbicacion: true });
 }
 
 /**
@@ -77,7 +109,7 @@ export function marcarDescarga(token, puntoId) {
  */
 export function iniciarSincronizacionOffline() {
   return iniciarReintentoAutomatico(async (item) => {
-    const res = await fetch(rutaEvento(item.token, item.puntoId, item.tipo), {
+    const res = await fetch(rutaAccion(item), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(item.ubicacion ? { lat: item.ubicacion.lat, lon: item.ubicacion.lon } : {}),

@@ -67,6 +67,9 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
           fleteId: recorrido.fleteId ?? null,
           intervaloUbicacionMs: intervaloReporteUbicacionMs(),
           mqtt: mqttConfigPara(recorrido.fleteId),
+          // Estado de viaje guiado (005-chofer-estados-viaje, FR-005).
+          viajeEstado: recorrido.viajeEstado ?? "detenido",
+          puntoActivoId: recorrido.puntoActivoId ?? null,
         },
         progreso: recorrido.progreso,
         puntos: recorrido.puntos.map((p) => serializePunto(p, recorrido.puntos.length)),

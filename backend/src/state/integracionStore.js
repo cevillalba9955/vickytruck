@@ -192,6 +192,52 @@ export function createIntegracionStore() {
       return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, PUNTO_ESTADO_TRANSICION.descarga);
     },
 
+    // Estado de viaje guiado (005-chofer-estados-viaje, FR-005 a FR-013):
+    // Detenido -> (iniciarViaje) -> Manejando -> (registrarLlegue) ->
+    // Descargando -> (registrarDescargaCompleta) -> Detenido. Gating
+    // server-side (research.md, Decisión 7): cada mutador valida su propio
+    // `viajeEstado` de origen antes de aplicar nada, igual que ya hace
+    // `transicionarPunto` con el estado por punto.
+    async iniciarViaje(token) {
+      const r = recorridoDeToken(recorridoPorToken, recorridos, token);
+      if (!r) return { outcome: "invalid_token" };
+      if (r.viajeEstado !== "detenido") {
+        return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
+      }
+      const primerPendiente = [...r.puntos].filter((p) => p.estado === "pendiente").sort((a, b) => a.orden - b.orden)[0];
+      if (!primerPendiente) {
+        return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: null };
+      }
+      r.puntoActivoId = primerPendiente.id;
+      r.viajeEstado = "manejando";
+      return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
+    },
+
+    async registrarLlegue(token, ubicacion) {
+      const r = recorridoDeToken(recorridoPorToken, recorridos, token);
+      if (!r) return { outcome: "invalid_token" };
+      if (r.viajeEstado !== "manejando") {
+        return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
+      }
+      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, r.puntoActivoId, ubicacion, PUNTO_ESTADO_TRANSICION.arribo);
+      if (resultado.outcome !== "ok") return resultado;
+      r.viajeEstado = "descargando";
+      return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId, punto: resultado.punto };
+    },
+
+    async registrarDescargaCompleta(token, ubicacion) {
+      const r = recorridoDeToken(recorridoPorToken, recorridos, token);
+      if (!r) return { outcome: "invalid_token" };
+      if (r.viajeEstado !== "descargando") {
+        return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
+      }
+      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, r.puntoActivoId, ubicacion, PUNTO_ESTADO_TRANSICION.descarga);
+      if (resultado.outcome !== "ok") return resultado;
+      r.viajeEstado = "detenido";
+      r.puntoActivoId = null;
+      return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: null, punto: resultado.punto };
+    },
+
     // Contrato compatible con `repository` de createCentralRouter (ver
     // backend/tests/helpers/inMemoryCentralRepository.js): Central en cloud
     // es de solo lectura (la asignación de flete ocurre en Oracle/APEX antes
@@ -207,6 +253,11 @@ export function createIntegracionStore() {
           flete: { id: r.fleteId, nombre: r.fleteNombre },
           progreso: calcularProgreso(r.puntos),
           ultimaUbicacion: resolverUbicacion({ enMemoria: r.ultimaUbicacion, respaldoOracle: null, staleMs, ahora }),
+          // Visible para Central en (casi) tiempo real vía el mismo polling
+          // ya existente (005-chofer-estados-viaje, FR-021 — research.md,
+          // Decisión 6: sin tópico MQTT nuevo).
+          viajeEstado: r.viajeEstado,
+          puntoActivoId: r.puntoActivoId,
         });
       }
       return resultado;
@@ -256,6 +307,11 @@ function serializarPuntosCentral(puntos) {
     .sort((a, b) => a.orden - b.orden);
 }
 
+function recorridoDeToken(recorridoPorToken, recorridos, token) {
+  const id = recorridoPorToken.get(token);
+  return id ? recorridos.get(id) : null;
+}
+
 function serializarPuntoTransicion(punto) {
   return {
     id: punto.id,
@@ -274,8 +330,7 @@ function serializarPuntoTransicion(punto) {
 // Solo se captura en la transición real, no en repeticiones idempotentes, para
 // no pisar el primer registro con una posición GPS posterior.
 function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, { estadoOrigen, estadoDestino, estadoIdempotente, campoTimestamp, campoLat, campoLon }) {
-  const id = recorridoPorToken.get(token);
-  const r = id ? recorridos.get(id) : null;
+  const r = recorridoDeToken(recorridoPorToken, recorridos, token);
   if (!r) return { outcome: "invalid_token" };
   const punto = r.puntos.find((p) => p.id === String(puntoId));
   if (!punto) return { outcome: "not_found" };

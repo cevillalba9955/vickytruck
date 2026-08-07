@@ -1,32 +1,64 @@
 import { DeliveryPointCard } from "./DeliveryPointCard.jsx";
 
 /**
- * Lista ordenada de los puntos de entrega del recorrido (US1), con las
- * acciones de marcado (US2/US3) y la confirmación de recorrido finalizado
- * (FR-009) cuando todos los puntos quedan "completado".
+ * Vista del recorrido guiada por el estado de viaje (005-chofer-estados-viaje,
+ * US2): en Detenido muestra la lista completa de puntos pendientes (el
+ * primero con INICIAR, el resto con IR PRIMERO — FR-006); en Manejando o
+ * Descargando muestra el punto activo destacado y el resto de pendientes
+ * reducidos (FR-008). Reemplaza el modelo de "marcado libre" de
+ * 001-chofer-recorrido, que mostraba todos los puntos con sus botones de
+ * arribo/descarga simultáneamente sin importar el orden.
  */
-export function RouteView({ puntos, onMarcarArribo, onMarcarDescarga, procesandoPuntoId }) {
+export function RouteView({ puntos, viajeEstado, puntoActivoId, onIniciar, onIrPrimero, onLlegue, onDescargaCompleta, procesando }) {
   const puntosOrdenados = [...puntos].sort((a, b) => a.orden - b.orden);
   const recorridoFinalizado = puntosOrdenados.length > 0 && puntosOrdenados.every((p) => p.estado === "completado");
 
-  return (
-    <section className="route-view">
-      {recorridoFinalizado && (
-        <p className="route-view__finalizado" role="status">
-          Recorrido finalizado — todas las entregas fueron completadas.
-        </p>
-      )}
+  if (recorridoFinalizado) {
+    return (
+      <p className="route-view__finalizado" role="status">
+        Recorrido finalizado — todas las entregas fueron completadas.
+      </p>
+    );
+  }
+
+  if (viajeEstado !== "manejando" && viajeEstado !== "descargando") {
+    const pendientes = puntosOrdenados.filter((p) => p.estado === "pendiente");
+    return (
       <ul className="route-view__lista">
-        {puntosOrdenados.map((punto) => (
+        {pendientes.map((punto, index) => (
           <DeliveryPointCard
             key={punto.id}
             punto={punto}
-            onMarcarArribo={onMarcarArribo}
-            onMarcarDescarga={onMarcarDescarga}
-            procesando={procesandoPuntoId === punto.id}
+            viajeEstado="detenido"
+            esPrimeroPendiente={index === 0}
+            onIniciar={onIniciar}
+            onIrPrimero={onIrPrimero}
+            procesando={procesando}
           />
         ))}
       </ul>
-    </section>
+    );
+  }
+
+  const activo = puntosOrdenados.find((p) => p.id === puntoActivoId);
+  const otrosPendientes = puntosOrdenados.filter((p) => p.estado === "pendiente" && p.id !== puntoActivoId);
+
+  return (
+    <ul className="route-view__lista">
+      {activo && (
+        <DeliveryPointCard
+          key={activo.id}
+          punto={activo}
+          viajeEstado={viajeEstado}
+          esActivo
+          onLlegue={onLlegue}
+          onDescargaCompleta={onDescargaCompleta}
+          procesando={procesando}
+        />
+      )}
+      {otrosPendientes.map((punto) => (
+        <DeliveryPointCard key={punto.id} punto={punto} viajeEstado={viajeEstado} reducido procesando={procesando} />
+      ))}
+    </ul>
   );
 }
