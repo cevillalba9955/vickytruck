@@ -34,7 +34,9 @@ function calcularProgreso(puntos) {
 }
 
 // El chofer ya avanzó este punto (arribado/completado): el próximo push de
-// Oracle no debe pisar ese progreso, solo refrescar la topología (orden/lat/lon).
+// Oracle no debe pisar ese progreso, solo refrescar la topología
+// (orden/lat/lon) y los campos informativos (005-chofer-estados-viaje,
+// FR-001/FR-004), que no son datos de progreso y siempre pueden actualizarse.
 function mergearPunto(entrante, previo) {
   if (previo && (previo.estado === "arribado" || previo.estado === "completado")) {
     return {
@@ -42,6 +44,7 @@ function mergearPunto(entrante, previo) {
       orden: Number(entrante.orden),
       lat: entrante.lat ?? previo.lat,
       lon: entrante.lon ?? previo.lon,
+      ...camposInformativos(entrante, previo),
     };
   }
   return {
@@ -56,6 +59,20 @@ function mergearPunto(entrante, previo) {
     descargaLon: entrante.descargaLon ?? null,
     lat: entrante.lat ?? null,
     lon: entrante.lon ?? null,
+    ...camposInformativos(entrante, previo),
+  };
+}
+
+// Campos de solo lectura para el chofer (005-chofer-estados-viaje, FR-002):
+// cliente/dirección/rango horario/notas visibles, remitoIds interno (FR-003,
+// nunca se sirve al chofer — ver serializePunto en routes/recorrido.js).
+function camposInformativos(entrante, previo) {
+  return {
+    cliente: entrante.cliente ?? previo?.cliente ?? null,
+    direccion: entrante.direccion ?? previo?.direccion ?? null,
+    rangoHorario: entrante.rangoHorario ?? previo?.rangoHorario ?? null,
+    notasEntrega: entrante.notasEntrega ?? previo?.notasEntrega ?? null,
+    remitoIds: Array.isArray(entrante.remitoIds) ? entrante.remitoIds : previo?.remitoIds ?? [],
   };
 }
 
@@ -92,6 +109,12 @@ export function createIntegracionStore() {
           updatedAt: raw.updatedAt || new Date().toISOString(),
           puntos: puntosEntrantes.map((p) => mergearPunto(p, puntosPreviosPorId.get(String(p.id)))),
           ultimaUbicacion: previo?.ultimaUbicacion ?? null,
+          // Estado de viaje del chofer (005-chofer-estados-viaje): por defecto
+          // "detenido" en un recorrido nuevo; se preserva en cada re-push
+          // (mismo criterio que el resto de campos de progreso, no de topología).
+          viajeEstado: previo?.viajeEstado ?? "detenido",
+          puntoActivoId: previo?.puntoActivoId ?? null,
+          ultimaOperacion: previo?.ultimaOperacion ?? null,
         };
 
         indexarRecorrido(normalizado);
@@ -139,9 +162,26 @@ export function createIntegracionStore() {
           estado: p.estado,
           arriboEn: p.arriboEn,
           descargaEn: p.descargaEn,
+          // Campos informativos visibles para el chofer (005-chofer-estados-viaje,
+          // FR-002). `remitoIds` NUNCA se incluye acá a propósito (FR-003): este
+          // es el único contrato que alimenta la respuesta del chofer
+          // (routes/recorrido.js), así que omitirlo acá es la garantía real de
+          // que no llegue a esa pantalla, no solo que la UI no lo renderice.
+          cliente: p.cliente,
+          direccion: p.direccion,
+          rangoHorario: p.rangoHorario,
+          notasEntrega: p.notasEntrega,
         }))
         .sort((a, b) => a.orden - b.orden);
-      return { id: r.id, fleteId: r.fleteId, estado: r.estado, puntos, progreso: calcularProgreso(puntos) };
+      return {
+        id: r.id,
+        fleteId: r.fleteId,
+        estado: r.estado,
+        puntos,
+        progreso: calcularProgreso(puntos),
+        viajeEstado: r.viajeEstado,
+        puntoActivoId: r.puntoActivoId,
+      };
     },
 
     async marcarArribo(token, puntoId, ubicacion) {
@@ -208,6 +248,10 @@ function serializarPuntosCentral(puntos) {
       estado: p.estado,
       arriboEn: p.arriboEn,
       descargaEn: p.descargaEn,
+      // remitoIds SÍ es visible para Central (005-chofer-estados-viaje,
+      // FR-003 — "control interno"), a diferencia de serializePunto en
+      // routes/recorrido.js (chofer), que lo omite a propósito.
+      remitoIds: p.remitoIds ?? [],
     }))
     .sort((a, b) => a.orden - b.orden);
 }

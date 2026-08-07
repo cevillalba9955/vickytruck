@@ -30,7 +30,7 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 
 **Purpose**: Sin proyecto/dependencias nuevas que inicializar (research.md: cero dependencias nuevas). Solo confirmar línea base antes de tocar código compartido.
 
-- [ ] T001 Correr `cd backend && npm test`, `cd frontend && npm test`, `cd central && npm test` y confirmar que los tres suites pasan en verde antes de empezar (línea base pre-feature)
+- [X] T001 Correr `cd backend && npm test`, `cd frontend && npm test`, `cd central && npm test` y confirmar que los tres suites pasan en verde antes de empezar (línea base pre-feature) — 84/84, 10/10, 15/15
 
 ---
 
@@ -40,9 +40,9 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 
 **⚠️ CRITICAL**: ningún trabajo de historia de usuario empieza hasta completar esta fase
 
-- [ ] T002 En `backend/src/state/integracionStore.js`, extender `mergearPunto()` para aceptar y conservar `cliente`, `direccion`, `rangoHorario`, `notasEntrega` (string\|null) y `remitoIds` (string[], default `[]`) por punto, tal como llegan del payload de `sincronizar_recorrido` (ver data-model.md § PuntoEntrega)
-- [ ] T003 En `backend/src/state/integracionStore.js`, extender `upsertRecorridos()`/`indexarRecorrido()` para inicializar en cada recorrido nuevo `viajeEstado: 'detenido'`, `puntoActivoId: null`, `ultimaOperacion: null` (preservar los valores existentes en upserts posteriores del mismo recorrido, igual que ya hace con `estado`/`token`, ver data-model.md § Recorrido)
-- [ ] T004 [P] Actualizar `backend/tests/unit/integracion-store.test.js` con casos para T002/T003: upsert con campos informativos completos, con `remitoIds: []`/ausente, y con valores por defecto de `viajeEstado`/`puntoActivoId`/`ultimaOperacion` en un recorrido recién creado
+- [X] T002 En `backend/src/state/integracionStore.js`, extender `mergearPunto()` para aceptar y conservar `cliente`, `direccion`, `rangoHorario`, `notasEntrega` (string\|null) y `remitoIds` (string[], default `[]`) por punto, tal como llegan del payload de `sincronizar_recorrido` (ver data-model.md § PuntoEntrega) — también se extendió `obtenerPorToken()` (el contrato que consume el chofer) para incluir los 4 campos visibles, explícitamente sin `remitoIds`
+- [X] T003 En `backend/src/state/integracionStore.js`, extender `upsertRecorridos()`/`indexarRecorrido()` para inicializar en cada recorrido nuevo `viajeEstado: 'detenido'`, `puntoActivoId: null`, `ultimaOperacion: null` (preservar los valores existentes en upserts posteriores del mismo recorrido, igual que ya hace con `estado`/`token`, ver data-model.md § Recorrido)
+- [X] T004 [P] Actualizar `backend/tests/unit/integracion-store.test.js` con casos para T002/T003: upsert con campos informativos completos, con `remitoIds: []`/ausente, y con valores por defecto de `viajeEstado`/`puntoActivoId`/`ultimaOperacion` en un recorrido recién creado — 88/88 tests backend en verde
 
 **Checkpoint**: el store soporta el modelo de datos completo; las historias de usuario pueden empezar
 
@@ -56,16 +56,16 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 
 ### Tests for User Story 1
 
-- [ ] T005 [P] [US1] Contract test en `backend/tests/contract/get-recorrido.test.js`: `GET /api/recorridos/:token` incluye `cliente`/`direccion`/`rangoHorario`/`notasEntrega` por punto y el JSON de respuesta NO contiene la clave `remitoIds` en ningún nivel
-- [ ] T006 [P] [US1] Contract test en `backend/tests/contract/get-recorrido-detalle.test.js`: `GET /api/central/recorridos/:id` incluye `remitoIds` por punto (array, puede ser `[]`)
-- [ ] T007 [P] [US1] Component test en `frontend/tests/components/DeliveryPointCard.test.jsx`: renderiza cliente/dirección/rango horario/notas cuando están presentes, omite con normalidad los campos ausentes, y no renderiza ningún remito aunque el objeto `punto` lo trajera
+- [X] T005 [P] [US1] Contract test en `backend/tests/contract/get-recorrido.test.js`: `GET /api/recorridos/:token` incluye `cliente`/`direccion`/`rangoHorario`/`notasEntrega` por punto y el JSON de respuesta NO contiene la clave `remitoIds` en ningún nivel
+- [X] T006 [P] [US1] Contract test en `backend/tests/contract/get-recorrido-detalle.test.js`: `GET /api/central/recorridos/:id` incluye `remitoIds` por punto (array, puede ser `[]`) — también se extendió `inMemoryCentralRepository.js` (fake de test) para exponerlo
+- [X] T007 [P] [US1] Component test en `frontend/tests/components/DeliveryPointCard.test.jsx`: renderiza cliente/dirección/rango horario/notas cuando están presentes, omite con normalidad los campos ausentes, y no renderiza ningún remito aunque el objeto `punto` lo trajera
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] En `backend/src/routes/recorrido.js`, extender `serializePunto()` para incluir `cliente`, `direccion`, `rangoHorario`, `notasEntrega` — **sin** incluir `remitoIds` (FR-003)
-- [ ] T009 [P] [US1] En `backend/src/state/integracionStore.js`, extender `serializarPuntosCentral()` para incluir `remitoIds` por punto (consumido por `obtenerDetalle`/`listarHistorial`, ver contracts/sincronizacion-oracle-central.md § 3)
-- [ ] T010 [US1] En `frontend/src/components/DeliveryPointCard.jsx`, renderizar cliente/dirección/rango horario/notas de entrega en la tarjeta del punto, omitiendo con normalidad cualquier campo `null`/ausente
-- [ ] T011 [P] [US1] Actualizar el comentario/doc de `DeliveryPointCard.jsx` (líneas 11-16 actuales) que describe el modelo de "marcado libre" — ya no aplica desde esta feature (se reemplaza en US2, pero el comentario de datos informativos se puede dejar preparado acá)
+- [X] T008 [US1] En `backend/src/routes/recorrido.js`, extender `serializePunto()` para incluir `cliente`, `direccion`, `rangoHorario`, `notasEntrega` — **sin** incluir `remitoIds` (FR-003); también se extendió `obtenerPorToken()` en `integracionStore.js` (T002) para que esos campos lleguen hasta acá
+- [X] T009 [P] [US1] En `backend/src/state/integracionStore.js`, extender `serializarPuntosCentral()` para incluir `remitoIds` por punto (consumido por `obtenerDetalle`/`listarHistorial`, ver contracts/sincronizacion-oracle-central.md § 3)
+- [X] T010 [US1] En `frontend/src/components/DeliveryPointCard.jsx`, renderizar cliente/dirección/rango horario/notas de entrega en la tarjeta del punto, omitiendo con normalidad cualquier campo `null`/ausente
+- [X] T011 [P] [US1] ~~Actualizar el comentario "marcado libre"~~ — diferido a T027 (US2): el comentario sigue siendo cierto hasta que esa fase reemplace los botones; reescribirlo ahora hubiera sido inexacto
 
 **Checkpoint**: US1 es demostrable de forma independiente (aunque el chofer todavía use el marcado libre existente de 001 hasta que aterrice US2)
 

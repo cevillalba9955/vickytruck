@@ -61,6 +61,28 @@ body {
   margin-bottom: 0.75rem;
 }
 
+.delivery-point-card__info {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.delivery-point-card__info-fila {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.delivery-point-card__info-fila dt {
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.delivery-point-card__info-fila dd {
+  margin: 0;
+}
+
 .delivery-point-card__acciones button {
   /* Controles táctiles grandes (Principio I): mínimo ~44px de alto recomendado. */
   width: 100%;

@@ -25,6 +25,9 @@ function mqttConfigPara(fleteId) {
   }
 }
 
+// Allow-list explícito (no un spread de `punto`): es la garantía real de que
+// remitoIds nunca llegue al chofer (005-chofer-estados-viaje, FR-003), sin
+// depender de que las capas de abajo lo filtren correctamente.
 function serializePunto(punto, totalPuntos) {
   return {
     id: punto.id,
@@ -35,6 +38,10 @@ function serializePunto(punto, totalPuntos) {
     estado: punto.estado,
     arriboEn: punto.arriboEn,
     descargaEn: punto.descargaEn,
+    cliente: punto.cliente ?? null,
+    direccion: punto.direccion ?? null,
+    rangoHorario: punto.rangoHorario ?? null,
+    notasEntrega: punto.notasEntrega ?? null,
   };
 }
 

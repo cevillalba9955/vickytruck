@@ -33,6 +33,38 @@ export function DeliveryPointCard({ punto, onMarcarArribo, onMarcarDescarga, pro
         Ver ubicación en el mapa
       </a>
 
+      {/* Info provista por Central vía sincronizar_recorrido (005-chofer-estados-viaje,
+          FR-002). Cada campo se omite con normalidad si no vino (FR-004);
+          remitoIds NUNCA llega hasta acá — ver serializePunto en recorrido.js (FR-003). */}
+      {(punto.cliente || punto.direccion || punto.rangoHorario || punto.notasEntrega) && (
+        <dl className="delivery-point-card__info">
+          {punto.cliente && (
+            <div className="delivery-point-card__info-fila">
+              <dt>Cliente</dt>
+              <dd>{punto.cliente}</dd>
+            </div>
+          )}
+          {punto.direccion && (
+            <div className="delivery-point-card__info-fila">
+              <dt>Dirección</dt>
+              <dd>{punto.direccion}</dd>
+            </div>
+          )}
+          {punto.rangoHorario && (
+            <div className="delivery-point-card__info-fila">
+              <dt>Horario</dt>
+              <dd>{punto.rangoHorario}</dd>
+            </div>
+          )}
+          {punto.notasEntrega && (
+            <div className="delivery-point-card__info-fila">
+              <dt>Notas</dt>
+              <dd>{punto.notasEntrega}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+
       <div className="delivery-point-card__acciones">
         {punto.estado === "pendiente" && (
           <button type="button" disabled={procesando} onClick={() => onMarcarArribo(punto.id)}>
