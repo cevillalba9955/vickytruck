@@ -10,18 +10,7 @@ import { DeliveryPointCard } from "./DeliveryPointCard.jsx";
  * 001-chofer-recorrido, que mostraba todos los puntos con sus botones de
  * arribo/descarga simultáneamente sin importar el orden.
  */
-export function RouteView({
-  puntos,
-  viajeEstado,
-  puntoActivoId,
-  onIniciar,
-  onIrPrimero,
-  onLlegue,
-  onDescargaCompleta,
-  onCancelar,
-  puedeCancelar,
-  procesando,
-}) {
+export function RouteView({ puntos, viajeEstado, puntoActivoId, onIniciar, onIrPrimero, onLlegue, onDescargaCompleta, procesando }) {
   // FINALIZAR (US5, FR-012/FR-013): puramente client-side — el recorrido ya
   // queda `finalizado` a nivel de datos apenas se completa el último punto
   // (regla derivada de 001-chofer-recorrido); este estado solo controla si
@@ -30,15 +19,6 @@ export function RouteView({
 
   const puntosOrdenados = [...puntos].sort((a, b) => a.orden - b.orden);
   const recorridoFinalizado = puntosOrdenados.length > 0 && puntosOrdenados.every((p) => p.estado === "completado");
-
-  // CANCELAR (FR-017 a FR-020): disponible en los tres estados de viaje
-  // cuando hay una última operación revertible; nunca en el recorrido ya
-  // finalizado (ahí no hay nada "en curso" que deshacer).
-  const botonCancelar = !recorridoFinalizado && puedeCancelar && (
-    <button type="button" className="route-view__cancelar" disabled={procesando} onClick={onCancelar}>
-      CANCELAR
-    </button>
-  );
 
   if (recorridoFinalizado) {
     if (finalizarConfirmado) {
@@ -58,22 +38,19 @@ export function RouteView({
   if (viajeEstado !== "manejando" && viajeEstado !== "descargando") {
     const pendientes = puntosOrdenados.filter((p) => p.estado === "pendiente");
     return (
-      <>
-        {botonCancelar}
-        <ul className="route-view__lista">
-          {pendientes.map((punto, index) => (
-            <DeliveryPointCard
-              key={punto.id}
-              punto={punto}
-              viajeEstado="detenido"
-              esPrimeroPendiente={index === 0}
-              onIniciar={onIniciar}
-              onIrPrimero={onIrPrimero}
-              procesando={procesando}
-            />
-          ))}
-        </ul>
-      </>
+      <ul className="route-view__lista">
+        {pendientes.map((punto, index) => (
+          <DeliveryPointCard
+            key={punto.id}
+            punto={punto}
+            viajeEstado="detenido"
+            esPrimeroPendiente={index === 0}
+            onIniciar={onIniciar}
+            onIrPrimero={onIrPrimero}
+            procesando={procesando}
+          />
+        ))}
+      </ul>
     );
   }
 
@@ -81,24 +58,21 @@ export function RouteView({
   const otrosPendientes = puntosOrdenados.filter((p) => p.estado === "pendiente" && p.id !== puntoActivoId);
 
   return (
-    <>
-      {botonCancelar}
-      <ul className="route-view__lista">
-        {activo && (
-          <DeliveryPointCard
-            key={activo.id}
-            punto={activo}
-            viajeEstado={viajeEstado}
-            esActivo
-            onLlegue={onLlegue}
-            onDescargaCompleta={onDescargaCompleta}
-            procesando={procesando}
-          />
-        )}
-        {otrosPendientes.map((punto) => (
-          <DeliveryPointCard key={punto.id} punto={punto} viajeEstado={viajeEstado} reducido procesando={procesando} />
-        ))}
-      </ul>
-    </>
+    <ul className="route-view__lista">
+      {activo && (
+        <DeliveryPointCard
+          key={activo.id}
+          punto={activo}
+          viajeEstado={viajeEstado}
+          esActivo
+          onLlegue={onLlegue}
+          onDescargaCompleta={onDescargaCompleta}
+          procesando={procesando}
+        />
+      )}
+      {otrosPendientes.map((punto) => (
+        <DeliveryPointCard key={punto.id} punto={punto} viajeEstado={viajeEstado} reducido procesando={procesando} />
+      ))}
+    </ul>
   );
 }

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { RouteView } from "./components/RouteView.jsx";
-import { ProgressSummary } from "./components/ProgressSummary.jsx";
+import { AppHeader } from "./components/AppHeader.jsx";
 import {
   ApiError,
   obtenerRecorrido,
@@ -252,7 +252,7 @@ function App() {
 
   return (
     <main className="app">
-      <ProgressSummary progreso={recorrido.progreso} />
+      <AppHeader puedeCancelar={puedeCancelar} onCancelar={handleCancelar} procesando={procesandoViaje} />
       <RouteView
         puntos={recorrido.puntos}
         viajeEstado={recorrido.recorrido?.viajeEstado ?? "detenido"}
@@ -261,8 +261,6 @@ function App() {
         onIrPrimero={handleIrPrimero}
         onLlegue={handleLlegue}
         onDescargaCompleta={handleDescargaCompleta}
-        onCancelar={handleCancelar}
-        puedeCancelar={puedeCancelar}
         procesando={procesandoViaje}
       />
     </main>

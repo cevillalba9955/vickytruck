@@ -19,12 +19,37 @@ body {
   margin: 0 auto;
 }
 
-.progress-summary {
+.app__header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  font-size: 0.95rem;
-  opacity: 0.85;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.app__titulo {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* `visibility: hidden` (no display:none): el botón sigue ocupando su lugar
+   cuando no corresponde mostrarlo, para que aparecer/desaparecer nunca
+   desplace el título ni el contenido de abajo. */
+.app__cancelar {
+  flex-shrink: 0;
+  min-height: 2.25rem;
+  padding: 0 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  border: none;
+  background: #d93025;
+  color: white;
+}
+
+.app__cancelar:disabled {
+  opacity: 0.5;
 }
 
 .route-view__lista {
@@ -34,20 +59,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-}
-
-.route-view__cancelar {
-  width: 100%;
-  min-height: 2.5rem;
-  font-size: 0.95rem;
-  border-radius: 0.5rem;
-  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  background: transparent;
-  color: inherit;
-}
-
-.route-view__cancelar:disabled {
-  opacity: 0.5;
 }
 
 .route-view__finalizar {
@@ -81,11 +92,6 @@ body {
   margin-bottom: 0.5rem;
 }
 
-.delivery-point-card__ubicacion {
-  display: inline-block;
-  margin-bottom: 0.75rem;
-}
-
 .delivery-point-card__info {
   margin: 0 0 0.75rem;
   font-size: 0.9rem;
@@ -108,6 +114,17 @@ body {
   margin: 0;
 }
 
+.delivery-point-card__fila-acciones {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.delivery-point-card__acciones {
+  flex: 1;
+  min-width: 0;
+}
+
 .delivery-point-card__acciones button {
   /* Controles táctiles grandes (Principio I): mínimo ~44px de alto recomendado. */
   width: 100%;
@@ -121,6 +138,19 @@ body {
 
 .delivery-point-card__acciones button:disabled {
   opacity: 0.6;
+}
+
+/* Botón cuadrado con ícono de mapa, a la derecha del botón grande de comando. */
+.delivery-point-card__boton-mapa {
+  flex-shrink: 0;
+  width: 3rem;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  color: inherit;
 }
 
 .delivery-point-card__ok {

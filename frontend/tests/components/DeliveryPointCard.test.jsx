@@ -19,8 +19,20 @@ function puntoDePrueba(overrides = {}) {
   };
 }
 
+describe("DeliveryPointCard — encabezado orden + cliente", () => {
+  it("combina el número de orden y el nombre del cliente en un solo encabezado (ej. '1 - Cliente')", () => {
+    render(<DeliveryPointCard punto={puntoDePrueba({ orden: 1, cliente: "Distribuidora Sur SRL" })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
+    expect(screen.getByText("1 - Distribuidora Sur SRL")).toBeInTheDocument();
+  });
+
+  it("sin cliente, muestra solo el número de orden", () => {
+    render(<DeliveryPointCard punto={puntoDePrueba({ orden: 2 })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+});
+
 describe("DeliveryPointCard — información de recorrido (005-chofer-estados-viaje, US1)", () => {
-  it("muestra cliente, dirección, rango horario y notas de entrega cuando están presentes (FR-002)", () => {
+  it("muestra dirección, rango horario y notas de entrega cuando están presentes (FR-002)", () => {
     render(<DeliveryPointCard punto={puntoDePrueba({
       cliente: "Distribuidora Sur SRL",
       direccion: "Av. Rivadavia 1234, CABA",
@@ -28,7 +40,6 @@ describe("DeliveryPointCard — información de recorrido (005-chofer-estados-vi
       notasEntrega: "Tocar timbre de depósito",
     })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
 
-    expect(screen.getByText("Distribuidora Sur SRL")).toBeInTheDocument();
     expect(screen.getByText("Av. Rivadavia 1234, CABA")).toBeInTheDocument();
     expect(screen.getByText("09:00–12:00")).toBeInTheDocument();
     expect(screen.getByText("Tocar timbre de depósito")).toBeInTheDocument();
@@ -37,21 +48,21 @@ describe("DeliveryPointCard — información de recorrido (005-chofer-estados-vi
   it("omite con normalidad los campos ausentes, sin espacios vacíos ni error (FR-004)", () => {
     const { container } = render(
       <DeliveryPointCard
-        punto={puntoDePrueba({ cliente: "Cliente B", rangoHorario: null, notasEntrega: null })}
+        punto={puntoDePrueba({ cliente: "Cliente B", direccion: "Calle 1", rangoHorario: null, notasEntrega: null })}
         viajeEstado="detenido"
         esPrimeroPendiente
         procesando={false}
       />,
     );
 
-    expect(screen.getByText("Cliente B")).toBeInTheDocument();
+    expect(screen.getByText("Calle 1")).toBeInTheDocument();
     expect(screen.queryByText("Horario")).not.toBeInTheDocument();
     expect(screen.queryByText("Notas")).not.toBeInTheDocument();
     expect(container.querySelector(".delivery-point-card__info")).toBeInTheDocument();
   });
 
-  it("no renderiza ningún bloque de información cuando el punto no trae ningún campo informativo", () => {
-    const { container } = render(<DeliveryPointCard punto={puntoDePrueba()} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
+  it("no renderiza ningún bloque de información cuando el punto no trae dirección/horario/notas (el cliente ya se muestra en el encabezado)", () => {
+    const { container } = render(<DeliveryPointCard punto={puntoDePrueba({ cliente: "Solo Cliente" })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
     expect(container.querySelector(".delivery-point-card__info")).not.toBeInTheDocument();
   });
 
@@ -61,6 +72,31 @@ describe("DeliveryPointCard — información de recorrido (005-chofer-estados-vi
     );
 
     expect(container.textContent).not.toMatch(/remito/i);
+  });
+});
+
+describe("DeliveryPointCard — botón de mapa (aspecto)", () => {
+  it("muestra un botón cuadrado con ícono en vez del link de texto, apuntando a la ubicación del punto", () => {
+    const { container } = render(<DeliveryPointCard punto={puntoDePrueba({ latitud: -34.6, longitud: -58.4 })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
+
+    expect(screen.queryByText("Ver ubicación en el mapa")).not.toBeInTheDocument();
+    const boton = screen.getByRole("link", { name: "Ver ubicación en el mapa" });
+    expect(boton).toHaveClass("delivery-point-card__boton-mapa");
+    expect(boton).toHaveAttribute("href", "https://www.google.com/maps?q=-34.6,-58.4");
+    expect(container.querySelector(".delivery-point-card__boton-mapa svg")).toBeInTheDocument();
+  });
+
+  it("el botón de mapa aparece a la derecha del botón grande de comando, dentro de la misma fila", () => {
+    const { container } = render(<DeliveryPointCard punto={puntoDePrueba()} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
+    const fila = container.querySelector(".delivery-point-card__fila-acciones");
+    expect(fila).toBeInTheDocument();
+    expect(fila.querySelector(".delivery-point-card__acciones")).toBeInTheDocument();
+    expect(fila.querySelector(".delivery-point-card__boton-mapa")).toBeInTheDocument();
+  });
+
+  it("no muestra el botón de mapa en un punto reducido", () => {
+    const { container } = render(<DeliveryPointCard punto={puntoDePrueba()} viajeEstado="manejando" esActivo={false} reducido procesando={false} />);
+    expect(container.querySelector(".delivery-point-card__boton-mapa")).not.toBeInTheDocument();
   });
 });
 
@@ -95,7 +131,7 @@ describe("DeliveryPointCard — botones según estado de viaje (005-chofer-estad
     const { container } = render(
       <DeliveryPointCard punto={puntoDePrueba({ cliente: "Cliente D" })} viajeEstado="manejando" esActivo={false} reducido procesando={false} />,
     );
-    expect(container.querySelector(".delivery-point-card__acciones")).not.toBeInTheDocument();
+    expect(container.querySelector(".delivery-point-card__fila-acciones")).not.toBeInTheDocument();
     expect(container.querySelector(".delivery-point-card__info")).not.toBeInTheDocument();
     expect(container.querySelector(".delivery-point-card--reducido")).toBeInTheDocument();
   });

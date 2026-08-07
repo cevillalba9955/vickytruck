@@ -8,6 +8,16 @@ function enlaceMapa(latitud, longitud) {
   return `https://www.google.com/maps?q=${latitud},${longitud}`;
 }
 
+function IconoMapa() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+      <line x1="8" y1="2" x2="8" y2="18" />
+      <line x1="16" y1="6" x2="16" y2="22" />
+    </svg>
+  );
+}
+
 /**
  * Tarjeta de un punto de entrega. Los botones disponibles dependen del
  * estado de viaje guiado (005-chofer-estados-viaje, US2) y del rol del
@@ -39,33 +49,18 @@ export function DeliveryPointCard({
     <li className={clases.join(" ")} data-estado={punto.estado} aria-busy={procesando || undefined}>
       <div className="delivery-point-card__header">
         <span className="delivery-point-card__orden">
-          {punto.orden} de {punto.totalPuntos}
+          {punto.orden}
+          {punto.cliente ? ` - ${punto.cliente}` : ""}
         </span>
         <span className="delivery-point-card__estado">{ETIQUETAS_ESTADO[punto.estado] ?? punto.estado}</span>
       </div>
 
-      {!reducido && (
-        <a
-          className="delivery-point-card__ubicacion"
-          href={enlaceMapa(punto.latitud, punto.longitud)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Ver ubicación en el mapa
-        </a>
-      )}
-
       {/* Info provista por Central vía sincronizar_recorrido (005-chofer-estados-viaje,
-          FR-002). Cada campo se omite con normalidad si no vino (FR-004);
-          remitoIds NUNCA llega hasta acá — ver serializePunto en recorrido.js (FR-003). */}
-      {!reducido && (punto.cliente || punto.direccion || punto.rangoHorario || punto.notasEntrega) && (
+          FR-002); el nombre del cliente ya se muestra arriba, en el encabezado. Cada
+          campo se omite con normalidad si no vino (FR-004); remitoIds NUNCA llega
+          hasta acá — ver serializePunto en recorrido.js (FR-003). */}
+      {!reducido && (punto.direccion || punto.rangoHorario || punto.notasEntrega) && (
         <dl className="delivery-point-card__info">
-          {punto.cliente && (
-            <div className="delivery-point-card__info-fila">
-              <dt>Cliente</dt>
-              <dd>{punto.cliente}</dd>
-            </div>
-          )}
           {punto.direccion && (
             <div className="delivery-point-card__info-fila">
               <dt>Dirección</dt>
@@ -88,28 +83,39 @@ export function DeliveryPointCard({
       )}
 
       {!reducido && (
-        <div className="delivery-point-card__acciones">
-          {viajeEstado === "detenido" && esPrimeroPendiente && (
-            <button type="button" disabled={procesando} onClick={onIniciar}>
-              INICIAR
-            </button>
-          )}
-          {viajeEstado === "detenido" && !esPrimeroPendiente && (
-            <button type="button" disabled={procesando} onClick={() => onIrPrimero(punto.id)}>
-              IR PRIMERO
-            </button>
-          )}
-          {viajeEstado === "manejando" && esActivo && (
-            <button type="button" disabled={procesando} onClick={onLlegue}>
-              LLEGUE
-            </button>
-          )}
-          {viajeEstado === "descargando" && esActivo && (
-            <button type="button" disabled={procesando} onClick={onDescargaCompleta}>
-              DESCARGA COMPLETA
-            </button>
-          )}
-          {punto.estado === "completado" && <span className="delivery-point-card__ok">Completado ✓</span>}
+        <div className="delivery-point-card__fila-acciones">
+          <div className="delivery-point-card__acciones">
+            {viajeEstado === "detenido" && esPrimeroPendiente && (
+              <button type="button" disabled={procesando} onClick={onIniciar}>
+                INICIAR
+              </button>
+            )}
+            {viajeEstado === "detenido" && !esPrimeroPendiente && (
+              <button type="button" disabled={procesando} onClick={() => onIrPrimero(punto.id)}>
+                IR PRIMERO
+              </button>
+            )}
+            {viajeEstado === "manejando" && esActivo && (
+              <button type="button" disabled={procesando} onClick={onLlegue}>
+                LLEGUE
+              </button>
+            )}
+            {viajeEstado === "descargando" && esActivo && (
+              <button type="button" disabled={procesando} onClick={onDescargaCompleta}>
+                DESCARGA COMPLETA
+              </button>
+            )}
+            {punto.estado === "completado" && <span className="delivery-point-card__ok">Completado ✓</span>}
+          </div>
+          <a
+            className="delivery-point-card__boton-mapa"
+            href={enlaceMapa(punto.latitud, punto.longitud)}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Ver ubicación en el mapa"
+          >
+            <IconoMapa />
+          </a>
         </div>
       )}
     </li>
