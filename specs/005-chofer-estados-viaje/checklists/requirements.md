@@ -32,4 +32,4 @@
 ## Notes
 
 - Las 3 clarificaciones se resolvieron en la sesión 2026-08-07 (ver spec.md § Clarifications) y quedaron incorporadas en FR-016/FR-016a, FR-020/FR-020a y FR-021.
-- **Bloqueante antes de `/speckit-plan`**: FR-016 requiere enmendar el Principio II de la constitución (hoy prohíbe que el chofer reordene los puntos). Ejecutar `/speckit-constitution` para actualizarlo antes de planificar, o el "Constitution Check" del plan fallará. Ver nota en spec.md § Assumptions.
+- El Principio II de la constitución se enmendó (2026-08-07, versión 3.0.0 → 4.0.0) para permitir el reordenamiento del chofer requerido por FR-016. Ya no hay bloqueantes de constitución para `/speckit-plan`.
