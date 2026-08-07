@@ -37,7 +37,13 @@ function calcularProgreso(puntos) {
 // Oracle no debe pisar ese progreso, solo refrescar la topología
 // (orden/lat/lon) y los campos informativos (005-chofer-estados-viaje,
 // FR-001/FR-004), que no son datos de progreso y siempre pueden actualizarse.
-function mergearPunto(entrante, previo) {
+//
+// `protegerOrden`: true si el recorrido tiene un reordenamiento de IR PRIMERO
+// todavía no leído por Oracle (research.md, Decisión 4) — en ese caso el
+// `orden` entrante de Oracle para puntos `pendiente` se ignora (se conserva
+// el fijado por el chofer) hasta que `GET /api/integracion/estado` le dé a
+// Oracle la oportunidad de leerlo (ver `confirmarSincronizacion` abajo).
+function mergearPunto(entrante, previo, protegerOrden = false) {
   if (previo && (previo.estado === "arribado" || previo.estado === "completado")) {
     return {
       ...previo,
@@ -47,9 +53,10 @@ function mergearPunto(entrante, previo) {
       ...camposInformativos(entrante, previo),
     };
   }
+  const ordenProtegido = protegerOrden && previo?.estado === "pendiente";
   return {
     id: String(entrante.id),
-    orden: Number(entrante.orden),
+    orden: ordenProtegido ? previo.orden : Number(entrante.orden),
     estado: entrante.estado || "pendiente",
     arriboEn: entrante.arriboEn ?? null,
     arriboLat: entrante.arriboLat ?? null,
@@ -100,6 +107,7 @@ export function createIntegracionStore() {
         const previo = recorridos.get(id);
         const puntosPreviosPorId = new Map((previo?.puntos || []).map((p) => [p.id, p]));
         const puntosEntrantes = Array.isArray(raw.puntos) ? raw.puntos : previo?.puntos || [];
+        const protegerOrden = previo?.ultimaOperacion?.tipo === "ir-primero" && previo.ultimaOperacion.sincronizada === false;
         const normalizado = {
           id,
           token: raw.token ?? previo?.token ?? null,
@@ -107,7 +115,7 @@ export function createIntegracionStore() {
           fleteNombre: raw.fleteNombre ?? previo?.fleteNombre ?? null,
           estado: raw.estado || previo?.estado || "pendiente",
           updatedAt: raw.updatedAt || new Date().toISOString(),
-          puntos: puntosEntrantes.map((p) => mergearPunto(p, puntosPreviosPorId.get(String(p.id)))),
+          puntos: puntosEntrantes.map((p) => mergearPunto(p, puntosPreviosPorId.get(String(p.id)), protegerOrden)),
           ultimaUbicacion: previo?.ultimaUbicacion ?? null,
           // Estado de viaje del chofer (005-chofer-estados-viaje): por defecto
           // "detenido" en un recorrido nuevo; se preserva en cada re-push
@@ -236,6 +244,68 @@ export function createIntegracionStore() {
       r.viajeEstado = "detenido";
       r.puntoActivoId = null;
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: null, punto: resultado.punto };
+    },
+
+    // IR PRIMERO (005-chofer-estados-viaje, FR-014 a FR-016): mueve `puntoId`
+    // al frente de los puntos `pendiente`, permutando `orden` únicamente
+    // entre esos puntos (nunca toca el de puntos ya arribado/completado).
+    // Deja registrada `ultimaOperacion` sin sincronizar para que
+    // `mergearPunto` la proteja de un re-push de Oracle con el orden viejo
+    // (research.md, Decisión 4) y para que CANCELAR pueda revertirla
+    // mientras Oracle no la haya leído (Decisión 3).
+    async moverPrimero(token, puntoId) {
+      const r = recorridoDeToken(recorridoPorToken, recorridos, token);
+      if (!r) return { outcome: "invalid_token" };
+      if (r.viajeEstado !== "detenido") {
+        return { outcome: "conflict", motivo: "viaje_no_detenido" };
+      }
+
+      const pendientes = [...r.puntos].filter((p) => p.estado === "pendiente").sort((a, b) => a.orden - b.orden);
+      const objetivo = pendientes.find((p) => p.id === String(puntoId));
+      if (!objetivo) {
+        const existeEnRecorrido = r.puntos.some((p) => p.id === String(puntoId));
+        return existeEnRecorrido ? { outcome: "conflict", motivo: "no_pendiente" } : { outcome: "not_found" };
+      }
+      if (pendientes.length < 2) {
+        return { outcome: "conflict", motivo: "sin_otros_pendientes" };
+      }
+      if (objetivo.id === pendientes[0].id) {
+        return { outcome: "conflict", motivo: "ya_es_primero" };
+      }
+
+      const ordenPrevio = pendientes.map((p) => ({ puntoId: p.id, orden: p.orden }));
+      const ordenesDisponibles = pendientes.map((p) => p.orden).sort((a, b) => a - b);
+      const resto = pendientes.filter((p) => p.id !== objetivo.id);
+      objetivo.orden = ordenesDisponibles[0];
+      resto.forEach((p, i) => {
+        p.orden = ordenesDisponibles[i + 1];
+      });
+
+      r.ultimaOperacion = {
+        tipo: "ir-primero",
+        puntoId: objetivo.id,
+        snapshotPrevio: { ordenPrevio },
+        sincronizada: false,
+        en: new Date().toISOString(),
+      };
+
+      const puntosPendientesActualizados = [...r.puntos]
+        .filter((p) => p.estado === "pendiente")
+        .sort((a, b) => a.orden - b.orden)
+        .map((p) => ({ id: p.id, orden: p.orden }));
+      return { outcome: "ok", puntos: puntosPendientesActualizados };
+    },
+
+    // Confirma que Oracle tuvo la oportunidad de leer el estado actual de un
+    // recorrido (llamado desde GET /api/integracion/estado por cada
+    // recorrido efectivamente servido en la respuesta) — a partir de acá
+    // `ultimaOperacion` deja de ser cancelable (research.md, Decisión 3) y
+    // `mergearPunto` deja de proteger su `orden` (Decisión 4).
+    confirmarSincronizacion(recorridoId) {
+      const r = recorridos.get(String(recorridoId));
+      if (r?.ultimaOperacion && r.ultimaOperacion.sincronizada === false) {
+        r.ultimaOperacion = { ...r.ultimaOperacion, sincronizada: true };
+      }
     },
 
     // Contrato compatible con `repository` de createCentralRouter (ver

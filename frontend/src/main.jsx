@@ -3,13 +3,27 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { RouteView } from "./components/RouteView.jsx";
 import { ProgressSummary } from "./components/ProgressSummary.jsx";
-import { ApiError, obtenerRecorrido, iniciarViaje, marcarLlegue, marcarDescargaCompleta, iniciarSincronizacionOffline } from "./services/api.js";
+import { ApiError, obtenerRecorrido, iniciarViaje, marcarLlegue, marcarDescargaCompleta, irPrimero, iniciarSincronizacionOffline } from "./services/api.js";
 import { iniciarReportePeriodico } from "./services/ubicacionPeriodica.js";
 
 const INTERVALO_UBICACION_DEFAULT_MS = 60000;
 
 function obtenerTokenDeUrl() {
   return new URLSearchParams(window.location.search).get("token");
+}
+
+// Réplica client-side de moverPrimero (integracionStore.js) para la
+// actualización optimista de IR PRIMERO (FR-014): el objetivo pasa al menor
+// `orden` entre pendientes, el resto se corre una posición. El servidor es
+// quien decide de verdad (research.md, Decisión 7); esto solo evita el
+// parpadeo hasta que responde.
+function calcularOrdenTrasIrPrimero(puntos, puntoId) {
+  const pendientes = puntos.filter((p) => p.estado === "pendiente").sort((a, b) => a.orden - b.orden);
+  const objetivo = pendientes.find((p) => p.id === puntoId);
+  if (!objetivo) return null;
+  const ordenesDisponibles = pendientes.map((p) => p.orden).sort((a, b) => a - b);
+  const resto = pendientes.filter((p) => p.id !== puntoId);
+  return [{ id: objetivo.id, orden: ordenesDisponibles[0] }, ...resto.map((p, i) => ({ id: p.id, orden: ordenesDisponibles[i + 1] }))];
 }
 
 function App() {
@@ -77,6 +91,15 @@ function App() {
     setRecorrido((actual) => (actual ? { ...actual, recorrido: { ...actual.recorrido, ...cambios } } : actual));
   };
 
+  const actualizarOrdenLocal = (puntosConOrden) => {
+    setRecorrido((actual) => {
+      if (!actual) return actual;
+      const ordenPorId = new Map(puntosConOrden.map((p) => [p.id, p.orden]));
+      const puntos = actual.puntos.map((p) => (ordenPorId.has(p.id) ? { ...p, orden: ordenPorId.get(p.id) } : p));
+      return { ...actual, puntos };
+    });
+  };
+
   // Ciclo guiado (US2): aplica el cambio de estado de viaje (y, si corresponde,
   // el cambio de estado del punto activo) de forma optimista, reusando el
   // mismo patrón optimista + resync-en-409 que ya usaba el marcado libre.
@@ -128,6 +151,25 @@ function App() {
     ejecutarAccionViaje("detenido", null, { estado: "completado" }, marcarDescargaCompleta);
   };
 
+  const handleIrPrimero = async (puntoId) => {
+    const puntosConOrden = calcularOrdenTrasIrPrimero(recorrido?.puntos ?? [], puntoId);
+    if (!puntosConOrden) return;
+    setProcesandoViaje(true);
+    actualizarOrdenLocal(puntosConOrden);
+    try {
+      const resultado = await irPrimero(token, puntoId);
+      if (!resultado.queued) {
+        actualizarOrdenLocal(resultado.data.puntos);
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        await cargarRecorrido();
+      }
+    } finally {
+      setProcesandoViaje(false);
+    }
+  };
+
   if (cargando) {
     return <p role="status">Cargando recorrido…</p>;
   }
@@ -144,6 +186,7 @@ function App() {
         viajeEstado={recorrido.recorrido?.viajeEstado ?? "detenido"}
         puntoActivoId={recorrido.recorrido?.puntoActivoId ?? null}
         onIniciar={handleIniciar}
+        onIrPrimero={handleIrPrimero}
         onLlegue={handleLlegue}
         onDescargaCompleta={handleDescargaCompleta}
         procesando={procesandoViaje}

@@ -114,21 +114,21 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 
 ### Tests for User Story 3
 
-- [ ] T029 [P] [US3] Contract test en `backend/tests/contract/post-viaje.test.js`: `POST /viaje/ir-primero` (200 reordena, 404 si `puntoId` no existe, 409 si no está `detenido`, si `puntoId` ya es el primero, si `puntoId` no está `pendiente`, o si solo queda un punto pendiente)
-- [ ] T030 [P] [US3] Integration test en `backend/tests/integration/viaje-estados-guiados.test.js` (o archivo nuevo `viaje-ir-primero.test.js`): IR PRIMERO seguido de un `POST /api/integracion/recorridos` con el orden viejo → el orden fijado por el chofer se conserva; tras un `GET /api/integracion/estado` para ese recorrido, un push posterior con orden viejo si puede volver a pisarlo
-- [ ] T031 [P] [US3] Contract test en `backend/tests/contract/integracion-endpoints.test.js` (o `integracion-estado-paginacion.test.js`): `GET /api/integracion/estado` incluye `orden` por punto
-- [ ] T032 [P] [US3] Component test en `frontend/tests/components/DeliveryPointCard.test.jsx`: botón IR PRIMERO visible solo en `detenido`, solo sobre puntos pendientes distintos del primero, ausente cuando solo queda un punto pendiente
+- [X] T029 [P] [US3] Contract test en `backend/tests/contract/post-viaje.test.js`: `POST /viaje/ir-primero` (200 reordena, 404 si `puntoId` no existe, 409 si no está `detenido`, si `puntoId` ya es el primero, si `puntoId` no está `pendiente`, o si solo queda un punto pendiente)
+- [X] T030 [P] [US3] Integration test en `backend/tests/integration/viaje-estados-guiados.test.js`: IR PRIMERO seguido de un `POST /api/integracion/recorridos` con el orden viejo → el orden fijado por el chofer se conserva; tras un `GET /api/integracion/estado` para ese recorrido, un push posterior con orden viejo sí puede volver a pisarlo
+- [X] T031 [P] [US3] Contract test en `backend/tests/contract/integracion-endpoints.test.js`: `GET /api/integracion/estado` incluye `orden` por punto
+- [X] T032 [P] [US3] Component test en `frontend/tests/components/DeliveryPointCard.test.jsx`: botón IR PRIMERO visible solo en `detenido`, solo sobre puntos pendientes distintos del primero, ausente cuando solo queda un punto pendiente (ya cubierto al escribir T016 en US2, ver describe "botones según estado de viaje")
 
 ### Implementation for User Story 3
 
-- [ ] T033 [US3] En `backend/src/state/integracionStore.js`, agregar el campo `ultimaOperacion` (ver data-model.md) como registro genérico set por cualquier mutador de viaje, y una función `marcarSincronizadaSiCorresponde(recorrido)` invocada desde el punto donde se sirve `GET /api/integracion/estado`
-- [ ] T034 [US3] En `backend/src/state/integracionStore.js`, agregar mutador `moverPrimero(token, puntoId)`: valida `viajeEstado === 'detenido'`, `puntoId` pendiente y distinto del primero, reasigna `orden` entre los puntos `pendiente` (el elegido pasa a ser el menor `orden` pendiente), guarda `ultimaOperacion = {tipo: 'ir-primero', ordenPrevio, sincronizada: false, en}`
-- [ ] T035 [US3] En `backend/src/state/integracionStore.js`, extender `mergearPunto()`/`upsertRecorridos()` para NO sobrescribir `orden` de puntos `pendiente` cuando `recorrido.ultimaOperacion?.tipo === 'ir-primero' && !recorrido.ultimaOperacion.sincronizada` (research.md, Decisión 4)
-- [ ] T036 [US3] Agregar `POST /:token/viaje/ir-primero` en `backend/src/routes/viaje.js` (T020)
-- [ ] T037 [US3] En `backend/src/routes/integracion.js`, extender `serializarEstado()` para incluir `orden` por punto, y llamar a `marcarSincronizadaSiCorresponde()` (T033) para cada recorrido servido en la respuesta de `GET /estado` (research.md, Decisión 3 y 5)
-- [ ] T038 [US3] En `frontend/src/services/api.js`, agregar `irPrimero(token, puntoId)`
-- [ ] T039 [US3] En `frontend/src/main.jsx`, agregar handler `handleIrPrimero(puntoId)` (mismo patrón optimista + resync-en-409)
-- [ ] T040 [US3] En `frontend/src/components/DeliveryPointCard.jsx`, agregar el botón IR PRIMERO condicionado a `viajeEstado === 'detenido'` y a no ser el primer punto pendiente
+- [X] T033 [US3] En `backend/src/state/integracionStore.js`, agregar el campo `ultimaOperacion` (ver data-model.md) y el método `confirmarSincronizacion(recorridoId)` invocado desde `GET /api/integracion/estado`
+- [X] T034 [US3] En `backend/src/state/integracionStore.js`, agregar mutador `moverPrimero(token, puntoId)`: valida `viajeEstado === 'detenido'`, `puntoId` pendiente y distinto del primero, reasigna `orden` entre los puntos `pendiente` (el elegido pasa a ser el menor `orden` pendiente), guarda `ultimaOperacion = {tipo: 'ir-primero', puntoId, snapshotPrevio: {ordenPrevio}, sincronizada: false, en}`
+- [X] T035 [US3] En `backend/src/state/integracionStore.js`, extender `mergearPunto()`/`upsertRecorridos()` para NO sobrescribir `orden` de puntos `pendiente` cuando `recorrido.ultimaOperacion?.tipo === 'ir-primero' && !recorrido.ultimaOperacion.sincronizada` (research.md, Decisión 4) — verificado con test de integración que simula 2 re-pushes de Oracle
+- [X] T036 [US3] Agregar `POST /:token/viaje/ir-primero` en `backend/src/routes/viaje.js` (T020)
+- [X] T037 [US3] En `backend/src/routes/integracion.js`, extender `serializarEstado()` para incluir `orden` por punto, y llamar a `store.confirmarSincronizacion()` (T033) para cada recorrido efectivamente servido en la respuesta de `GET /estado` (paginada o por `recorridoId`)
+- [X] T038 [US3] En `frontend/src/services/api.js`, agregar `irPrimero(token, puntoId)` — `rutaAccion`/`bodyPara` generalizados para el nuevo tipo `viaje-ir-primero`
+- [X] T039 [US3] En `frontend/src/main.jsx`, agregar handler `handleIrPrimero(puntoId)` con `calcularOrdenTrasIrPrimero()` para la actualización optimista (mismo patrón optimista + resync-en-409)
+- [X] T040 [US3] Botón IR PRIMERO en `DeliveryPointCard.jsx` — ya implementado en T027 (US2); acá solo se conectó el handler real — verificado end-to-end en navegador real
 
 **Checkpoint**: US1 + US2 + US3 funcionales; el chofer puede reordenar su próximo destino
 

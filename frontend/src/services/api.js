@@ -47,15 +47,24 @@ export function rutaAccion(item) {
       return `${base}/viaje/llegue`;
     case "viaje-descarga-completa":
       return `${base}/viaje/descarga-completa`;
+    case "viaje-ir-primero":
+      return `${base}/viaje/ir-primero`;
     default:
       throw new Error(`tipo de acción offline desconocido: ${item.tipo}`);
   }
 }
 
+function bodyPara(item) {
+  if (item.tipo === "viaje-ir-primero") {
+    return JSON.stringify({ puntoId: item.puntoId });
+  }
+  return JSON.stringify(item.ubicacion ? { lat: item.ubicacion.lat, lon: item.ubicacion.lon } : {});
+}
+
 async function enviarAccion(tipo, token, { puntoId, conUbicacion = false } = {}) {
   const ubicacion = conUbicacion ? await obtenerUbicacionBestEffort() : null;
-  const body = JSON.stringify(ubicacion ? { lat: ubicacion.lat, lon: ubicacion.lon } : {});
   const item = { tipo, token, puntoId, ubicacion };
+  const body = bodyPara(item);
 
   let res;
   try {
@@ -103,6 +112,11 @@ export function marcarDescargaCompleta(token) {
   return enviarAccion("viaje-descarga-completa", token, { conUbicacion: true });
 }
 
+/** Mueve `puntoId` (pendiente, no el primero) al frente, en Detenido (FR-014). */
+export function irPrimero(token, puntoId) {
+  return enviarAccion("viaje-ir-primero", token, { puntoId });
+}
+
 /**
  * Arranca el reintento automático de la cola offline. Devuelve una función
  * para desregistrar los listeners (útil en tests/cleanup de componentes).
@@ -112,7 +126,7 @@ export function iniciarSincronizacionOffline() {
     const res = await fetch(rutaAccion(item), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(item.ubicacion ? { lat: item.ubicacion.lat, lon: item.ubicacion.lon } : {}),
+      body: bodyPara(item),
     });
     // 2xx: aplicado. 404/409: ya no aplica o inválido, no tiene sentido
     // reintentar de nuevo. Solo un error de servidor (5xx) o de red amerita

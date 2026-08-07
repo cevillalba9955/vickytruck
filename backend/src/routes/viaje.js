@@ -42,6 +42,26 @@ export function createViajeRouter(repository) {
     }
   });
 
+  // POST /api/recorridos/:token/viaje/ir-primero — FR-014, FR-015, FR-016
+  router.post("/:token/viaje/ir-primero", async (req, res, next) => {
+    try {
+      const { puntoId } = req.body || {};
+      const resultado = await repository.moverPrimero(req.params.token, puntoId);
+      if (resultado.outcome === "invalid_token") {
+        return res.status(404).json({ error: "enlace_invalido" });
+      }
+      if (resultado.outcome === "not_found") {
+        return res.status(404).json({ error: "punto_no_encontrado" });
+      }
+      if (resultado.outcome === "conflict") {
+        return res.status(409).json({ error: "transicion_invalida", motivo: resultado.motivo ?? null });
+      }
+      return res.status(200).json({ ok: true, puntos: resultado.puntos });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
 

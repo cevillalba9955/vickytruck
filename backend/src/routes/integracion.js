@@ -11,6 +11,9 @@ function serializarEstado(recorrido) {
     ultimaUbicacion: recorrido.ultimaUbicacion ?? null,
     puntos: recorrido.puntos.map((p) => ({
       id: p.id,
+      // `orden` (005-chofer-estados-viaje, FR-016): antes ausente de este
+      // contrato. Es el orden vigente en el cloud, que puede incluir un
+      // reordenamiento del chofer (IR PRIMERO) que Oracle todavía no tenía.
       orden: p.orden,
       estado: p.estado,
       arriboEn: p.arriboEn,
@@ -61,13 +64,21 @@ export function createIntegracionRouter(store, emqxProvisioning = emqxProvisioni
       return res.status(404).json({ error: "recorrido_no_encontrado" });
     }
 
+    // Confirma sincronización (005-chofer-estados-viaje, research.md
+    // Decisión 3/4): solo para los recorridos efectivamente servidos en esta
+    // respuesta — Oracle recién "vio" estos, no el resto que quedó fuera de
+    // la página. A partir de acá, CANCELAR deja de aplicar sobre su última
+    // operación y `mergearPunto` deja de proteger su `orden`.
     if (recorridoId) {
+      for (const r of recorridos) store.confirmarSincronizacion(r.id);
       return res.status(200).json({ recorridos: recorridos.map(serializarEstado) });
     }
 
     const limit = Math.max(1, Number(req.query?.limit || 50));
     const offset = Math.max(0, Number(req.query?.offset || 0));
-    const page = recorridos.slice(offset, offset + limit).map(serializarEstado);
+    const servidos = recorridos.slice(offset, offset + limit);
+    for (const r of servidos) store.confirmarSincronizacion(r.id);
+    const page = servidos.map(serializarEstado);
 
     return res.status(200).json({
       recorridos: page,

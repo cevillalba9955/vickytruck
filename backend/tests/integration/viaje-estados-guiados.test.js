@@ -59,6 +59,83 @@ test("US2 — ciclo guiado completo Detenido->Manejando->Descargando->Detenido s
   }
 });
 
+test("US3 — IR PRIMERO sobrevive a un re-push de Oracle con el orden viejo, hasta que Oracle lee el nuevo vía GET /estado", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(store, undefined, undefined, store);
+
+  function withApiKey(init = {}) {
+    return { ...init, headers: { "Content-Type": "application/json", "x-api-key": "test-key", ...(init.headers || {}) } };
+  }
+
+  const puntosOriginales = [
+    { id: "p1", orden: 1, estado: "pendiente" },
+    { id: "p2", orden: 2, estado: "pendiente" },
+    { id: "p3", orden: 3, estado: "pendiente" },
+  ];
+
+  try {
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({ source: "oracle-apex", recorridos: [{ id: "R-3", token: "tok-3", fleteId: "F-3", estado: "activo", puntos: puntosOriginales }] }),
+      }),
+    );
+
+    // Chofer prioriza p3 con IR PRIMERO.
+    await fetch(`${server.baseUrl}/tok-3/viaje/ir-primero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntoId: "p3" }),
+    });
+    let recorrido = await (await fetch(`${server.baseUrl}/tok-3`)).json();
+    assert.deepEqual(
+      recorrido.puntos.map((p) => p.id),
+      ["p3", "p1", "p2"],
+    );
+
+    // Oracle re-pushea el recorrido con el orden ORIGINAL (todavía no se
+    // enteró del reordenamiento) — no debe pisar el orden fijado por el chofer.
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({ source: "oracle-apex", recorridos: [{ id: "R-3", token: "tok-3", fleteId: "F-3", estado: "activo", puntos: puntosOriginales }] }),
+      }),
+    );
+    recorrido = await (await fetch(`${server.baseUrl}/tok-3`)).json();
+    assert.deepEqual(
+      recorrido.puntos.map((p) => p.id),
+      ["p3", "p1", "p2"],
+      "el re-push con orden viejo no debe pisar el reordenamiento del chofer todavía no leído por Oracle",
+    );
+
+    // Oracle finalmente lee el estado (su próximo poll) — a partir de acá el
+    // orden queda "confirmado" y un push posterior con orden viejo sí pisa.
+    await fetch(`${server.integracionBaseUrl}/estado?recorridoId=R-3`, withApiKey());
+
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({ source: "oracle-apex", recorridos: [{ id: "R-3", token: "tok-3", fleteId: "F-3", estado: "activo", puntos: puntosOriginales }] }),
+      }),
+    );
+    recorrido = await (await fetch(`${server.baseUrl}/tok-3`)).json();
+    assert.deepEqual(
+      recorrido.puntos.map((p) => p.id),
+      ["p1", "p2", "p3"],
+      "tras confirmar sincronización, un push posterior con orden viejo sí se aplica de nuevo",
+    );
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
 test("US2 — LLEGUE/DESCARGA COMPLETA operan siempre sobre el punto activo, no sobre cualquier pendiente", async () => {
   const store = createIntegracionStore();
   store.upsertRecorridos([

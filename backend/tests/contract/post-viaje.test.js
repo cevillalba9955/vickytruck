@@ -125,3 +125,112 @@ test("POST /viaje/descarga-completa — 409 si el viaje no está Descargando", a
     await server.cerrar();
   }
 });
+
+test("POST /viaje/ir-primero — mueve un punto pendiente al frente (FR-014)", async () => {
+  const { server } = await servidorConRecorrido([
+    { id: "p1", orden: 1, estado: "pendiente" },
+    { id: "p2", orden: 2, estado: "pendiente" },
+    { id: "p3", orden: 3, estado: "pendiente" },
+  ]);
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/ir-primero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntoId: "p3" }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(
+      body.puntos.map((p) => p.id),
+      ["p3", "p1", "p2"],
+    );
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/ir-primero — 404 si el punto no existe en el recorrido", async () => {
+  const { server } = await servidorConRecorrido([
+    { id: "p1", orden: 1, estado: "pendiente" },
+    { id: "p2", orden: 2, estado: "pendiente" },
+  ]);
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/ir-primero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntoId: "no-existe" }),
+    });
+    assert.equal(res.status, 404);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/ir-primero — 409 si el punto ya es el primero pendiente", async () => {
+  const { server } = await servidorConRecorrido([
+    { id: "p1", orden: 1, estado: "pendiente" },
+    { id: "p2", orden: 2, estado: "pendiente" },
+  ]);
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/ir-primero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntoId: "p1" }),
+    });
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).motivo, "ya_es_primero");
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/ir-primero — 409 si solo queda un punto pendiente", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/ir-primero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntoId: "p1" }),
+    });
+    assert.equal(res.status, 409);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/ir-primero — 409 si el viaje no está Detenido", async () => {
+  const { server } = await servidorConRecorrido([
+    { id: "p1", orden: 1, estado: "pendiente" },
+    { id: "p2", orden: 2, estado: "pendiente" },
+  ]);
+  try {
+    await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, { method: "POST" });
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/ir-primero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntoId: "p2" }),
+    });
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).motivo, "viaje_no_detenido");
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/ir-primero — 409 si el punto no está pendiente (ya arribado/completado)", async () => {
+  const { server } = await servidorConRecorrido([
+    { id: "p1", orden: 1, estado: "completado" },
+    { id: "p2", orden: 2, estado: "pendiente" },
+  ]);
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/ir-primero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntoId: "p1" }),
+    });
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).motivo, "no_pendiente");
+  } finally {
+    await server.cerrar();
+  }
+});
