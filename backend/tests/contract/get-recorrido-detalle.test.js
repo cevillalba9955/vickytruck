@@ -36,6 +36,33 @@ test("GET /api/central/recorridos/:id — 200 con puntos ordenados y eventos (FR
   }
 });
 
+test("GET /api/central/recorridos/:id — expone remitoIds por punto, dato interno de control (005-chofer-estados-viaje, FR-003)", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "51",
+        estado: "activo",
+        fleteId: "8",
+        puntos: [
+          { id: "p1", orden: 1, estado: "pendiente", remitoIds: ["R-1", "R-2"] },
+          { id: "p2", orden: 2, estado: "pendiente" },
+        ],
+      },
+    ],
+    fletes: [{ id: "8", nombre: "Ana Gómez" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/51`);
+    const body = await res.json();
+    assert.deepEqual(body.puntos[0].remitoIds, ["R-1", "R-2"]);
+    assert.deepEqual(body.puntos[1].remitoIds, [], "un punto sin remitos expone lista vacía, no error");
+  } finally {
+    await server.cerrar();
+  }
+});
+
 test("GET /api/central/recorridos/:id — 404 si no existe", async () => {
   const repository = createInMemoryCentralRepository({ recorridos: [], fletes: [] });
   const server = await iniciarServidorDePrueba(undefined, repository);

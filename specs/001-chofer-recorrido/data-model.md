@@ -54,6 +54,12 @@ pendiente --(marcar arribo)--> arribado --(marcar descarga completa)--> completa
 - No hay reglas de orden entre puntos distintos: cualquier punto `pendiente` puede
   recibir "arribo" sin importar el estado de los demás (marcado libre, ver
   Clarifications de spec.md).
+  > **Superseded por 005-chofer-estados-viaje**: la pantalla principal del chofer ya
+  > no ofrece marcado libre — el flujo guiado (Detenido/Manejando/Descargando) permite
+  > accionar un único punto activo por vez. Las transiciones de estado descritas acá
+  > (`pendiente → arribado → completado`, sin reversa) y los endpoints por-punto de
+  > 001 siguen existiendo sin cambios; ver `specs/005-chofer-estados-viaje/data-model.md`
+  > para el modelo vigente de interacción.
 - Repetir la misma transición ya aplicada (ej. arribo sobre un punto ya `arribado`) es
   idempotente a nivel de API (ver research.md §6); a nivel de UI esa acción no se ofrece
   (FR-007).

@@ -1,4 +1,55 @@
-create or replace PACKAGE BODY     INTEGRACION_CLOUD_API AS
+-- Package BODY: INTEGRACION_CLOUD_API
+--
+-- Arma el payload de POST /api/integracion/recorridos (ver contrato en
+-- specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md, extendido
+-- por specs/005-chofer-estados-viaje/contracts/sincronizacion-oracle-central.md)
+-- leyendo las vistas ya validadas contra este esquema real (mismas que usa
+-- RECORRIDO_API, ver recorrido_api.pkb.sql):
+--   VIC.V_RECORRIDOS(ID, TOKEN, ESTADO, FLETE_ID, CHOFER_ID)
+--   VIC.V_PUNTOS_ENTREGA(ID, RECORRIDO_ID, ORDEN, LATITUD, LONGITUD, ESTADO,
+--                         CLIENTE, DIRECCION, HORARIO, NOTAS, REMITO_IDS)
+--   VIC.V_FLETES(ID, NOMBRE)
+--   DB_ENTIDADES.V_CHOFERES(ID, TITLE) -- solo lectura, GRANT a VIC (2026-08-10)
+--
+-- CLIENTE/DIRECCION/HORARIO/NOTAS (005-chofer-estados-viaje, FR-001/FR-002):
+-- columnas de texto, nullable — se omiten del JSON cuando vienen NULL
+-- (ABSENT ON NULL más abajo), el chofer las ve tal cual (FR-004). HORARIO ya
+-- viaja formateado como texto (ej. "09:00-12:00"); este package no arma
+-- desde/hasta.
+--
+-- REMITO_IDS (FR-001, FR-003 — dato interno, nunca lo ve el chofer): columna
+-- VARCHAR2 con ids numéricos separados por coma (ej. "1001,1002"), NULL si
+-- el punto no tiene remitos. Se explota acá a un JSON array de strings
+-- (armar_remito_ids abajo) porque el backend cloud espera `remitoIds` como
+-- lista, no como valor único — nunca se manda la columna cruda.
+--
+-- CHOFER_ID/CHOFER_NOMBRE (003-arquitectura-cloud-mqtt, FR-013, 2026-08-10):
+-- dispara la credencial MQTT permanente por-chofer en el backend cloud (ver
+-- backend/src/mqtt/emqxProvisioning.js). CHOFER_ID ya existía en
+-- V_RECORRIDOS (se usaba para asignación de viaje, no para MQTT); el nombre
+-- sale de DB_ENTIDADES.V_CHOFERES.TITLE vía LEFT JOIN.
+--
+-- IMPORTANTE (primera versión — sincronización manual, ver README.md de esta
+-- carpeta): c_api_key queda hardcodeada acá como constante. Antes de atar esto a un
+-- trigger o job automático hay que moverla al credential store de APEX
+-- (APEX_CREDENTIAL.CREATE_CREDENTIAL) en vez de dejarla en el código fuente.
+-- Mismo valor que INTEGRACION_API_KEY en backend/.env y en los secrets de
+-- Fly — rotar en algún momento antes de operar en serio.
+--
+-- No validado todavía: si esta instancia Oracle (on-prem, IP privada) tiene
+-- salida a internet hacia el backend, y si el wallet TLS por default de
+-- APEX_WEB_SERVICE valida el certificado sin configuración adicional. Si
+-- sincronizar_recorrido explota acá, p_respuesta/la excepción va a decir el
+-- motivo real.
+--
+-- Se crea en el esquema VIC. El usuario VICKYTRUCK (que en la primera
+-- versión conectaba el backend directo a Oracle) ya no se usa — se eliminó
+-- al pasar a la arquitectura cloud (spec 003), donde el backend no tiene
+-- ningún acceso a Oracle. VIC ya tiene los privilegios (y la ACL de red,
+-- confirmada contra `localhost:8090` y `APEX_240100` el 2026-08-07) que este
+-- paquete necesita, así que no hace falta ningún GRANT cross-schema.
+
+CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
 
   -- Vía relay nginx local (ver relay-rocky/README.md): esta Oracle no logra
   -- salir directo a internet (ORA-29273/ORA-24247 persistente pese a ACL
@@ -57,6 +108,12 @@ create or replace PACKAGE BODY     INTEGRACION_CLOUD_API AS
   -- 005-chofer-estados-viaje, FR-001/FR-004a. Requiere APEX_STRING (paquete
   -- estándar de APEX, ya asumido disponible por este package vía
   -- APEX_WEB_SERVICE más abajo).
+  --
+  -- Declarada en el SPEC (no solo acá en el body) A PROPÓSITO: armar_payload
+  -- la llama desde DENTRO de un SELECT (JSON_OBJECT), y el motor SQL solo
+  -- puede resolver funciones públicas del package — una función privada del
+  -- body da ORA-00904 + PLS-00231 al intentar usarla en SQL (confirmado
+  -- contra Oracle real, 2026-08-07).
   FUNCTION armar_remito_ids(p_remito_ids IN VARCHAR2) RETURN CLOB IS
     v_json CLOB;
   BEGIN
@@ -77,17 +134,32 @@ create or replace PACKAGE BODY     INTEGRACION_CLOUD_API AS
     v_estado        VARCHAR2(40);
     v_flete_id      NUMBER;
     v_flete_nombre  VARCHAR2(200);
-    v_chofer_id      NUMBER;
-    v_chofer_nombre  VARCHAR2(200);
+    v_chofer_id     NUMBER;
+    v_chofer_nombre VARCHAR2(200);
     v_puntos        CLOB;
     v_recorrido     CLOB;
     v_payload       CLOB;
   BEGIN
-    SELECT r.id, r.token,'activo' estado, r.flete_id, f.nombre, R.CHOFER_ID, CH.TITLE CHOFER
+    -- 'activo' hardcodeado A PROPÓSITO en vez de r.estado (decisión del
+    -- 2026-08-07, no un bug): sincronizar_recorrido siempre debe poder
+    -- reactivar un recorrido en el cloud, aunque V_RECORRIDOS.ESTADO ya lo
+    -- tenga como 'finalizado' por una corrida anterior — si no, volver a
+    -- sincronizar el mismo recorrido de prueba durante el desarrollo lo deja
+    -- fuera de "activos" en Central sin forma de recuperarlo desde acá.
+    -- OJO: esto significa que ESTE push nunca manda 'finalizado' — Central
+    -- solo movería un recorrido a "historial" (listarHistorial(), que filtra
+    -- por estado='finalizado') si algún otro camino llega a mandarlo.
+    -- 2026-08-10: ese otro camino ya existe — backend/src/state/
+    -- integracionStore.js marca el recorrido "finalizado" automáticamente
+    -- cuando el chofer completa la descarga del último punto pendiente
+    -- (transicionarPunto), sin depender de que Oracle lo reenvíe con ese
+    -- estado. Un re-push posterior de acá con 'activo' ya no lo revierte
+    -- (mismo integracionStore.js lo protege).
+    SELECT r.id, r.token, 'activo' estado, r.flete_id, f.nombre, r.chofer_id, ch.title chofer_nombre
       INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre, v_chofer_id, v_chofer_nombre
       FROM VIC.V_RECORRIDOS r
       LEFT JOIN DB_ENTIDADES.V_FLETES f ON f.id = r.flete_id
-      LEFT JOIN DB_ENTIDADES.V_CHOFERES CH ON CH.ID = R.CHOFER_ID
+      LEFT JOIN DB_ENTIDADES.V_CHOFERES ch ON ch.id = r.chofer_id
      WHERE r.id = p_recorrido_id;
 
     SELECT JSON_ARRAYAGG(
@@ -280,3 +352,4 @@ create or replace PACKAGE BODY     INTEGRACION_CLOUD_API AS
   END leer_estado_puntos;
 
 END INTEGRACION_CLOUD_API;
+/

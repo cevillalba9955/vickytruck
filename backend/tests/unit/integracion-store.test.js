@@ -209,6 +209,92 @@ test("upsert — un re-push con estado 'activo' no revierte un recorrido ya fina
   assert.equal(recorrido.estado, "finalizado");
 });
 
+test("upsert — un recorrido nuevo arranca con viajeEstado 'detenido' y sin punto activo ni última operación", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+
+  const [recorrido] = store.listarEstado("R-1");
+  assert.equal(recorrido.viajeEstado, "detenido");
+  assert.equal(recorrido.puntoActivoId, null);
+  assert.equal(recorrido.ultimaOperacion, null);
+});
+
+test("upsert — un re-push preserva viajeEstado/puntoActivoId/ultimaOperacion ya vigentes", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+
+  const [recorrido] = store.listarEstado("R-1");
+  recorrido.viajeEstado = "manejando";
+  recorrido.puntoActivoId = "p1";
+
+  seedRecorrido(store, {
+    puntos: [
+      { id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41 },
+      { id: "p2", orden: 2, estado: "pendiente", lat: -34.7, lon: -58.5 },
+    ],
+  });
+
+  const [tras] = store.listarEstado("R-1");
+  assert.equal(tras.viajeEstado, "manejando");
+  assert.equal(tras.puntoActivoId, "p1");
+});
+
+test("upsert — acepta y conserva cliente/dirección/rango horario/notas/remitoIds por punto", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store, {
+    puntos: [
+      {
+        id: "p1",
+        orden: 1,
+        estado: "pendiente",
+        lat: -34.6,
+        lon: -58.4,
+        cliente: "Distribuidora Sur SRL",
+        direccion: "Av. Rivadavia 1234",
+        rangoHorario: "09:00–12:00",
+        notasEntrega: "Tocar timbre de depósito",
+        remitoIds: ["R-1", "R-2"],
+      },
+      { id: "p2", orden: 2, estado: "pendiente", lat: -34.7, lon: -58.5 },
+    ],
+  });
+
+  const recorrido = await store.obtenerPorToken("tok-1");
+  assert.equal(recorrido.puntos[0].cliente, "Distribuidora Sur SRL", "obtenerPorToken (contrato del chofer) sí expone los campos informativos");
+  assert.equal(recorrido.puntos[0].remitoIds, undefined, "obtenerPorToken NUNCA expone remitoIds — es el contrato que consume el chofer (FR-003)");
+
+  const [interno] = store.listarEstado("R-1");
+  const p1 = interno.puntos.find((p) => p.id === "p1");
+  assert.equal(p1.cliente, "Distribuidora Sur SRL");
+  assert.equal(p1.direccion, "Av. Rivadavia 1234");
+  assert.equal(p1.rangoHorario, "09:00–12:00");
+  assert.equal(p1.notasEntrega, "Tocar timbre de depósito");
+  assert.deepEqual(p1.remitoIds, ["R-1", "R-2"]);
+
+  const p2 = interno.puntos.find((p) => p.id === "p2");
+  assert.equal(p2.cliente, null);
+  assert.deepEqual(p2.remitoIds, [], "un punto sin remitoIds queda con lista vacía, no undefined/null");
+});
+
+test("upsert — un re-push de un punto ya arribado/completado también refresca sus campos informativos", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+  await store.marcarArribo("tok-1", "p1");
+
+  seedRecorrido(store, {
+    puntos: [
+      { id: "p1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4, cliente: "Cliente Actualizado", remitoIds: ["R-9"] },
+      { id: "p2", orden: 2, estado: "pendiente", lat: -34.7, lon: -58.5 },
+    ],
+  });
+
+  const [recorrido] = store.listarEstado("R-1");
+  const p1 = recorrido.puntos.find((p) => p.id === "p1");
+  assert.equal(p1.estado, "arribado", "el progreso no se pisa");
+  assert.equal(p1.cliente, "Cliente Actualizado", "los campos informativos sí se refrescan, no son datos de progreso");
+  assert.deepEqual(p1.remitoIds, ["R-9"]);
+});
+
 test("upsert — un re-push con puntos 'pendiente' no pisa el progreso ya confirmado por el chofer", async () => {
   const store = createIntegracionStore();
   seedRecorrido(store);
