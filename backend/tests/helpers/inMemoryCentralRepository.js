@@ -22,6 +22,9 @@ function serializarPuntos(puntos) {
       estado: p.estado,
       arriboEn: p.arriboEn ?? null,
       descargaEn: p.descargaEn ?? null,
+      // remitoIds SÍ es visible para Central (005-chofer-estados-viaje,
+      // FR-003 — "control interno"), a diferencia de recorrido.js (chofer).
+      remitoIds: p.remitoIds ?? [],
     }))
     .sort((a, b) => a.orden - b.orden);
 }

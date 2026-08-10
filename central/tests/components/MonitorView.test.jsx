@@ -27,6 +27,35 @@ describe("MonitorView", () => {
     expect(screen.getByText("Ana Gómez").closest("tr")).toHaveTextContent("Ubicación no reciente");
   });
 
+  it("muestra el estado de viaje y el punto activo del chofer (005-chofer-estados-viaje, FR-021)", () => {
+    render(
+      <MonitorView
+        recorridos={[
+          {
+            id: "60",
+            flete: { id: "11", nombre: "Lucía Paz" },
+            progreso: { pendientes: 1, arribados: 0, completados: 1 },
+            ultimaUbicacion: null,
+            viajeEstado: "manejando",
+            puntoActivoId: "p3",
+          },
+          {
+            id: "61",
+            flete: { id: "12", nombre: "Diego Ríos" },
+            progreso: { pendientes: 2, arribados: 0, completados: 0 },
+            ultimaUbicacion: null,
+            viajeEstado: "detenido",
+            puntoActivoId: null,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Lucía Paz").closest("tr")).toHaveTextContent("Manejando (punto p3)");
+    expect(screen.getByText("Diego Ríos").closest("tr")).toHaveTextContent("Detenido");
+    expect(screen.getByText("Diego Ríos").closest("tr")).not.toHaveTextContent("punto");
+  });
+
   it("muestra un mensaje cuando no hay recorridos activos", () => {
     render(<MonitorView recorridos={[]} />);
     expect(screen.getByRole("status")).toHaveTextContent("No hay recorridos activos");

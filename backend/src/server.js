@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import express from "express";
 import { createRecorridoRouter } from "./routes/recorrido.js";
+import { createViajeRouter } from "./routes/viaje.js";
 import { createCentralRouter } from "./routes/central.js";
 import { createIntegracionRouter } from "./routes/integracion.js";
 import { integracionStoreCompartido } from "./state/integracionStore.js";
@@ -26,6 +27,7 @@ export function createApp(
   app.use(express.json());
 
   app.use("/api/recorridos", createRecorridoRouter(repository, ubicacionStore));
+  app.use("/api/recorridos", createViajeRouter(repository));
   app.use("/api/central", createCentralRouter(centralRepository));
   app.use("/api/integracion", createIntegracionRouter(integracionStore, emqxProvisioning));
 

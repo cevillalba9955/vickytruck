@@ -194,6 +194,39 @@ test("POST /api/integracion/recorridos (x2) — el mismo choferId en recorridos 
   }
 });
 
+test("GET /api/integracion/estado — incluye orden por punto (005-chofer-estados-viaje, FR-016)", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store);
+
+  try {
+    store.upsertRecorridos([
+      {
+        id: "R-ORDEN-1",
+        estado: "activo",
+        puntos: [
+          { id: "p1", orden: 1, estado: "pendiente" },
+          { id: "p2", orden: 2, estado: "pendiente" },
+        ],
+      },
+    ]);
+
+    const res = await fetch(`${server.integracionBaseUrl}/estado?recorridoId=R-ORDEN-1`, withApiKey());
+    const body = await res.json();
+    assert.deepEqual(
+      body.recorridos[0].puntos.map((p) => ({ id: p.id, orden: p.orden })),
+      [
+        { id: "p1", orden: 1 },
+        { id: "p2", orden: 2 },
+      ],
+    );
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
 test("GET /api/integracion/estado — 404 para recorrido inexistente", async () => {
   const prev = process.env.INTEGRACION_API_KEY;
   process.env.INTEGRACION_API_KEY = "test-key";

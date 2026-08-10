@@ -1,29 +1,33 @@
 <!--
 Sync Impact Report
-Version change: 2.0.0 → 3.0.0
+Version change: 3.0.0 → 4.0.0
 Modified principles:
-  - IV. "Oracle como Fuente Única de Verdad" → "Fuentes de Verdad por Dominio y
-    Sincronización Explícita" — REDEFINICIÓN INCOMPATIBLE: se elimina la restricción de
-    Oracle como único almacenamiento autoritativo para toda operación y se establece un
-    modelo híbrido: Oracle local como maestro administrativo y store cloud como fuente
-    autoritativa del plano operativo en vivo, sincronizados por endpoints autenticados.
+  - II. "Ruta Acotada y Ordenada (Máximo 10 Puntos)" → "Ruta Acotada y Ordenada (Máximo 10
+    Puntos), con Reordenamiento Limitado por el Chofer" — REDEFINICIÓN INCOMPATIBLE: se
+    elimina la restricción absoluta "el chofer no puede reordenar ni editar los puntos" y
+    se introduce una excepción acotada: el chofer puede mover cualquier punto pendiente de
+    su recorrido activo al primer puesto (acción IR PRIMERO, feature 005), y ese
+    reordenamiento se sincroniza como el nuevo orden autoritativo hacia Central/Oracle.
+    Fuera de esa acción puntual, el chofer sigue sin poder editar los puntos ni alterar el
+    orden de ningún otro modo; el límite de 10 puntos y las coordenadas obligatorias no
+    cambian.
 Added sections: ninguna (modificación de un principio existente)
-Removed sections: ninguna (se retira una restricción dentro del Principio IV, no una
+Removed sections: ninguna (se retira una restricción dentro del Principio II, no una
   sección completa)
 Templates requiring updates:
   - .specify/templates/plan-template.md ✅ no changes needed (Constitution Check gate is derived dynamically from this file)
   - .specify/templates/spec-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/tasks-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/checklist-template.md ✅ no changes needed
-  - specs/003-arquitectura-cloud-mqtt/spec.md ✅ updated
-  - specs/003-arquitectura-cloud-mqtt/plan.md ✅ updated
-  - specs/003-arquitectura-cloud-mqtt/research.md ✅ updated
-  - specs/003-arquitectura-cloud-mqtt/tasks.md ✅ updated
-  - specs/002-panel-control-central/plan.md ⚠ pending manual alignment de Principle IV
-  - specs/002-panel-control-central/spec.md ⚠ pending manual alignment de FR-005/FR-016
+  - specs/005-chofer-estados-viaje/spec.md ⚠ pending manual alignment (retirar nota de
+    conflicto en Assumptions/checklist, ahora resuelta por esta enmienda)
+  - specs/001-chofer-recorrido/data-model.md ⚠ no requiere cambio (describe el
+    comportamiento vigente al momento de esa feature; el reordenamiento del chofer es
+    alcance de la feature 005, no retroactivo)
 Follow-up TODOs:
-  - Definir en implementación del feature 003 la política formal de reconciliación
-    entre store cloud y Oracle local para incidentes de desincronización.
+  - Definir en el plan de la feature 005 el contrato de sincronización concreto (endpoint,
+    payload, resolución de conflictos) para que IR PRIMERO persista el nuevo orden hacia
+    Oracle/Central.
 -->
 
 # VickyTruck Constitution
@@ -43,16 +47,28 @@ Rationale: el chofer opera en movimiento, con atención dividida y conectividad
 variable; una única vista minimiza errores de navegación y tiempo de
 distracción.
 
-### II. Ruta Acotada y Ordenada (Máximo 10 Puntos)
+### II. Ruta Acotada y Ordenada (Máximo 10 Puntos), con Reordenamiento Limitado por el Chofer
 Toda ruta/recorrido asignado a un flete contiene una lista ORDENADA de puntos
 de entrega, con un máximo estricto de 10 puntos por recorrido. Cada punto
 DEBE incluir coordenadas de latitud/longitud válidas. El orden de la lista es
-autoritativo y solo puede modificarse desde la Central; el chofer no puede
-reordenar ni editar los puntos, solo reportar eventos de estado sobre ellos
-(arribo, descarga completa).
+autoritativo en todo momento: vive en el servidor y se sincroniza con
+Oracle/Central. Central puede reordenar, agregar o quitar puntos en
+cualquier momento. El chofer NO puede editar el contenido de los puntos ni
+alterar el orden de forma arbitraria; tiene una única excepción acotada:
+mientras su recorrido está en curso, puede mover cualquiera de los puntos
+aún pendientes al primer puesto de la lista, para priorizar cuál trabaja a
+continuación. Ese reordenamiento hecho por el chofer se sincroniza como el
+nuevo orden autoritativo hacia Central/Oracle; fuera de esa acción puntual
+(mover un punto pendiente al primer puesto), el chofer solo reporta eventos
+de estado sobre los puntos (arribo, descarga completa).
 Rationale: acotar a 10 puntos mantiene la interfaz simple y evita listas que
-degraden la usabilidad móvil; el orden autoritativo evita ambigüedad sobre qué
-entrega corresponde ejecutar.
+degraden la usabilidad móvil. El orden autoritativo sigue evitando
+ambigüedad sobre qué entrega corresponde ejecutar, pero reconoce que el
+chofer, ya en ruta, suele tener mejor información en tiempo real que
+Central sobre qué punto conviene trabajar a continuación; limitar esa
+flexibilidad a "mover al frente" (sin edición de contenido ni
+reordenamiento arbitrario del resto de la lista) mantiene la ambigüedad
+bajo control mientras da la flexibilidad operativa necesaria.
 
 ### III. Central Compatible con Embebido en Oracle APEX y con Acceso Directo (NON-NEGOTIABLE)
 La aplicación de Central es una web app de escritorio que DEBE funcionar
@@ -153,7 +169,8 @@ costo de mantenimiento y menor riesgo de privacidad/seguridad.
   
 
 - Cambios que afecten el embebido en APEX, el acceso directo de Central
-  (Principio III) o el límite de 10 puntos por recorrido (Principio II)
+  (Principio III), el límite de 10 puntos por recorrido, o el
+  reordenamiento de puntos pendientes por el chofer (Principio II)
   requieren pruebas manuales o automatizadas explícitas antes de mergear.
 - Cambios en el modelo de datos Oracle local o en el store operacional cloud
   (recorridos, asignaciones, estados, telemetría, mensajería) requieren
@@ -180,4 +197,4 @@ semver:
 "Constitution Check" antes de la Fase 0 y volver a repasarla tras la Fase 1
 de diseño.
 
-**Version**: 3.0.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-05
+**Version**: 4.0.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-07

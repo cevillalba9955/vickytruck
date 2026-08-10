@@ -28,6 +28,9 @@ function mqttConfigPara(fleteId, choferId) {
   }
 }
 
+// Allow-list explícito (no un spread de `punto`): es la garantía real de que
+// remitoIds nunca llegue al chofer (005-chofer-estados-viaje, FR-003), sin
+// depender de que las capas de abajo lo filtren correctamente.
 function serializePunto(punto, totalPuntos) {
   return {
     id: punto.id,
@@ -38,6 +41,10 @@ function serializePunto(punto, totalPuntos) {
     estado: punto.estado,
     arriboEn: punto.arriboEn,
     descargaEn: punto.descargaEn,
+    cliente: punto.cliente ?? null,
+    direccion: punto.direccion ?? null,
+    rangoHorario: punto.rangoHorario ?? null,
+    notasEntrega: punto.notasEntrega ?? null,
   };
 }
 
@@ -63,6 +70,11 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
           fleteId: recorrido.fleteId ?? null,
           intervaloUbicacionMs: intervaloReporteUbicacionMs(),
           mqtt: mqttConfigPara(recorrido.fleteId, recorrido.choferId),
+          // Estado de viaje guiado (005-chofer-estados-viaje, FR-005).
+          viajeEstado: recorrido.viajeEstado ?? "detenido",
+          puntoActivoId: recorrido.puntoActivoId ?? null,
+          // FR-019: visibilidad de CANCELAR persistida en el servidor.
+          puedeCancelar: recorrido.puedeCancelar ?? false,
         },
         progreso: recorrido.progreso,
         puntos: recorrido.puntos.map((p) => serializePunto(p, recorrido.puntos.length)),
