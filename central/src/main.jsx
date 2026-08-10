@@ -11,7 +11,15 @@ import { pollEvery } from "./services/polling.js";
 import { conectarUbicacionEnTiempoReal } from "./services/mqttClient.js";
 import { construirMarcadoresFlete } from "./services/marcadores.js";
 
-const INTERVALO_POLLING_MS = 5000;
+// 2026-08-10 (spec.md FR-005 activado, research.md Decisión 11): MQTT pasa
+// a ser la vía principal de ubicación en vivo. El polling REST no se
+// elimina — sigue siendo necesario para todo lo que MQTT no transporta
+// (nuevos recorridos activos, progreso, viajeEstado/puntoActivoId,
+// historial) — pero baja de cadencia cuando MQTT está conectado, actuando
+// como respaldo de reconciliación en vez de la vía principal. Si MQTT se
+// cae/reconecta, vuelve a la cadencia rápida original.
+const INTERVALO_POLLING_MQTT_CONECTADO_MS = 30000;
+const INTERVALO_POLLING_RESPALDO_MS = 5000;
 
 function App() {
   const [vista, setVista] = useState("monitor");
@@ -40,9 +48,11 @@ function App() {
   };
 
   // Historia 1 (FR-001, FR-002): refresco automático por polling, sin
-  // recarga manual de la página.
+  // recarga manual de la página. Cadencia dinámica: respaldo lento mientras
+  // MQTT esté conectado (FR-005), vuelve a la cadencia rápida si no.
+  const intervaloPolling = mqttEstado === "connected" ? INTERVALO_POLLING_MQTT_CONECTADO_MS : INTERVALO_POLLING_RESPALDO_MS;
   useEffect(() => {
-    return pollEvery(INTERVALO_POLLING_MS, async () => {
+    return pollEvery(intervaloPolling, async () => {
       try {
         setActivos(await listarActivos());
         setError(null);
@@ -50,7 +60,7 @@ function App() {
         setError("error_desconocido");
       }
     });
-  }, []);
+  }, [intervaloPolling]);
 
   useEffect(() => {
     return conectarUbicacionEnTiempoReal({
