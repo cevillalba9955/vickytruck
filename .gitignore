@@ -16,3 +16,5 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+postman/environments/vickytruck-flyio.postman_environment.json
+postman/environments/vickytruck-local.postman_environment.json
