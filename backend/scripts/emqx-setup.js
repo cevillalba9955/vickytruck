@@ -56,6 +56,16 @@ function reglasAclUrl() {
   return `${apiBaseUrl()}/authorization/sources/built_in_database/rules/users`;
 }
 
+// 2026-08-10: si el usuario ya existía (409), este script SOLO lo dejaba
+// "sin cambios" — nunca actualizaba la password en EMQX Cloud. Si alguna
+// vez se rotaba MQTT_PASSWORD en los secrets de Fly, volver a correr este
+// script no sincronizaba nada: EMQX Cloud seguía teniendo la password
+// vieja, y mqttBridge.js quedaba en loop de reconexión con "Bad User Name
+// or Password" sin que nada lo hiciera evidente hasta revisar logs a mano
+// (pasó en producción). Ahora, igual que provisionarCredencial en
+// emqxProvisioning.js, un 409 dispara un PUT que fuerza la password actual
+// — correr `npm run emqx:setup` vuelve a ser seguro después de rotar el
+// secret.
 async function upsertUsuarioServicio({ fetchImpl, print, username, password }) {
   const res = await fetchImpl(usersUrl(), {
     method: "POST",
@@ -67,7 +77,15 @@ async function upsertUsuarioServicio({ fetchImpl, print, username, password }) {
     return;
   }
   if (res.status === 409) {
-    print(`  usuario de servicio "${username}": ya existía (sin cambios).`);
+    const resUpdate = await fetchImpl(`${usersUrl()}/${encodeURIComponent(username)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: authHeader() },
+      body: JSON.stringify({ password }),
+    });
+    if (!resUpdate.ok) {
+      throw new Error(`no se pudo actualizar la password del usuario de servicio "${username}": HTTP ${resUpdate.status}`);
+    }
+    print(`  usuario de servicio "${username}": ya existía — password resincronizada.`);
     return;
   }
   throw new Error(`no se pudo crear el usuario de servicio "${username}": HTTP ${res.status}`);
