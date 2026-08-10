@@ -16,6 +16,7 @@
       "id": "R-1001",
       "token": "a1b2c3d4",
       "fleteId": "F-12",
+      "choferId": "CH-345",
       "fleteNombre": "Juan Pérez",
       "estado": "activo",
       "puntos": [
@@ -47,15 +48,24 @@ en Oracle/APEX antes de este push (un recorrido llega siempre con `fleteId`
 ya definido, o sin él si todavía no fue asignado, en cuyo caso no aparece en
 el monitoreo de Central hasta que Oracle/APEX lo re-envíe con `fleteId`).
 
-**Efecto colateral en EMQX Cloud**: por cada recorrido recibido con `fleteId`,
-el backend aprovisiona (o refresca) en EMQX Cloud una credencial MQTT
-publish-only scoped a `chofer/{fleteId}/ubicacion`
-(`backend/src/mqtt/emqxProvisioning.js`) — así ya está lista antes de que el
-chofer abra su link. Es *fire-and-forget*: no bloquea ni hace fallar este
-POST si EMQX Cloud está lento o caído (se reintenta solo en el próximo push
-del mismo recorrido, la operación es idempotente). El resultado se expone al
-chofer en `GET /api/recorridos/:token` → `recorrido.mqtt` (ver `chofer-api.md`
-de 001-chofer-recorrido).
+`choferId` (**agregado 2026-08-10**) identifica al chofer de forma estable
+entre recorridos — lo administra Oracle (sistema maestro, Principio IV). Es
+el campo que dispara el aprovisionamiento de la credencial MQTT permanente
+del chofer (ver más abajo); un recorrido sin `choferId` queda cargado y
+operable, pero el chofer no recibe credencial MQTT (no puede publicar
+ubicación periódica hasta que Oracle reenvíe el recorrido con `choferId`).
+
+**Efecto colateral en EMQX Cloud** *(actualizado 2026-08-10 — ver
+`research.md` Decisión 8)*: por cada recorrido recibido con `choferId`, el
+backend aprovisiona (o refresca) en EMQX Cloud una credencial MQTT
+**permanente** para ese chofer, con ACL de publish sobre el wildcard
+`chofer/+/ubicacion` (`backend/src/mqtt/emqxProvisioning.js`) — así ya está
+lista antes de que el chofer abra su link, y se reutiliza sin cambios en
+recorridos futuros del mismo chofer. Es *fire-and-forget*: no bloquea ni
+hace fallar este POST si EMQX Cloud está lento o caído (se reintenta solo en
+el próximo push del mismo recorrido, la operación es idempotente). El
+resultado se expone al chofer en `GET /api/recorridos/:token` →
+`recorrido.mqtt` (ver `chofer-api.md` de 001-chofer-recorrido).
 
 ### Response 200
 

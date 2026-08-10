@@ -1,24 +1,27 @@
 import { Router } from "express";
 import { ubicacionEnMemoriaCompartida } from "../state/ubicacionEnMemoria.js";
-import { derivarCredencial, topicPara } from "../mqtt/emqxProvisioning.js";
+import { derivarCredencialChofer, topicPara } from "../mqtt/emqxProvisioning.js";
 
 function intervaloReporteUbicacionMs() {
   return Number(process.env.UBICACION_REPORTE_INTERVALO_MS || 60000);
 }
 
-// Config de conexión MQTT publish-only para este fleteId, derivada sin
-// llamar a la API de EMQX Cloud (ver derivarCredencial — determinística, la
-// credencial ya se aprovisionó de antemano al recibir el push de Oracle, ver
-// POST /api/integracion/recorridos en integracion.js). Degrada a `null` sin
-// romper este endpoint si todavía no hay fleteId asignado o si el backend
-// corre sin EMQX configurado (dev/test) — el frontend ya trata `mqtt: null`
-// como "no reportar ubicación por MQTT", igual que hoy trata la ausencia de
-// fleteId.
-function mqttConfigPara(fleteId) {
+// Config de conexión MQTT del chofer, derivada sin llamar a la API de EMQX
+// Cloud (ver derivarCredencialChofer — determinística, la credencial ya se
+// aprovisionó de antemano al recibir el push de Oracle, ver
+// POST /api/integracion/recorridos en integracion.js). El topic de
+// publicación sigue siendo por-fleteId (chofer/{fleteId}/ubicacion,
+// FR-004), pero la credencial ahora es la permanente del chofer (FR-013,
+// 2026-08-10) — no scoped a este único fleteId, ver research.md Decisión 8.
+// Degrada a `null` sin romper este endpoint si todavía no hay
+// fleteId/choferId asignado o si el backend corre sin EMQX configurado
+// (dev/test) — el frontend ya trata `mqtt: null` como "no reportar
+// ubicación por MQTT" (cae al fallback REST, FR-004).
+function mqttConfigPara(fleteId, choferId) {
   const url = process.env.EMQX_WSS_URL;
-  if (!fleteId || !url) return null;
+  if (!fleteId || !choferId || !url) return null;
   try {
-    const { username, password } = derivarCredencial(fleteId);
+    const { username, password } = derivarCredencialChofer(choferId);
     return { url, username, password, topic: topicPara(fleteId) };
   } catch {
     return null;
@@ -59,7 +62,7 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
           estado: recorrido.estado,
           fleteId: recorrido.fleteId ?? null,
           intervaloUbicacionMs: intervaloReporteUbicacionMs(),
-          mqtt: mqttConfigPara(recorrido.fleteId),
+          mqtt: mqttConfigPara(recorrido.fleteId, recorrido.choferId),
         },
         progreso: recorrido.progreso,
         puntos: recorrido.puntos.map((p) => serializePunto(p, recorrido.puntos.length)),

@@ -35,14 +35,20 @@ test("GET /api/recorridos/:token — 200 con puntos ordenados y progreso", async
   }
 });
 
-test("GET /api/recorridos/:token — expone recorrido.mqtt derivado del fleteId cuando EMQX está configurado", async () => {
+test("GET /api/recorridos/:token — expone recorrido.mqtt derivado del choferId cuando EMQX está configurado (2026-08-10, FR-013)", async () => {
   const prevUrl = process.env.EMQX_WSS_URL;
   const prevSecret = process.env.EMQX_TOKEN_PASSWORD_SECRET;
   process.env.EMQX_WSS_URL = "wss://broker-test.emqxsl.com:8084/mqtt";
   process.env.EMQX_TOKEN_PASSWORD_SECRET = "secreto-test";
 
   const repository = createInMemoryRecorridoRepository([
-    { token: "tok-con-flete", fleteId: "13", estado: "activo", puntos: [{ id: "p1", orden: 1, latitud: 0, longitud: 0, estado: "pendiente" }] },
+    {
+      token: "tok-con-flete",
+      fleteId: "13",
+      choferId: "CH-345",
+      estado: "activo",
+      puntos: [{ id: "p1", orden: 1, latitud: 0, longitud: 0, estado: "pendiente" }],
+    },
   ]);
   const server = await iniciarServidorDePrueba(repository);
 
@@ -50,9 +56,12 @@ test("GET /api/recorridos/:token — expone recorrido.mqtt derivado del fleteId 
     const res = await fetch(`${server.baseUrl}/tok-con-flete`);
     const body = await res.json();
 
+    // El topic sigue siendo por-fleteId (FR-004, sin cambios); la
+    // credencial (username/password) ahora deriva de choferId, no de
+    // fleteId (research.md Decisión 8).
     assert.deepEqual(body.recorrido.mqtt, {
       url: "wss://broker-test.emqxsl.com:8084/mqtt",
-      username: "chofer-13",
+      username: "chofer-CH-345",
       password: body.recorrido.mqtt.password, // determinística, no se hardcodea el hash acá
       topic: "chofer/13/ubicacion",
     });
@@ -82,6 +91,36 @@ test("GET /api/recorridos/:token — recorrido.mqtt es null sin fleteId o sin EM
   } finally {
     if (prevUrl === undefined) delete process.env.EMQX_WSS_URL;
     else process.env.EMQX_WSS_URL = prevUrl;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/recorridos/:token — recorrido.mqtt es null con fleteId pero sin choferId todavía (2026-08-10, FR-013)", async () => {
+  const prevUrl = process.env.EMQX_WSS_URL;
+  const prevSecret = process.env.EMQX_TOKEN_PASSWORD_SECRET;
+  process.env.EMQX_WSS_URL = "wss://broker-test.emqxsl.com:8084/mqtt";
+  process.env.EMQX_TOKEN_PASSWORD_SECRET = "secreto-test";
+
+  const repository = createInMemoryRecorridoRepository([
+    {
+      token: "tok-sin-chofer",
+      fleteId: "13",
+      choferId: null,
+      estado: "activo",
+      puntos: [{ id: "p1", orden: 1, latitud: 0, longitud: 0, estado: "pendiente" }],
+    },
+  ]);
+  const server = await iniciarServidorDePrueba(repository);
+
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-sin-chofer`);
+    const body = await res.json();
+    assert.equal(body.recorrido.mqtt, null);
+  } finally {
+    if (prevUrl === undefined) delete process.env.EMQX_WSS_URL;
+    else process.env.EMQX_WSS_URL = prevUrl;
+    if (prevSecret === undefined) delete process.env.EMQX_TOKEN_PASSWORD_SECRET;
+    else process.env.EMQX_TOKEN_PASSWORD_SECRET = prevSecret;
     await server.cerrar();
   }
 });

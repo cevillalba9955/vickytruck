@@ -9,6 +9,16 @@ producción. Ver "Divergencias respecto al plan original" al final de este
 documento — el plan de abajo describe la intención al 2026-08-05; donde
 difiere de lo construido, queda anotado en línea.
 
+**Estado (2026-08-10)**: en re-planificación sobre rama
+`006-credenciales-mqtt-chofer` — cambio de modelo de credenciales MQTT del
+chofer, de publish-only efímero por-`fleteId` a **permanente por-`choferId`**
+con ACL amplia (`chofer/+/ubicacion`), más activación de la suscripción MQTT
+de Central en producción. Ver `## Clarifications` de `spec.md` (sesión
+2026-08-10) para las decisiones que originan este cambio, y la sección
+"Divergencias respecto al plan original" al final de este documento (entrada
+2026-08-10) para el detalle. El resto de este plan (US1/US2, integración
+Oracle/APEX, store en memoria) no cambia.
+
 ## Summary
 
 Se formaliza una arquitectura operativa cloud para VickyTruck: `frontend/`, `central/` y
@@ -30,12 +40,18 @@ camino que efectivamente entrega ubicación a Central hoy es backend bridge
 **Primary Dependencies**:
 - Backend: Express existente + cliente MQTT (`mqtt`) para bridge + admin API HTTP
   nativa de EMQX Cloud (`backend/src/mqtt/emqxProvisioning.js`, sin dependencia
-  nueva — usa `fetch` global) para aprovisionar credenciales por-flete.
+  nueva — usa `fetch` global) para aprovisionar credenciales. **(2026-08-10)**
+  la función de aprovisionamiento pasa a indexar por `choferId` (nuevo campo
+  del payload de `POST /api/integracion/recorridos`) en vez de `fleteId`; el
+  ACL asociado deja de ser un tópico único y pasa a `chofer/+/ubicacion`.
 - Frontend chofer: cliente MQTT por WebSocket (`mqtt`), credencial recibida
-  del backend (`recorrido.mqtt`), nunca de variables de build.
+  del backend (`recorrido.mqtt`), nunca de variables de build. El reporte
+  periódico sigue publicando por REST como **fallback silencioso** (solo si
+  falla el intento MQTT del ciclo), no en paralelo siempre.
 - Central frontend: cliente MQTT por WebSocket ya implementado
-  (`central/src/services/mqttClient.js`) — **sin credenciales configuradas
-  en producción** (`VITE_MQTT_*` vacíos en `central/.env.production`).
+  (`central/src/services/mqttClient.js`). **(2026-08-10)** pasa a requerir
+  `VITE_MQTT_*` configurado en `central/.env.production` — activar esa
+  suscripción en producción es parte de este cambio (antes era opcional/dormant).
 - Infra: broker MQTT gestionado — **EMQX Cloud, confirmado y en uso**
   (no solo recomendado); edge/CDN — Cloudflare Workers para los dos frontends
   estáticos (confirmado en uso), sin WAF/edge security adicional configurado
@@ -82,6 +98,16 @@ camino que efectivamente entrega ubicación a Central hoy es backend bridge
 - Principio VI: N/A (mensajería interna fuera de alcance de este cambio).
 - Principio VII: PASS condicionado: complejidad agregada (broker + aprovisionamiento dinámico de credenciales) justificada explícitamente por seguridad (research.md Decisión 6) — una credencial MQTT compartida embebida en un bundle público le habría dado a cualquier chofer la capacidad de publicar ubicación falsa para cualquier otro flete.
 
+*Re-chequeado 2026-08-10 contra el cambio de credenciales MQTT permanentes por-chofer (rama `006-credenciales-mqtt-chofer`).*
+
+- Principio IV: PASS — `choferId` se agrega como campo nuevo del payload de Oracle→cloud (`POST /api/integracion/recorridos`); Oracle sigue siendo el maestro administrativo de esa identidad, el cloud solo la recibe y usa para indexar la credencial. No se crea una segunda fuente de verdad de choferes.
+- Principio V: PASS — sin degradación; activar la suscripción MQTT de Central en producción (FR-005 elevado a MUST) mejora la trazabilidad en vivo respecto al estado actual (dependencia exclusiva de polling).
+- **Principio VII: CONDICIONADO, con riesgo explícitamente aceptado (no un simple PASS).** El ACL amplio (`chofer/+/ubicacion` para una credencial permanente por-chofer) **reabre parcialmente** el riesgo que research.md Decisión 6 había descartado para el modelo por-flete: un chofer autenticado puede técnicamente publicar en el tópico de un `fleteId` que no es suyo. Esto se aceptó explícitamente en la sesión de clarificación 2026-08-10 (ver `spec.md` Assumptions) bajo estas condiciones:
+  - El impacto de un mensaje falso queda acotado a `ultimaUbicacion` de tránsito (dato efímero, no autoritativo) — los eventos de arribo/descarga siguen autenticados por token de recorrido, fuera de este vector.
+  - La población de choferes es reducida, conocida y administrada por Oracle (no es un bundle anónimo público sin identidad).
+  - No se implementa validación server-side adicional del remitente contra el `fleteId` del payload en el alcance de este cambio (documentado como deuda, no como gap silencioso).
+  - Justificación de la complejidad/riesgo: pasar a ACL dinámica por asignación (alternativa más segura, evaluada y descartada en la clarificación) hubiera requerido que el backend actualizara la regla de ACL de EMQX en cada cambio de recorrido del chofer — complejidad operativa adicional no justificada para el volumen actual de fletes/choferes.
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -121,13 +147,25 @@ backend/sql/integracion-cloud/
 
 central/src/
 └── services/
-    └── mqttClient.js              # ya existía; sin credenciales configuradas en producción
+    └── mqttClient.js              # ya existía; PENDIENTE (006): activar con VITE_MQTT_* en prod
 
 frontend/src/
 └── services/
     ├── ubicacionMqtt.js           # recibe {url, username, password} por parámetro (2026-08-06)
     └── ubicacionPeriodica.js      # + listener visibilitychange (fix iOS, 2026-08-06)
+                                    # PENDIENTE (006): REST pasa a fallback silencioso, no paralelo
 ```
+
+**Cambios de estructura previstos para 006-credenciales-mqtt-chofer** (no
+implementados todavía — ver `tasks.md` pendiente de regenerar):
+- `backend/src/mqtt/emqxProvisioning.js`: nueva función de aprovisionamiento
+  indexada por `choferId` con ACL `chofer/+/ubicacion` (reemplaza el
+  aprovisionamiento por-`fleteId` para el caso de ubicación periódica).
+- `backend/src/routes/integracion.js`: aceptar y propagar `choferId` del
+  payload de `POST /api/integracion/recorridos`.
+- `backend/src/state/integracionStore.js`: persistir `choferId` en
+  `RecorridoCloud`.
+- `central/.env.production`: configurar `VITE_MQTT_*`.
 
 **Structure Decision**: Extender backend y frontends existentes; introducir integración y MQTT por módulos de servicio, sin reescribir arquitectura base. El aprovisionamiento de credenciales (`emqxProvisioning.js`) se agregó como módulo más dentro de `backend/` — no como servicio aparte — siguiendo la misma decisión de estructura tomada en 002 (Principio VII).
 
@@ -140,3 +178,10 @@ descarga se quedaron en REST); la credencial MQTT del chofer terminó siendo
 dinámica y por-flete en vez de una credencial compartida rotable; Central
 tiene el código de consumo directo listo pero no desplegado con
 credenciales reales.
+
+**2026-08-10 (rama `006-credenciales-mqtt-chofer`)**: el modelo por-flete
+descrito arriba (implementado 2026-08-06) se reemplaza por credenciales
+**permanentes por-choferId** con ACL amplia — ver Constitution Check
+actualizado arriba y `spec.md` Clarifications. Este es un cambio consciente
+que reabre parcialmente el riesgo que la iteración anterior había cerrado;
+no es una regresión no advertida.

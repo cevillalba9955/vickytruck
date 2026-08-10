@@ -36,17 +36,21 @@ export function createIntegracionRouter(store, emqxProvisioning = emqxProvisioni
 
     const upserted = store.upsertRecorridos(payload.recorridos);
 
-    // Aprovisiona (o refresca) la credencial MQTT publish-only de cada flete
-    // recibido, para que ya esté lista en EMQX Cloud antes de que el chofer
-    // abra el link (ver emqxProvisioning.js). Fire-and-forget: un EMQX Cloud
-    // lento/caído no debe bloquear ni fallar este push de Oracle/APEX — se
-    // reintenta solo en el próximo push del mismo recorrido (idempotente).
+    // Aprovisiona (o refresca) la credencial MQTT permanente de cada chofer
+    // recibido (2026-08-10, spec.md FR-013 — reemplaza el aprovisionamiento
+    // por-fleteId), para que ya esté lista en EMQX Cloud antes de que el
+    // chofer abra el link (ver emqxProvisioning.js). Fire-and-forget: un
+    // EMQX Cloud lento/caído no debe bloquear ni fallar este push de
+    // Oracle/APEX — se reintenta solo en el próximo push del mismo
+    // recorrido (idempotente). Sin `choferId` (payloads viejos de Oracle
+    // que todavía no lo envían), el recorrido queda cargado y operable pero
+    // sin credencial MQTT — ver spec.md FR-013.
     for (const raw of payload.recorridos) {
       if (!raw?.id) continue;
       const [actual] = store.listarEstado(String(raw.id));
-      if (!actual?.fleteId) continue;
-      emqxProvisioning.provisionarCredencial(actual.fleteId).catch((err) => {
-        console.error(`[integracion] no se pudo aprovisionar MQTT para fleteId=${actual.fleteId}:`, err.message);
+      if (!actual?.choferId) continue;
+      emqxProvisioning.provisionarCredencialChofer(actual.choferId).catch((err) => {
+        console.error(`[integracion] no se pudo aprovisionar MQTT para choferId=${actual.choferId}:`, err.message);
       });
     }
 

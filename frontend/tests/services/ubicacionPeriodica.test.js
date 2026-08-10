@@ -4,7 +4,17 @@ vi.mock("../../src/services/geolocation.js", () => ({
   obtenerUbicacionBestEffort: vi.fn(),
 }));
 
+// Por defecto delega a la implementación real (mqttConfig null → publisher
+// no-op cuyo publicar() resuelve `false`, igual que antes de este mock) —
+// solo el test de fallback de abajo pisa el mock para simular un publish
+// MQTT exitoso, sin conectar un cliente MQTT real en jsdom.
+vi.mock("../../src/services/ubicacionMqtt.js", async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, createPublisherUbicacionMqtt: vi.fn(real.createPublisherUbicacionMqtt) };
+});
+
 import { obtenerUbicacionBestEffort } from "../../src/services/geolocation.js";
+import { createPublisherUbicacionMqtt } from "../../src/services/ubicacionMqtt.js";
 import { iniciarReportePeriodico } from "../../src/services/ubicacionPeriodica.js";
 
 describe("ubicacionPeriodica", () => {
@@ -87,5 +97,49 @@ describe("ubicacionPeriodica", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  // 2026-08-10 (spec.md FR-004 actualizado, tasks.md T063): MQTT pasa a ser
+  // el canal primario — REST solo se invoca si la publicación MQTT del
+  // ciclo falla, no en paralelo en cada ciclo.
+  it("NO llama al fallback REST si la publicación MQTT del ciclo tuvo éxito", async () => {
+    obtenerUbicacionBestEffort.mockResolvedValue({ lat: -34.6, lon: -58.4 });
+    const publicar = vi.fn().mockResolvedValue(true);
+    createPublisherUbicacionMqtt.mockReturnValueOnce({ publicar, cerrar: vi.fn() });
+
+    iniciar("tok-1", "flete-1", { url: "wss://broker-test", username: "u", password: "p" }, 1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(publicar).toHaveBeenCalledWith({ lat: -34.6, lon: -58.4, recorridoId: "tok-1" });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("SÍ llama al fallback REST si la publicación MQTT del ciclo falla", async () => {
+    obtenerUbicacionBestEffort.mockResolvedValue({ lat: -34.6, lon: -58.4 });
+    const publicar = vi.fn().mockResolvedValue(false);
+    createPublisherUbicacionMqtt.mockReturnValueOnce({ publicar, cerrar: vi.fn() });
+
+    iniciar("tok-1", "flete-1", { url: "wss://broker-test", username: "u", password: "p" }, 1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(publicar).toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/recorridos/tok-1/ubicacion",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("SÍ llama al fallback REST si la publicación MQTT del ciclo rechaza (excepción)", async () => {
+    obtenerUbicacionBestEffort.mockResolvedValue({ lat: -34.6, lon: -58.4 });
+    const publicar = vi.fn().mockRejectedValue(new Error("mqtt caído"));
+    createPublisherUbicacionMqtt.mockReturnValueOnce({ publicar, cerrar: vi.fn() });
+
+    iniciar("tok-1", "flete-1", { url: "wss://broker-test", username: "u", password: "p" }, 1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/recorridos/tok-1/ubicacion",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

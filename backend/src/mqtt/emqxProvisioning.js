@@ -83,6 +83,22 @@ export function topicPara(fleteId) {
   return `chofer/${encodeURIComponent(String(fleteId))}/ubicacion`;
 }
 
+// 2026-08-10 (spec.md FR-013, research.md Decisión 8): credencial MQTT
+// PERMANENTE por `choferId`, en vez de publish-only por `fleteId` (arriba).
+// Mismo username que la versión por-flete (`chofer-{id}`) pero indexado por
+// choferId — un mismo chofer con varios fletes a lo largo del tiempo reusa
+// siempre `chofer-{choferId}`, sin reaprovisionamiento por recorrido nuevo.
+function usernameParaChofer(choferId) {
+  return `chofer-${choferId}`;
+}
+
+// Wildcard, no scoped a un único fleteId: el chofer publica en el topic de
+// CUALQUIER fleteId con esta credencial. Riesgo de spoofing entre fletes
+// aceptado explícitamente (ver plan.md Constitution Check, Principio VII) —
+// no es un descuido, es la alternativa elegida sobre ACL dinámica o
+// validación server-side (research.md Decisión 8).
+export const TOPIC_WILDCARD_CHOFER = "chofer/+/ubicacion";
+
 // Determinística (HMAC-SHA256 del fleteId con un secreto propio del
 // backend), NO aleatoria: si esto se llamara con una password aleatoria en
 // cada `GET /:token` (cada carga/recarga de la SPA del chofer), pisaría en
@@ -97,6 +113,18 @@ export function derivarCredencial(fleteId) {
   return {
     username: usernamePara(fleteId),
     password: createHmac("sha256", secreto).update(String(fleteId)).digest("hex"),
+  };
+}
+
+// Misma lógica que derivarCredencial, pero indexada por choferId — ver
+// research.md Decisión 8. Password determinística por las mismas razones
+// (GET /:token puede devolverla en cualquier recarga sin llamar a EMQX).
+export function derivarCredencialChofer(choferId) {
+  const secreto = process.env.EMQX_TOKEN_PASSWORD_SECRET;
+  if (!secreto) throw new Error("EMQX_TOKEN_PASSWORD_SECRET no configurado");
+  return {
+    username: usernameParaChofer(choferId),
+    password: createHmac("sha256", secreto).update(String(choferId)).digest("hex"),
   };
 }
 
@@ -121,38 +149,77 @@ async function upsertReglaDelFlete(fetchImpl, fleteId, username) {
   }
 }
 
+// ACL amplia del chofer (research.md Decisión 8): a diferencia de
+// upsertReglaDelFlete, no scoped a un topic con un id concreto — el mismo
+// wildcard para cualquier choferId.
+async function upsertReglaDelChofer(fetchImpl, username) {
+  const res = await fetchImpl(reglasUsuariosUrl(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: authHeader() },
+    body: JSON.stringify([
+      {
+        username,
+        rules: [{ action: "publish", permission: "allow", topic: TOPIC_WILDCARD_CHOFER }],
+      },
+    ]),
+  });
+  if (!res.ok && res.status !== 409) {
+    throw new Error(`emqx_provisionar_acl_fallo: ${res.status}`);
+  }
+}
+
+// Da de alta (o deja igual, si ya existía) el usuario MQTT en EMQX Cloud —
+// compartido por provisionarCredencial y provisionarCredencialChofer, que
+// solo difieren en cómo derivan la credencial y qué regla de ACL aplican.
+async function upsertUsuarioMqtt(fetchImpl, username, password) {
+  const res = await fetchImpl(usersUrl(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: authHeader() },
+    body: JSON.stringify({ user_id: username, password }),
+  });
+
+  if (!res.ok && res.status !== 409) {
+    throw new Error(`emqx_provisionar_fallo: ${res.status}`);
+  }
+  if (res.status === 409) {
+    // Ya existía: actualizar la contraseña para que quede igual a la que se
+    // devuelve acá (siempre la misma, credencial determinística).
+    const resUpdate = await fetchImpl(userUrl(username), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: authHeader() },
+      body: JSON.stringify({ password }),
+    });
+    if (!resUpdate.ok) {
+      throw new Error(`emqx_provisionar_fallo: ${resUpdate.status}`);
+    }
+  }
+}
+
 export function createEmqxProvisioning(fetchImpl = fetch) {
   return {
     // Se llama al recibir un recorrido de Oracle con `fleteId` (ver
     // POST /api/integracion/recorridos en integracion.js) — da de alta (o
     // deja igual, si ya existía) la credencial MQTT publish-only de ese
     // flete, scoped a su propio tópico.
+    // Superseded 2026-08-10 para el reporte de ubicación periódica del
+    // chofer — ver provisionarCredencialChofer abajo (research.md Decisión
+    // 8). Se conserva por si algún caller viejo todavía la referencia.
     async provisionarCredencial(fleteId) {
       const { username, password } = derivarCredencial(fleteId);
-      const res = await fetchImpl(usersUrl(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: authHeader() },
-        body: JSON.stringify({ user_id: username, password }),
-      });
-
-      if (!res.ok && res.status !== 409) {
-        throw new Error(`emqx_provisionar_fallo: ${res.status}`);
-      }
-      if (res.status === 409) {
-        // Ya existía (push anterior para este mismo fleteId): actualizar la
-        // contraseña para que quede igual a la que se devuelve acá (siempre
-        // la misma, ver derivarCredencial).
-        const resUpdate = await fetchImpl(userUrl(username), {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Authorization: authHeader() },
-          body: JSON.stringify({ password }),
-        });
-        if (!resUpdate.ok) {
-          throw new Error(`emqx_provisionar_fallo: ${resUpdate.status}`);
-        }
-      }
-
+      await upsertUsuarioMqtt(fetchImpl, username, password);
       await upsertReglaDelFlete(fetchImpl, fleteId, username);
+      return { username, password };
+    },
+
+    // 2026-08-10 (spec.md FR-013): se llama al recibir un recorrido de
+    // Oracle con `choferId` — da de alta (o deja igual) la credencial MQTT
+    // PERMANENTE de ese chofer, con ACL amplia sobre chofer/+/ubicacion. A
+    // diferencia de provisionarCredencial, esta credencial se reutiliza sin
+    // cambios en cada recorrido futuro del mismo chofer.
+    async provisionarCredencialChofer(choferId) {
+      const { username, password } = derivarCredencialChofer(choferId);
+      await upsertUsuarioMqtt(fetchImpl, username, password);
+      await upsertReglaDelChofer(fetchImpl, username);
       return { username, password };
     },
 

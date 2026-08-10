@@ -5,11 +5,21 @@ respecto al diseño original" al final. El diseño inicial (namespace `v1/`,
 tópicos separados de estado/control, credencial rotable compartida) no es lo
 que terminó implementado; este documento describe el contrato **vigente**.
 
+**Actualizado 2026-08-10** (rama `006-credenciales-mqtt-chofer`): el modelo
+de credenciales cambia de publish-only por-`fleteId` a **permanente
+por-`choferId`**, con ACL amplia. El esquema de *topics* de publicación NO
+cambia (sigue siendo `chofer/{fleteId}/ubicacion`); ver sección
+"Credenciales y ACL" abajo para el detalle vigente y `research.md` Decisión 8
+para el razonamiento completo.
+
 ## Topic de ubicación (único tópico MQTT del sistema)
 
 - Topic: `chofer/{fleteId}/ubicacion`
 - Publisher: frontend chofer (`frontend/src/services/ubicacionMqtt.js`), con
-  una credencial **publish-only propia de ese fleteId**.
+  la credencial **permanente de ese chofer** (`chofer-{choferId}`, ver
+  "Credenciales y ACL" abajo — actualizado 2026-08-10). El topic de
+  publicación sigue siendo por-`fleteId`; lo que cambió es que la credencial
+  ya no está scoped a ese único topic.
 - Subscribers:
   - `backend/src/services/mqttBridge.js` (`chofer/+/ubicacion`, credencial de
     servicio propia) — persiste en `integracionStore` para que Central lo
@@ -20,7 +30,9 @@ que terminó implementado; este documento describe el contrato **vigente**.
     producción** (`VITE_MQTT_BROKER_URL`/`USERNAME`/`PASSWORD` vacíos en
     `central/.env.production`): el código existe y funcionaría si se
     completan esas variables, pero hoy Central depende exclusivamente del
-    polling REST de arriba.
+    polling REST de arriba. **Pendiente (006, 2026-08-10)**: activar estas
+    variables en producción pasa a ser parte del alcance — ver `research.md`
+    Decisión 11 y `spec.md` FR-005 (elevado a MUST).
 
 No existen otros tópicos MQTT. Arribo y descarga **nunca se movieron a
 MQTT** — siguen siendo `POST /api/recorridos/:token/puntos/:puntoId/arribo`
@@ -58,12 +70,44 @@ reporte periódico).
 
 ## Credenciales y ACL — el corazón del contrato de seguridad
 
+### Modelo vigente (2026-08-10): credencial permanente por-chofer
+
+- Al recibir un recorrido de Oracle con `choferId`
+  (`POST /api/integracion/recorridos`), el backend aprovisiona en EMQX Cloud
+  un usuario **permanente** `chofer-{choferId}` con:
+  - Password determinística: `HMAC-SHA256(EMQX_TOKEN_PASSWORD_SECRET, choferId)`.
+  - Regla de ACL: `{ action: "publish", permission: "allow", topic: "chofer/+/ubicacion" }`
+    — **amplia**, no scoped a un único `fleteId`. Un chofer autenticado puede
+    técnicamente publicar en el topic de un `fleteId` que no es el suyo.
+- Este usuario **persiste entre recorridos**: un mismo chofer con varios
+  fletes a lo largo del tiempo siempre usa `chofer-{choferId}`, sin
+  reaprovisionamiento por cada recorrido nuevo (a diferencia del modelo
+  anterior por-`fleteId`).
+- **Riesgo aceptado explícitamente** (sesión de clarificación 2026-08-10,
+  ver `plan.md` Constitution Check / Principio VII): el ACL amplio reabre
+  parcialmente el riesgo de spoofing entre fletes que el modelo anterior
+  había cerrado. Mitigantes: el dato afectado es solo `ultimaUbicacion` de
+  tránsito (no autoritativo); los eventos de arribo/descarga siguen
+  autenticados por token de recorrido, fuera de este vector; la población de
+  choferes es conocida y administrada por Oracle. No se implementa
+  validación server-side adicional del remitente contra el `fleteId` del
+  payload en este alcance — ver `research.md` Decisión 8 para las
+  alternativas evaluadas y descartadas (ACL dinámica, validación en
+  `mqttBridge.js`).
+- `GET /api/recorridos/:token` devuelve esta credencial en `recorrido.mqtt =
+  { url, username, password, topic }` — mismo mecanismo de exposición que
+  antes, solo cambia la clave de derivación (`choferId` en vez de `fleteId`).
+
+### Diseño anterior (2026-08-06, superseded) — credencial por-flete
+
 **El diseño original asumía una credencial MQTT compartida y rotable para
 el chofer** (ver research.md, Decisión 5 original). Eso hubiera significado
 embeber esa credencial en el bundle público de la SPA del chofer — visible
 para cualquiera que abra las herramientas de desarrollador del navegador,
 con permiso de publicar en el tópico de **cualquier** flete. Se descartó a
-favor de credenciales **por-flete, publish-only, scoped a su propio tópico**:
+favor de credenciales **por-flete, publish-only, scoped a su propio tópico**
+— este diseño quedó **superseded 2026-08-10** por el modelo de arriba, pero
+se conserva como referencia histórica:
 
 - Al recibir un recorrido de Oracle con `fleteId`
   (`POST /api/integracion/recorridos`), el backend aprovisiona en EMQX Cloud
@@ -110,5 +154,5 @@ favor de credenciales **por-flete, publish-only, scoped a su propio tópico**:
 | Namespace versionado `v1/...` | Sin versionar: `chofer/{fleteId}/ubicacion` |
 | Tópico separado `v1/recorrido/{id}/estado` para arribo/descarga vía MQTT | Arribo/descarga se quedaron en REST, nunca via MQTT |
 | Tópico `v1/sistema/{tenantId}/control` (heartbeats/alertas) | No implementado, no hay caso de uso identificado |
-| Credencial MQTT del chofer rotable/compartida | Credencial publish-only por-flete, aprovisionada dinámicamente |
-| Central consume MQTT directo en producción | Código implementado, pero sin credenciales configuradas — dormant, depende de polling REST |
+| Credencial MQTT del chofer rotable/compartida | Credencial publish-only por-flete, aprovisionada dinámicamente (2026-08-06) → **permanente por-choferId con ACL amplia (2026-08-10, ver arriba)** |
+| Central consume MQTT directo en producción | Código implementado, pero sin credenciales configuradas — dormant, depende de polling REST (**pendiente activar, 2026-08-10, ver Decisión 11**) |

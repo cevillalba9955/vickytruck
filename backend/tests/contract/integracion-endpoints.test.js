@@ -118,7 +118,7 @@ test("GET /api/integracion/estado — expone el GPS capturado al marcar arribo/d
   }
 });
 
-test("POST /api/integracion/recorridos — aprovisiona la credencial MQTT del fleteId recibido", async () => {
+test("POST /api/integracion/recorridos — aprovisiona la credencial MQTT permanente del choferId recibido (2026-08-10, FR-013)", async () => {
   const prev = process.env.INTEGRACION_API_KEY;
   process.env.INTEGRACION_API_KEY = "test-key";
   const store = createIntegracionStore();
@@ -133,19 +133,61 @@ test("POST /api/integracion/recorridos — aprovisiona la credencial MQTT del fl
         body: JSON.stringify({
           source: "oracle-apex",
           recorridos: [
-            { id: "R-3001", fleteId: "13", estado: "activo", puntos: [] },
-            { id: "R-3002", fleteId: null, estado: "activo", puntos: [] }, // sin flete asignado: no debe aprovisionar
+            { id: "R-3001", fleteId: "13", choferId: "CH-345", estado: "activo", puntos: [] },
+            { id: "R-3002", fleteId: "14", choferId: null, estado: "activo", puntos: [] }, // sin chofer asignado: no debe aprovisionar
           ],
         }),
       }),
     );
 
-    // provisionarCredencial se dispara fire-and-forget (no bloquea la
+    // provisionarCredencialChofer se dispara fire-and-forget (no bloquea la
     // respuesta del POST) — darle un tick al event loop antes de chequear.
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.ok(emqxProvisioning._tieneCredencial("13"));
-    assert.equal(emqxProvisioning._tieneCredencial(null), false);
+    assert.ok(emqxProvisioning._tieneCredencialChofer("CH-345"));
+    assert.equal(emqxProvisioning._tieneCredencialChofer(null), false);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
+test("POST /api/integracion/recorridos (x2) — el mismo choferId en recorridos distintos reusa la misma credencial permanente (2026-08-10, FR-013)", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const emqxProvisioning = createFakeEmqxProvisioning();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store, emqxProvisioning);
+
+  try {
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({
+          source: "oracle-apex",
+          recorridos: [{ id: "R-4001", fleteId: "20", choferId: "CH-999", estado: "activo", puntos: [] }],
+        }),
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const primera = await emqxProvisioning.provisionarCredencialChofer("CH-999");
+
+    // Segundo recorrido del MISMO chofer, fleteId distinto (ej. viaje nuevo).
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({
+          source: "oracle-apex",
+          recorridos: [{ id: "R-4002", fleteId: "21", choferId: "CH-999", estado: "activo", puntos: [] }],
+        }),
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const segunda = await emqxProvisioning.provisionarCredencialChofer("CH-999");
+
+    assert.deepEqual(primera, segunda);
   } finally {
     process.env.INTEGRACION_API_KEY = prev;
     await server.cerrar();
