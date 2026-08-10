@@ -35,6 +35,23 @@ sudo systemctl enable --now nginx    # si nginx no estaba corriendo todavía
 sudo systemctl reload nginx          # si ya estaba corriendo
 ```
 
+## Nota (2026-08-10): nginx puede quedar colgado, no solo caído
+
+`systemctl status nginx` puede decir `active` y aun así el relay no
+responde — un colgado (workers ocupados esperando conexiones que nunca
+cierran) es distinto de un crash, y `ORA-12541: TNS:no hay ningún listener`
+puede salir en ambos casos si `curl` local también cuelga/falla. Causa
+probable: `proxy_pass` con el hostname de Fly.io como string literal
+resuelve DNS una sola vez al arrancar/reload y nunca más — si esa IP
+anycast dejó de responder sin cerrar el socket, la conexión queda colgada
+sin timeout que la corte. `vickytruck-relay.conf` ya tiene el fix (variable
++ `resolver` + timeouts cortos); si esto vuelve a pasar tras aplicarlo,
+revisar `journalctl -u nginx` / `dmesg` (¿OOM-kill?) antes de asumir que es
+el mismo problema de DNS.
+
+Si nginx queda colgado, `systemctl restart nginx` (no alcanza con
+`reload`) suele destrabarlo mientras se investiga la causa de fondo.
+
 ## 2. Probar el relay desde el propio server (sin Oracle todavía)
 
 ```bash
