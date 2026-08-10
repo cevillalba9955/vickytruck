@@ -8,12 +8,15 @@ function topicPara(fleteId) {
 
 /**
  * `mqttConfig` viene de GET /api/recorridos/:token (campo `recorrido.mqtt`,
- * ver backend/src/routes/recorrido.js): credencial publish-only aprovisionada
- * por-flete en EMQX Cloud (backend/src/mqtt/emqxProvisioning.js), no una
- * credencial fija de build — así el bundle público del chofer nunca embebe
- * una credencial con alcance más amplio que "publicar la ubicación de este
- * flete". `mqttConfig` es `null` si el backend todavía no tiene `fleteId`
- * para este recorrido, o si EMQX no está configurado: en ese caso, no-op.
+ * ver backend/src/routes/recorrido.js): credencial MQTT permanente del
+ * chofer, aprovisionada por `choferId` en EMQX Cloud
+ * (backend/src/mqtt/emqxProvisioning.js, FR-013 2026-08-10), no una
+ * credencial fija de build. El topic de publicación sigue siendo por-flete
+ * (`chofer/{fleteId}/ubicacion`); la credencial ya no está scoped a ese
+ * único topic (ver research.md Decisión 8 — riesgo aceptado explícitamente).
+ * `mqttConfig` es `null` si el backend todavía no tiene `fleteId`/`choferId`
+ * para este recorrido, o si EMQX no está configurado: en ese caso, no-op (el
+ * caller cae al fallback REST, ver ubicacionPeriodica.js).
  */
 export function createPublisherUbicacionMqtt(fleteId, mqttConfig) {
   if (!fleteId || !mqttConfig?.url) {

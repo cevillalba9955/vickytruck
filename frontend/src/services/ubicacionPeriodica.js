@@ -3,9 +3,24 @@ import { createPublisherUbicacionMqtt } from "./ubicacionMqtt.js";
 
 const BASE_URL = "/api/recorridos";
 
+// MQTT es el canal primario (FR-004, actualizado 2026-08-10); el REST de
+// abajo pasa a ser fallback silencioso, invocado solo cuando la publicación
+// MQTT del ciclo no se pudo hacer (sin credencial todavía, broker caído,
+// etc.) — antes se llamaba a ambos siempre, en paralelo. `publisher.publicar`
+// resuelve `false` tanto si no hay `mqttConfig` (recorrido.mqtt === null)
+// como si el publish real falló (ver ubicacionMqtt.js).
 async function reportarUnaVez(token, publisher) {
   const ubicacion = await obtenerUbicacionBestEffort();
   if (!ubicacion) return; // sin GPS disponible: se omite este reporte (best-effort)
+
+  let publicadoPorMqtt = false;
+  try {
+    publicadoPorMqtt = await publisher.publicar({ lat: ubicacion.lat, lon: ubicacion.lon, recorridoId: token });
+  } catch {
+    publicadoPorMqtt = false;
+  }
+
+  if (publicadoPorMqtt) return;
 
   try {
     await fetch(`${BASE_URL}/${encodeURIComponent(token)}/ubicacion`, {
@@ -18,24 +33,18 @@ async function reportarUnaVez(token, publisher) {
     // encola (FR-017 — es un dato efímero, no crítico); se reintenta solo en
     // el próximo ciclo del temporizador.
   }
-
-  // Publicación MQTT best-effort para tiempo real en Central. Si falla, no
-  // afecta el ciclo HTTP ya existente.
-  try {
-    await publisher.publicar({ lat: ubicacion.lat, lon: ubicacion.lon, recorridoId: token });
-  } catch {
-    // Sin acción: la publicación se vuelve a intentar en el próximo ciclo.
-  }
 }
 
 /**
  * Arranca el reporte periódico de ubicación instantánea (FR-014) mientras el
  * recorrido está activo. Devuelve una función para detener el temporizador.
  *
- * El reporte HTTP usa `token` (identifica el recorrido vía enlace). El
- * publisher MQTT usa `fleteId` (identifica el flete real) porque Central lo
- * busca por `fleteId`, no por token — ver mqttBridge.js. `mqttConfig` es la
- * credencial publish-only por-flete que devuelve GET /:token (`recorrido.mqtt`).
+ * El publisher MQTT usa `fleteId` para el topic de publicación (Central lo
+ * busca por `fleteId`, no por token — ver mqttBridge.js), pero la credencial
+ * en sí (`mqttConfig`, devuelta por GET /:token → `recorrido.mqtt`) es la
+ * permanente del chofer (FR-013, 2026-08-10) — no scoped a este fleteId. El
+ * reporte HTTP usa `token` (identifica el recorrido vía enlace) y ahora es
+ * solo fallback si la publicación MQTT del ciclo falla (ver reportarUnaVez).
  */
 export function iniciarReportePeriodico(token, fleteId, mqttConfig, intervaloMs) {
   const publisher = createPublisherUbicacionMqtt(fleteId, mqttConfig);

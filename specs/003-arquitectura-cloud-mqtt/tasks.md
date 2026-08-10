@@ -181,6 +181,118 @@ celular real.
 
 ---
 
+## Phase 8: Credenciales MQTT permanentes por-chofer (2026-08-10, rama `006-credenciales-mqtt-chofer`)
+
+**Purpose**: reemplazar el modelo de credenciales MQTT publish-only por-flete
+(Phase 7) por uno **permanente por-`choferId`**, con ACL amplia
+(`chofer/+/ubicacion`), y activar la suscripción MQTT de Central en
+producción — ver `spec.md` Clarifications (sesión 2026-08-10), `plan.md`
+Constitution Check (Principio VII) y `research.md` Decisiones 8-11 para el
+razonamiento y las alternativas descartadas.
+
+**Goal**: un chofer usa la misma credencial MQTT (`chofer-{choferId}`) a lo
+largo de todos sus recorridos, sin reaprovisionamiento por-flete; Central
+recibe ubicación tanto por MQTT directo como por polling REST.
+
+**Independent Test**: sincronizar dos recorridos distintos (`fleteId`
+diferente) con el mismo `choferId` desde Oracle/APEX, confirmar que
+`GET /api/recorridos/:token` devuelve la misma credencial `chofer-{choferId}`
+para ambos, y que un tercer flete con `choferId` distinto recibe una
+credencial distinta.
+
+- [X] T052 [P] Agregar y validar el campo `choferId` (string opcional) en el
+  payload de `POST /api/integracion/recorridos` en
+  `backend/src/routes/integracion.js`
+- [X] T053 [P] Persistir `choferId` en `RecorridoCloud` (upsert, sin pisar
+  progreso ya confirmado) en `backend/src/state/integracionStore.js`
+- [X] T054 Implementar `derivarCredencialChofer(choferId)` (username
+  `chofer-{choferId}`, password `HMAC-SHA256(EMQX_TOKEN_PASSWORD_SECRET,
+  choferId)`, determinística) en `backend/src/mqtt/emqxProvisioning.js`
+- [X] T055 Implementar `provisionarCredencialChofer(choferId)` — mismo patrón
+  upsert que `provisionarCredencial` (crear usuario, manejar 409 con
+  actualización de password, upsert de regla ACL), pero con regla
+  `{ action: "publish", permission: "allow", topic: "chofer/+/ubicacion" }`
+  (wildcard, no scoped a un `fleteId`) en
+  `backend/src/mqtt/emqxProvisioning.js` — refactor compartido
+  `upsertUsuarioMqtt` extraído para no duplicar la lógica de create/409-update
+- [X] T056 Disparar `provisionarCredencialChofer` (fire-and-forget) cuando el
+  recorrido recibido tiene `choferId`, en `backend/src/routes/integracion.js`
+  — **reemplaza** el disparo anterior por `fleteId` (no queda en paralelo,
+  ver FR-013 "reemplaza a FR-011")
+- [X] T057 Cambiar `mqttConfigPara` en `backend/src/routes/recorrido.js` para
+  derivar `recorrido.mqtt` desde `choferId` (vía `derivarCredencialChofer`)
+  en vez de `fleteId`/`derivarCredencial`; el topic de publicación sigue
+  siendo por-`fleteId` sin cambios (FR-004)
+- [X] T058 Convertir el reporte REST de
+  `frontend/src/services/ubicacionPeriodica.js` en **fallback silencioso**:
+  invocar `POST /:token/ubicacion` solo cuando falla el intento de
+  publicación MQTT del ciclo, no en paralelo siempre
+- [ ] T059 [P] Configurar `VITE_MQTT_BROKER_URL`/`VITE_MQTT_USERNAME`/
+  `VITE_MQTT_PASSWORD` en `central/.env.production` con la credencial de
+  servicio de solo-lectura ya prevista — **parcial**: se agregaron las 3
+  claves como placeholders vacíos con comentario explicativo (mismo patrón
+  que `.env.example`); **falta completar con los valores reales** (iguales a
+  `EMQX_WSS_URL`/`MQTT_USERNAME`/`MQTT_PASSWORD` del backend) — acción manual
+  de quien tenga acceso al deployment de EMQX Cloud, no ejecutable por un
+  agente de código sin esas credenciales
+
+### Tests for Phase 8
+
+- [X] T060 [P] Test unitario: `derivarCredencialChofer` es determinística
+  (mismo `choferId` → mismo resultado) y distinta de `derivarCredencial` en
+  `backend/tests/unit/emqxProvisioning.test.js`
+- [X] T061 [P] Test de integración: dos recorridos con `fleteId` distinto
+  pero mismo `choferId` producen la misma credencial sin doble
+  aprovisionamiento — implementado en
+  `backend/tests/contract/integracion-endpoints.test.js` (vía HTTP, contra
+  el contrato real de `POST /api/integracion/recorridos`) en vez de un
+  archivo nuevo separado — cubre el mismo caso de forma más realista
+- [X] T062 Actualizar `backend/tests/contract/integracion-endpoints.test.js`
+  y `backend/tests/helpers/fakeEmqxProvisioning.js` para cubrir el ACL
+  amplio (`chofer/+/ubicacion`) del nuevo flujo — el test viejo de
+  aprovisionamiento por-fleteId se reemplazó por uno por-choferId (ya no
+  aplica, ver T056); también se actualizaron
+  `backend/tests/helpers/inMemoryRecorridoRepository.js` y
+  `backend/tests/contract/get-recorrido.test.js` (no estaban en el plan
+  original, pero `mqttConfigPara` ahora requiere `choferId` y esos tests
+  fallaban sin el campo)
+- [X] T063 [P] Test: el reporte REST de `ubicacionPeriodica.js` solo se
+  invoca cuando falla la publicación MQTT del ciclo (no en cada ciclo) en
+  `frontend/tests/services/ubicacionPeriodica.test.js`
+- [ ] T064 Verificación end-to-end en staging/producción: confirmar
+  `GET /clients?username=chofer-{choferId}` (Admin API EMQX Cloud) conectado
+  tras sincronizar un segundo recorrido del mismo chofer sin
+  reaprovisionamiento, y confirmar que Central recibe ubicación por
+  WebSocket MQTT (no solo polling) tras activar T059 — registrar evidencia
+  en `docs/validacion-sc-staging.md` — **no ejecutado**: requiere deploy real
+  a Fly.io/EMQX Cloud y T059 completo, fuera del alcance de esta sesión de
+  código
+- [X] T065 Documentación: `spec.md` (Clarifications + FR-004/005/011/013 +
+  Key Entities), `plan.md` (Constitution Check + Divergencias),
+  `research.md` (Decisiones 8-11), `data-model.md` (`Chofer`,
+  `CredencialMqttChofer`), `contracts/integracion-api.md`,
+  `contracts/mqtt-topics.md` y `quickstart.md` actualizados para reflejar el
+  modelo de credenciales por-chofer — completado en `/speckit-clarify` +
+  `/speckit-plan` (2026-08-10)
+
+**Pendiente de esta fase** (no bloqueante, ver spec.md Assumptions):
+- **T059**: completar `central/.env.production` con los valores reales de
+  broker/credencial (acción manual, requiere acceso a EMQX Cloud/backend
+  prod).
+- **T064**: verificación end-to-end en staging/producción, bloqueada por T059
+  y por requerir un deploy real (Fly.io + EMQX Cloud).
+- Revocación de `CredencialMqttChofer` sigue sin trigger definido (mismo
+  estado que Phase 7, ahora con mayor impacto por ser permanente).
+- Validación server-side del remitente contra el `fleteId` del payload
+  (alternativa descartada en research.md Decisión 8) queda como mejora
+  futura si el riesgo de ACL amplia deja de ser tolerable.
+
+**Checkpoint**: Phase 8 funcional y demostrable de forma independiente —
+requiere Phase 7 completa (usa el mismo bridge/tópico, solo cambia el
+aprovisionamiento de credenciales)
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -189,6 +301,9 @@ celular real.
 - Phase 2: depende de Phase 1
 - Phase 3/4/5: dependen de Phase 2
 - Phase 6: depende de completar historias priorizadas
+- Phase 7: depende de Phase 5 (US3) completa
+- Phase 8: depende de Phase 7 completa (reemplaza su modelo de credenciales;
+  reusa el mismo bridge/tópico MQTT sin cambios)
 
 ### User Story Dependencies
 
@@ -210,6 +325,7 @@ celular real.
 - US2: T016 y T017 en paralelo
 - US3: T020, T021 y T022 en paralelo; luego T023/T025 en paralelo
 - Phase 6: T029, T030, T031 en paralelo
+- Phase 8: T052/T053 en paralelo; T059 en paralelo con T052-T058; T060/T061/T063 en paralelo
 
 ## Parallel Example: User Story 3
 
@@ -239,6 +355,8 @@ T025 central/src/services/mqttClient.js
 2. US2 (consulta de estado)
 3. US3 (tiempo real MQTT)
 4. Polish + validación SC por staging
+5. Phase 7 (fixes de producción por-flete) + Phase 8 (credenciales
+   permanentes por-chofer, rama `006-credenciales-mqtt-chofer`)
 
 ### Format Validation
 

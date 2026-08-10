@@ -112,6 +112,10 @@ export function createIntegracionStore() {
           id,
           token: raw.token ?? previo?.token ?? null,
           fleteId: raw.fleteId != null ? String(raw.fleteId) : previo?.fleteId ?? null,
+          // choferId (2026-08-10, spec.md FR-013): identidad estable del
+          // chofer entre recorridos, provista por Oracle — dispara la
+          // credencial MQTT permanente (ver emqxProvisioning.js).
+          choferId: raw.choferId != null ? String(raw.choferId) : previo?.choferId ?? null,
           fleteNombre: raw.fleteNombre ?? previo?.fleteNombre ?? null,
           estado: raw.estado || previo?.estado || "pendiente",
           updatedAt: raw.updatedAt || new Date().toISOString(),
@@ -184,6 +188,7 @@ export function createIntegracionStore() {
       return {
         id: r.id,
         fleteId: r.fleteId,
+        choferId: r.choferId, 
         estado: r.estado,
         puntos,
         progreso: calcularProgreso(puntos),

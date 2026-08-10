@@ -98,6 +98,74 @@
 - No requiere cambios de contrato ni de backend — es puramente un ajuste de
   cuándo el cliente decide reportar.
 
+## Decisión 8 (2026-08-10): credenciales MQTT permanentes por-chofer, con ACL amplia
+
+- Decisión: reemplazar la credencial publish-only por-`fleteId` (Decisión 6)
+  por una credencial **permanente por `choferId`** (`chofer-{choferId}`),
+  con ACL de publish sobre el wildcard `chofer/+/ubicacion` — no scoped a un
+  único tópico.
+- Razón: el pedido de negocio es explícito — "autenticación única por
+  chofer" y "credenciales permanentes, una por cada chofer" — y una
+  identidad que sobreviva a múltiples recorridos no puede tener una ACL fija
+  a un único `fleteId` (ese cambia en cada recorrido nuevo).
+- Alternativas evaluadas (sesión de clarificación 2026-08-10):
+  - **ACL dinámica** (actualizar la regla de ACL del chofer en EMQX en cada
+    nueva asignación de recorrido): preserva el scoping estricto de la
+    Decisión 6, pero agrega complejidad operativa (llamada a la Admin API de
+    EMQX en cada asignación, manejo de fallo de esa llamada). Descartada por
+    ahora — ver Principio VII en `plan.md`.
+  - **Validación server-side en `mqttBridge.js`** (ACL amplia + verificar que
+    el `fleteId` del payload corresponde al chofer autenticado antes de
+    persistir): más robusta que la opción elegida, pero requiere mantener un
+    mapeo chofer↔fleteId activo en el backend. Descartada por simplicidad
+    para este alcance; queda como mejora futura si el riesgo aceptado deja
+    de ser tolerable.
+  - **ACL amplia sin validación adicional** (elegida): más simple, acepta
+    explícitamente el riesgo de que un chofer autenticado pueda publicar en
+    el tópico de un `fleteId` ajeno. Riesgo mitigado por el impacto acotado
+    (solo `ultimaUbicacion` de tránsito, no eventos autenticados por token) y
+    por ser una población de choferes conocida y administrada por Oracle.
+- Impacto en Decisión 6: **queda superseded** para el caso de ubicación
+  periódica del chofer — se mantiene como documentación histórica de por qué
+  se rechazó originalmente una credencial compartida (ese análisis de riesgo
+  de "bundle público" ya no aplica igual porque el chofer ahora es una
+  identidad administrada, no un link anónimo).
+
+## Decisión 9 (2026-08-10): origen de `choferId`
+
+- Decisión: `choferId` es un campo nuevo en el payload de
+  `POST /api/integracion/recorridos`, provisto por Oracle/APEX (sistema
+  maestro administrativo de choferes, Principio IV).
+- Razón: evita crear una segunda fuente de verdad de identidad de chofer en
+  el plano cloud; reusa el mismo patrón de sincronización explícita ya
+  usado para `fleteId`.
+- Alternativas evaluadas: identidad por login/teléfono en el frontend
+  (descartada — requiere infraestructura de verificación nueva, PII
+  adicional no justificada por Principio VII, y fricción de onboarding que
+  hoy no existe).
+
+## Decisión 10 (2026-08-10): REST de ubicación periódica pasa a fallback silencioso
+
+- Decisión: el reporte periódico de ubicación sigue publicando por REST
+  (`POST /:token/ubicacion`, FR-014 de spec 001), pero solo como fallback —
+  se invoca únicamente si la publicación MQTT del ciclo falla, no en
+  paralelo en cada ciclo como hoy.
+- Razón: honra el pedido de "únicamente vía MQTT" como camino primario, sin
+  perder la resiliencia que da un canal de respaldo ante caída del broker.
+- Alternativa evaluada: eliminar el REST por completo — descartada por
+  reducir resiliencia sin necesidad clara, y por requerir derogar FR-014 de
+  spec 001 sin un reemplazo de igual robustez.
+
+## Decisión 11 (2026-08-10): activar suscripción MQTT de Central en producción
+
+- Decisión: configurar `VITE_MQTT_*` en `central/.env.production` para que
+  `central/src/services/mqttClient.js` (ya implementado, dormant desde
+  2026-08-06) quede activo — Central pasa a recibir ubicación tanto por
+  MQTT directo como por polling REST (FR-007 se mantiene como reconciliación).
+- Razón: el pedido "Central y Backend suscriben al mismo topic" asume que
+  ambas suscripciones están activas; dejar a Central dependiendo solo de
+  polling no lo cumple.
+
 ## Recomendación combinada
 
 - EMQX como broker MQTT principal.

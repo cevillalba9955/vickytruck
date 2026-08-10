@@ -1,0 +1,214 @@
+{
+  "info": {
+    "_postman_id": "4f0a0c0f-22e7-4b69-9d57-a2d6dbf14e0f",
+    "name": "VickyTruck Backend API",
+    "description": "Coleccion de endpoints de backend para chofer, central e integracion.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001" },
+    { "key": "token", "value": "tok-1" },
+    { "key": "puntoId", "value": "p1" },
+    { "key": "recorridoId", "value": "R-1001" },
+    { "key": "integracionApiKey", "value": "test-key" },
+    { "key": "integracionBearer", "value": "" },
+    { "key": "limit", "value": "50" },
+    { "key": "offset", "value": "0" }
+  ],
+  "item": [
+    {
+      "name": "Chofer",
+      "item": [
+        {
+          "name": "GET Recorrido por token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/recorridos/{{token}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recorridos", "{{token}}"]
+            },
+            "description": "Obtiene recorrido, progreso y puntos del token del chofer."
+          },
+          "response": []
+        },
+        {
+          "name": "POST Arribo de punto",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": -34.6,\n  \"lon\": -58.4\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/recorridos/{{token}}/puntos/{{puntoId}}/arribo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recorridos", "{{token}}", "puntos", "{{puntoId}}", "arribo"]
+            },
+            "description": "Marca arribo de un punto. Idempotente."
+          },
+          "response": []
+        },
+        {
+          "name": "POST Descarga de punto",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": -34.6,\n  \"lon\": -58.4\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/recorridos/{{token}}/puntos/{{puntoId}}/descarga",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recorridos", "{{token}}", "puntos", "{{puntoId}}", "descarga"]
+            },
+            "description": "Marca descarga (completado) de un punto."
+          },
+          "response": []
+        },
+        {
+          "name": "POST Ubicacion instantanea",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": -34.6,\n  \"lon\": -58.4\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/recorridos/{{token}}/ubicacion",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recorridos", "{{token}}", "ubicacion"]
+            },
+            "description": "Registra ubicacion GPS en memoria para consumo de Central."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Central",
+      "item": [
+        {
+          "name": "GET Recorridos activos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/central/recorridos/activos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "central", "recorridos", "activos"]
+            },
+            "description": "Lista recorridos activos para el panel Central."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Historial de recorridos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/central/recorridos/historial",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "central", "recorridos", "historial"]
+            },
+            "description": "Lista recorridos finalizados."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Detalle de recorrido",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/central/recorridos/{{recorridoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "central", "recorridos", "{{recorridoId}}"]
+            },
+            "description": "Obtiene detalle de un recorrido puntual."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Integracion",
+      "item": [
+        {
+          "name": "POST Upsert recorridos",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{integracionApiKey}}" },
+              { "key": "Authorization", "value": "Bearer {{integracionBearer}}", "disabled": true }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"oracle-apex\",\n  \"recorridos\": [\n    {\n      \"id\": \"R-1001\",\n      \"token\": \"tok-1001\",\n      \"fleteId\": \"F-1\",\n      \"choferId\": \"CH-345\",\n      \"estado\": \"activo\",\n      \"updatedAt\": \"2026-08-05T13:20:00Z\",\n      \"puntos\": [\n        { \"id\": \"P-1\", \"orden\": 1, \"estado\": \"pendiente\", \"lat\": -34.6, \"lon\": -58.4 }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integracion/recorridos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "integracion", "recorridos"]
+            },
+            "description": "Inserta/actualiza recorridos desde Oracle/APEX."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Estado por recorridoId",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{integracionApiKey}}" },
+              { "key": "Authorization", "value": "Bearer {{integracionBearer}}", "disabled": true }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/integracion/estado?recorridoId={{recorridoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "integracion", "estado"],
+              "query": [
+                { "key": "recorridoId", "value": "{{recorridoId}}" }
+              ]
+            },
+            "description": "Consulta estado de un recorrido especifico."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Estado paginado",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{integracionApiKey}}" },
+              { "key": "Authorization", "value": "Bearer {{integracionBearer}}", "disabled": true }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/integracion/estado?limit={{limit}}&offset={{offset}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "integracion", "estado"],
+              "query": [
+                { "key": "limit", "value": "{{limit}}" },
+                { "key": "offset", "value": "{{offset}}" }
+              ]
+            },
+            "description": "Consulta estado paginado cuando no se envia recorridoId."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
