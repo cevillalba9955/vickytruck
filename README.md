@@ -33,6 +33,7 @@ Resumen rápido:
 
 - Arquitectura general: [docs/arquitectura.puml](docs/arquitectura.puml)
 - Arquitectura cloud: [docs/arquitectura-cloud.puml](docs/arquitectura-cloud.puml)
+- Endpoints backend: [docs/endpoints.md](docs/endpoints.md)
 - Feature cloud y MQTT: [specs/003-arquitectura-cloud-mqtt/spec.md](specs/003-arquitectura-cloud-mqtt/spec.md)
 
 ## Desarrollo local
