@@ -5,10 +5,11 @@
 -- por specs/005-chofer-estados-viaje/contracts/sincronizacion-oracle-central.md)
 -- leyendo las vistas ya validadas contra este esquema real (mismas que usa
 -- RECORRIDO_API, ver recorrido_api.pkb.sql):
---   VIC.V_RECORRIDOS(ID, TOKEN, ESTADO, FLETE_ID)
+--   VIC.V_RECORRIDOS(ID, TOKEN, ESTADO, FLETE_ID, CHOFER_ID)
 --   VIC.V_PUNTOS_ENTREGA(ID, RECORRIDO_ID, ORDEN, LATITUD, LONGITUD, ESTADO,
 --                         CLIENTE, DIRECCION, HORARIO, NOTAS, REMITO_IDS)
 --   VIC.V_FLETES(ID, NOMBRE)
+--   DB_ENTIDADES.V_CHOFERES(ID, TITLE) -- solo lectura, GRANT a VIC (2026-08-10)
 --
 -- CLIENTE/DIRECCION/HORARIO/NOTAS (005-chofer-estados-viaje, FR-001/FR-002):
 -- columnas de texto, nullable — se omiten del JSON cuando vienen NULL
@@ -21,6 +22,12 @@
 -- el punto no tiene remitos. Se explota acá a un JSON array de strings
 -- (armar_remito_ids abajo) porque el backend cloud espera `remitoIds` como
 -- lista, no como valor único — nunca se manda la columna cruda.
+--
+-- CHOFER_ID/CHOFER_NOMBRE (003-arquitectura-cloud-mqtt, FR-013, 2026-08-10):
+-- dispara la credencial MQTT permanente por-chofer en el backend cloud (ver
+-- backend/src/mqtt/emqxProvisioning.js). CHOFER_ID ya existía en
+-- V_RECORRIDOS (se usaba para asignación de viaje, no para MQTT); el nombre
+-- sale de DB_ENTIDADES.V_CHOFERES.TITLE vía LEFT JOIN.
 --
 -- IMPORTANTE (primera versión — sincronización manual, ver README.md de esta
 -- carpeta): c_api_key queda hardcodeada acá como constante. Antes de atar esto a un
@@ -127,6 +134,8 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
     v_estado        VARCHAR2(40);
     v_flete_id      NUMBER;
     v_flete_nombre  VARCHAR2(200);
+    v_chofer_id     NUMBER;
+    v_chofer_nombre VARCHAR2(200);
     v_puntos        CLOB;
     v_recorrido     CLOB;
     v_payload       CLOB;
@@ -139,14 +148,18 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
     -- fuera de "activos" en Central sin forma de recuperarlo desde acá.
     -- OJO: esto significa que ESTE push nunca manda 'finalizado' — Central
     -- solo movería un recorrido a "historial" (listarHistorial(), que filtra
-    -- por estado='finalizado') si algún otro camino llega a mandarlo. Por
-    -- ahora es aceptable porque posiblemente esto solo se usa durante
-    -- pruebas; revisar antes de operar en serio si hace falta que
-    -- sincronizar_recorrido respete el estado real cuando corresponda.
-    SELECT r.id, r.token, 'activo' estado, r.flete_id, f.nombre
-      INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre
+    -- por estado='finalizado') si algún otro camino llega a mandarlo.
+    -- 2026-08-10: ese otro camino ya existe — backend/src/state/
+    -- integracionStore.js marca el recorrido "finalizado" automáticamente
+    -- cuando el chofer completa la descarga del último punto pendiente
+    -- (transicionarPunto), sin depender de que Oracle lo reenvíe con ese
+    -- estado. Un re-push posterior de acá con 'activo' ya no lo revierte
+    -- (mismo integracionStore.js lo protege).
+    SELECT r.id, r.token, 'activo' estado, r.flete_id, f.nombre, r.chofer_id, ch.title chofer_nombre
+      INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre, v_chofer_id, v_chofer_nombre
       FROM VIC.V_RECORRIDOS r
       LEFT JOIN DB_ENTIDADES.V_FLETES f ON f.id = r.flete_id
+      LEFT JOIN DB_ENTIDADES.V_CHOFERES ch ON ch.id = r.chofer_id
      WHERE r.id = p_recorrido_id;
 
     SELECT JSON_ARRAYAGG(
@@ -180,6 +193,8 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
              'token' VALUE v_token,
              'fleteId' VALUE TO_CHAR(v_flete_id),
              'fleteNombre' VALUE v_flete_nombre,
+             'choferId' VALUE TO_CHAR(v_chofer_id),
+             'choferNombre' VALUE v_chofer_nombre,
              'estado' VALUE v_estado,
              'puntos' VALUE NVL(v_puntos, TO_CLOB('[]')) FORMAT JSON,
              'updatedAt' VALUE TO_CHAR(SYSTIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')

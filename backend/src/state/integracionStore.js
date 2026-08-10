@@ -116,8 +116,15 @@ export function createIntegracionStore() {
           // chofer entre recorridos, provista por Oracle — dispara la
           // credencial MQTT permanente (ver emqxProvisioning.js).
           choferId: raw.choferId != null ? String(raw.choferId) : previo?.choferId ?? null,
+          // choferNombre (2026-08-10): igual tratamiento que fleteNombre —
+          // dato de despliegue para UI, no autoritativo.
+          choferNombre: raw.choferNombre ?? previo?.choferNombre ?? null,
           fleteNombre: raw.fleteNombre ?? previo?.fleteNombre ?? null,
-          estado: raw.estado || previo?.estado || "pendiente",
+          // Un recorrido ya finalizado localmente (todos los puntos
+          // completado, ver transicionarPunto) no debe volver a "activo" por
+          // un re-push de Oracle — mismo criterio protector que mergearPunto
+          // aplica por punto, acá a nivel recorrido (2026-08-10).
+          estado: previo?.estado === "finalizado" ? "finalizado" : raw.estado || previo?.estado || "pendiente",
           updatedAt: raw.updatedAt || new Date().toISOString(),
           puntos: puntosEntrantes.map((p) => mergearPunto(p, puntosPreviosPorId.get(String(p.id)), protegerOrden)),
           ultimaUbicacion: previo?.ultimaUbicacion ?? null,
@@ -489,6 +496,17 @@ function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicac
     }
   } else if (punto.estado !== estadoIdempotente) {
     return { outcome: "conflict", punto: serializarPuntoTransicion(punto) };
+  }
+
+  // 2026-08-10: cierre automático del recorrido cuando el último punto pasa
+  // a "completado" — no depende de un nuevo push de Oracle (que ahora solo
+  // sincroniza recorridos activos, nunca reenvía con estado "finalizado") ni
+  // de un comando aparte del chofer: es la acción "Descarga completa" sobre
+  // el último punto pendiente, ya existente en RouteView.jsx. Sin esto,
+  // listarHistorial() nunca devolvía nada (nada ponía estado="finalizado") y
+  // el recorrido quedaba mostrado como activo en Central indefinidamente.
+  if (r.puntos.length > 0 && r.puntos.every((p) => p.estado === "completado")) {
+    r.estado = "finalizado";
   }
 
   return { outcome: "ok", punto: serializarPuntoTransicion(punto) };
