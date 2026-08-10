@@ -156,6 +156,59 @@ test("marcarDescarga — captura el GPS del chofer al marcar (dato para Oracle/A
   assert.equal(p1.descargaLon, -58.42);
 });
 
+// 2026-08-10: cierre automático del recorrido al completar el último punto.
+
+test("marcarDescarga — el recorrido queda 'finalizado' cuando el ÚLTIMO punto pasa a completado", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+  await store.marcarArribo("tok-1", "p1");
+  await store.marcarDescarga("tok-1", "p1");
+
+  // p1 completado, p2 todavía pendiente: el recorrido sigue activo.
+  let [recorrido] = store.listarEstado("R-1");
+  assert.equal(recorrido.estado, "activo");
+
+  await store.marcarArribo("tok-1", "p2");
+  await store.marcarDescarga("tok-1", "p2");
+
+  [recorrido] = store.listarEstado("R-1");
+  assert.equal(recorrido.estado, "finalizado");
+});
+
+test("marcarDescarga — un recorrido finalizado sale de listarActivos y aparece en listarHistorial", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+  await store.marcarArribo("tok-1", "p1");
+  await store.marcarDescarga("tok-1", "p1");
+  await store.marcarArribo("tok-1", "p2");
+  await store.marcarDescarga("tok-1", "p2");
+
+  const activos = await store.listarActivos();
+  assert.equal(activos.some((r) => r.id === "R-1"), false);
+
+  const historial = await store.listarHistorial();
+  assert.equal(historial.some((r) => r.recorrido.id === "R-1"), true);
+});
+
+test("upsert — un re-push con estado 'activo' no revierte un recorrido ya finalizado", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+  await store.marcarArribo("tok-1", "p1");
+  await store.marcarDescarga("tok-1", "p1");
+  await store.marcarArribo("tok-1", "p2");
+  await store.marcarDescarga("tok-1", "p2");
+
+  let [recorrido] = store.listarEstado("R-1");
+  assert.equal(recorrido.estado, "finalizado");
+
+  // Oracle todavía no se enteró (leer_estado_puntos no corrió) y reenvía el
+  // mismo recorrido como "activo" — no debe revertir el cierre local.
+  seedRecorrido(store, { estado: "activo" });
+
+  [recorrido] = store.listarEstado("R-1");
+  assert.equal(recorrido.estado, "finalizado");
+});
+
 test("upsert — un re-push con puntos 'pendiente' no pisa el progreso ya confirmado por el chofer", async () => {
   const store = createIntegracionStore();
   seedRecorrido(store);

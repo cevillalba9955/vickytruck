@@ -1,0 +1,43 @@
+-- Referencia: T_CHOFERES / V_CHOFERES (identidad de chofer)
+--
+-- ACTUALIZADO 2026-08-10 — este archivo empezó como un DDL para que VIC
+-- creara T_CHOFERES directamente. Eso quedó obsoleto: el usuario creó la
+-- tabla real en otro esquema (oculto para VIC — no confirmado cuál en este
+-- repo) y expuso una vista de SOLO LECTURA, `V_CHOFERES`, con GRANT SELECT
+-- a VIC. `VIC.INTEGRACION_CLOUD_API.armar_payload` ya la usa:
+--
+--   LEFT JOIN DB_ENTIDADES.V_CHOFERES CH ON CH.ID = R.CHOFER_ID
+--
+-- Este archivo queda como REFERENCIA del contrato de esa vista (no como
+-- script a ejecutar) — VIC no tiene privilegios de escritura sobre
+-- T_CHOFERES, así que ningún DDL/DML de acá corre desde el esquema VIC.
+--
+-- Columnas confirmadas por el usuario (mismo naming propuesto originalmente,
+-- solo cambió el esquema dueño):
+--
+--   V_CHOFERES.ID                    -- mismo valor que R.CHOFER_ID en
+--                                        V_RECORRIDOS — es el choferId que
+--                                        viaja en POST /api/integracion/
+--                                        recorridos y termina siendo el
+--                                        username chofer-{choferId} en EMQX
+--                                        (ver backend/src/mqtt/
+--                                        emqxProvisioning.js).
+--   V_CHOFERES.EMAIL                 -- inbox del chofer.
+--   V_CHOFERES.TOKEN_LOGIN           -- token opaco del magic link de login
+--                                        MQTT (ya generado y disponible en
+--                                        la vista, según confirmó el
+--                                        usuario) — NO es la credencial MQTT
+--                                        en sí (esa sigue siendo
+--                                        chofer-{choferId}/HMAC).
+--   V_CHOFERES.TOKEN_LOGIN_VENCE_EN  -- vencimiento de TOKEN_LOGIN.
+--
+-- Fuera de alcance / no resuelto todavía (y ahora explícitamente fuera del
+-- esquema VIC, no solo "pendiente"):
+--   - Quién regenera TOKEN_LOGIN/TOKEN_LOGIN_VENCE_EN y con qué política de
+--     vencimiento — vive en el esquema dueño de T_CHOFERES, no en
+--     INTEGRACION_CLOUD_API (VIC no puede escribir ahí).
+--   - El envío del mail con el link de conexión — tampoco es responsabilidad
+--     de este package; no hay ningún endpoint en el backend Node que
+--     consuma TOKEN_LOGIN todavía (armar_payload solo manda choferId/
+--     choferNombre, no el token de login — ese token es para un flujo de
+--     autenticación aparte, todavía sin construir del lado backend/frontend).

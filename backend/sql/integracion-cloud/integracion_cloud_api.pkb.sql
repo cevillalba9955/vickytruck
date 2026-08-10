@@ -1,34 +1,4 @@
--- Package BODY: INTEGRACION_CLOUD_API
---
--- Arma el payload de POST /api/integracion/recorridos (ver contrato en
--- specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md) leyendo
--- las vistas ya validadas contra este esquema real (mismas que usa
--- RECORRIDO_API, ver recorrido_api.pkb.sql):
---   VIC.V_RECORRIDOS(ID, TOKEN, ESTADO, FLETE_ID)
---   VIC.V_PUNTOS_ENTREGA(ID, RECORRIDO_ID, ORDEN, LATITUD, LONGITUD, ESTADO)
---   VIC.V_FLETES(ID, NOMBRE)
---
--- IMPORTANTE (primera versión — sincronización manual, ver README.md de esta
--- carpeta): c_api_key queda hardcodeada acá como constante. Antes de atar esto a un
--- trigger o job automático hay que moverla al credential store de APEX
--- (APEX_CREDENTIAL.CREATE_CREDENTIAL) en vez de dejarla en el código fuente.
--- Mismo valor que INTEGRACION_API_KEY en backend/.env y en los secrets de
--- Fly — rotar en algún momento antes de operar en serio.
---
--- No validado todavía: si esta instancia Oracle (on-prem, IP privada) tiene
--- salida a internet hacia el backend, y si el wallet TLS por default de
--- APEX_WEB_SERVICE valida el certificado sin configuración adicional. Si
--- sincronizar_recorrido explota acá, p_respuesta/la excepción va a decir el
--- motivo real.
---
--- Se crea en el esquema VIC. El usuario VICKYTRUCK (que en la primera
--- versión conectaba el backend directo a Oracle) ya no se usa — se eliminó
--- al pasar a la arquitectura cloud (spec 003), donde el backend no tiene
--- ningún acceso a Oracle. VIC ya tiene los privilegios (y la ACL de red,
--- confirmada contra `localhost:8090` y `APEX_240100` el 2026-08-07) que este
--- paquete necesita, así que no hace falta ningún GRANT cross-schema.
-
-CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
+create or replace PACKAGE BODY     INTEGRACION_CLOUD_API AS
 
   -- Vía relay nginx local (ver relay-rocky/README.md): esta Oracle no logra
   -- salir directo a internet (ORA-29273/ORA-24247 persistente pese a ACL
@@ -82,20 +52,42 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
       RETURN SQLERRM;
   END armar_error_encadenado;
 
+  -- Convierte la columna delimitada REMITO_IDS ("1001,1002", NULL si no hay
+  -- ninguno) en un JSON array de strings ('["1001","1002"]', '[]' si NULL) —
+  -- 005-chofer-estados-viaje, FR-001/FR-004a. Requiere APEX_STRING (paquete
+  -- estándar de APEX, ya asumido disponible por este package vía
+  -- APEX_WEB_SERVICE más abajo).
+  FUNCTION armar_remito_ids(p_remito_ids IN VARCHAR2) RETURN CLOB IS
+    v_json CLOB;
+  BEGIN
+    IF p_remito_ids IS NULL THEN
+      RETURN TO_CLOB('[]');
+    END IF;
+
+    SELECT JSON_ARRAYAGG(TRIM(COLUMN_VALUE) RETURNING CLOB)
+      INTO v_json
+      FROM TABLE(APEX_STRING.SPLIT(p_remito_ids, ','));
+
+    RETURN NVL(v_json, TO_CLOB('[]'));
+  END armar_remito_ids;
+
   FUNCTION armar_payload(p_recorrido_id IN NUMBER) RETURN CLOB IS
     v_id            NUMBER;
     v_token         VARCHAR2(64);
     v_estado        VARCHAR2(40);
     v_flete_id      NUMBER;
     v_flete_nombre  VARCHAR2(200);
+    v_chofer_id      NUMBER;
+    v_chofer_nombre  VARCHAR2(200);
     v_puntos        CLOB;
     v_recorrido     CLOB;
     v_payload       CLOB;
   BEGIN
-    SELECT r.id, r.token, r.estado, r.flete_id, f.nombre
-      INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre
+    SELECT r.id, r.token,'activo' estado, r.flete_id, f.nombre, R.CHOFER_ID, CH.TITLE CHOFER
+      INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre, v_chofer_id, v_chofer_nombre
       FROM VIC.V_RECORRIDOS r
       LEFT JOIN DB_ENTIDADES.V_FLETES f ON f.id = r.flete_id
+      LEFT JOIN DB_ENTIDADES.V_CHOFERES CH ON CH.ID = R.CHOFER_ID
      WHERE r.id = p_recorrido_id;
 
     SELECT JSON_ARRAYAGG(
@@ -104,7 +96,12 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
                'orden' VALUE p.orden,
                'estado' VALUE p.estado,
                'lat' VALUE p.latitud,
-               'lon' VALUE p.longitud
+               'lon' VALUE p.longitud,
+               'cliente' VALUE p.cliente,
+               'direccion' VALUE p.direccion,
+               'rangoHorario' VALUE p.horario,
+               'notasEntrega' VALUE p.notas,
+               'remitoIds' VALUE armar_remito_ids(p.remito_ids) FORMAT JSON
                ABSENT ON NULL
              )
              ORDER BY p.orden
@@ -124,6 +121,8 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
              'token' VALUE v_token,
              'fleteId' VALUE TO_CHAR(v_flete_id),
              'fleteNombre' VALUE v_flete_nombre,
+             'choferId' VALUE TO_CHAR(v_chofer_id),
+             'choferNombre' VALUE v_chofer_nombre,
              'estado' VALUE v_estado,
              'puntos' VALUE NVL(v_puntos, TO_CLOB('[]')) FORMAT JSON,
              'updatedAt' VALUE TO_CHAR(SYSTIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
@@ -281,4 +280,3 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
   END leer_estado_puntos;
 
 END INTEGRACION_CLOUD_API;
-/
