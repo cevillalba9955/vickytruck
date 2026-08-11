@@ -66,12 +66,14 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
   c_backend_url_estado CONSTANT VARCHAR2(200) := 'http://localhost:8090/api/integracion/estado';
   c_api_key            CONSTANT VARCHAR2(100) := 'b9gFJKRPl2eYf3SWgHDtvsV-6CIXfGHC';
 
-  -- Mascara de los timestamps que manda el backend cloud: siempre
-  -- Date.prototype.toISOString() de JS, que SIEMPRE incluye milisegundos
-  -- (a diferencia del 'updatedAt' que arma armar_payload más abajo, que sale
-  -- de Oracle sin milisegundos) — sin el .FF3, TO_TIMESTAMP tira
-  -- ORA-01821 ante el primer punto con arriboEn/descargaEn seteado.
-  c_mascara_iso_utc CONSTANT VARCHAR2(40) := 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"';
+  -- Mascara de los timestamps que manda el backend cloud (006-normalizar-
+  -- formato-horario, research.md Decisión 1 y 4): hora local de Argentina
+  -- con offset explícito ('-03:00'), ya no UTC con 'Z' fijo — por eso se usa
+  -- TO_TIMESTAMP_TZ (no TO_TIMESTAMP) con componente TZH:TZM. Siempre
+  -- incluye milisegundos (Date.prototype.toISOString()/ahoraLocalIso() de
+  -- JS SIEMPRE los incluye) — sin el .FF3, TO_TIMESTAMP_TZ tira ORA-01821
+  -- ante el primer punto con arriboEn/descargaEn seteado.
+  c_mascara_iso_local CONSTANT VARCHAR2(40) := 'YYYY-MM-DD"T"HH24:MI:SS.FF3TZH:TZM';
 
   -- Arma el stack de error completo (ORA-29273 + la causa real encadenada
   -- detrás, ej. ORA-24247 de ACL, ORA-12541 de listener caído, timeout de
@@ -197,7 +199,10 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
              'choferNombre' VALUE v_chofer_nombre,
              'estado' VALUE v_estado,
              'puntos' VALUE NVL(v_puntos, TO_CLOB('[]')) FORMAT JSON,
-             'updatedAt' VALUE TO_CHAR(SYSTIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+             -- 006-normalizar-formato-horario: hora local de Argentina con
+             -- offset explícito en vez de UTC ('Z'), ver research.md
+             -- Decisión 1 y 3 — reemplaza el contrato de intercambio interno.
+             'updatedAt' VALUE TO_CHAR(SYSTIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD"T"HH24:MI:SS.FF3TZH:TZM')
              ABSENT ON NULL
              RETURNING CLOB
            )
@@ -265,14 +270,13 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
   -- carpeta) — por eso pisa sin comparar versiones, siempre gana el último
   -- estado leído.
   --
-  -- No validado tampoco: si ARRIBO_EN/DESCARGA_EN en T_PUNTOS_ENTREGA es
-  -- TIMESTAMP a secas (sin zona horaria) igual que asume RECORRIDO_API
-  -- (que las llena con SYSTIMESTAMP, hora local del server Oracle) mientras
-  -- que acá se parsean como UTC (el cloud manda todo en UTC) — si el server
-  -- Oracle no corre en UTC, los valores que entran por este camino van a
-  -- quedar unas horas corridos respecto de los que entran por
-  -- RECORRIDO_API. Revisar DBTIMEZONE/el timezone del server antes de
-  -- confiar en esta columna para reportes.
+  -- 006-normalizar-formato-horario (research.md Decisión 3-4): resuelto —
+  -- ARRIBO_EN/DESCARGA_EN sigue siendo TIMESTAMP a secas (sin zona horaria,
+  -- sin migración de esquema), pero ahora ambos caminos escriben la misma
+  -- hora de pared de Argentina de forma explícita: RECORRIDO_API vía
+  -- `SYSTIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'`, y acá vía
+  -- `TO_TIMESTAMP_TZ` (el cloud manda `-03:00` explícito, no UTC) + CAST a
+  -- TIMESTAMP. Ya no depende de confirmar DBTIMEZONE del server.
   PROCEDURE leer_estado_puntos(
     p_recorrido_id IN  NUMBER,
     p_resultado    OUT VARCHAR2,
@@ -325,11 +329,11 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
       UPDATE T_PUNTOS_ENTREGA
          SET estado       = rec.estado,
              arribo_en    = CASE WHEN rec.arribo_en IS NOT NULL
-                                  THEN TO_TIMESTAMP(rec.arribo_en, c_mascara_iso_utc) END,
+                                  THEN CAST(TO_TIMESTAMP_TZ(rec.arribo_en, c_mascara_iso_local) AS TIMESTAMP) END,
              arribo_lat   = rec.arribo_lat,
              arribo_lon   = rec.arribo_lon,
              descarga_en  = CASE WHEN rec.descarga_en IS NOT NULL
-                                  THEN TO_TIMESTAMP(rec.descarga_en, c_mascara_iso_utc) END,
+                                  THEN CAST(TO_TIMESTAMP_TZ(rec.descarga_en, c_mascara_iso_local) AS TIMESTAMP) END,
              descarga_lat = rec.descarga_lat,
              descarga_lon = rec.descarga_lon
        WHERE id = rec.punto_id

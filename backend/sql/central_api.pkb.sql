@@ -35,7 +35,11 @@ CREATE OR REPLACE PACKAGE BODY VIC.CENTRAL_API AS
     -- sentencia, evitando la carrera entre "chequear" y "escribir" (FR-015).
     EXECUTE IMMEDIATE
       'UPDATE ' || c_tabla_recorridos || ' r' ||
-      ' SET r.flete_id = :1, r.token = :2, r.asignado_en = SYSTIMESTAMP, r.estado = ''activo''' ||
+      -- 006-normalizar-formato-horario: AT TIME ZONE explícito en vez de
+      -- SYSTIMESTAMP crudo, ver research.md Decisión 3.
+      ' SET r.flete_id = :1, r.token = :2,' ||
+      ' r.asignado_en = CAST(SYSTIMESTAMP AT TIME ZONE ''America/Argentina/Buenos_Aires'' AS TIMESTAMP),' ||
+      ' r.estado = ''activo''' ||
       ' WHERE r.id = :3' ||
       '   AND r.flete_id IS NULL' ||
       '   AND NOT EXISTS (' ||
@@ -102,7 +106,10 @@ CREATE OR REPLACE PACKAGE BODY VIC.CENTRAL_API AS
     -- comprobación de "flete ocupado" (Historia 4, FR-009).
     EXECUTE IMMEDIATE
       'UPDATE ' || c_tabla_recorridos || ' r' ||
-      ' SET r.flete_id = :1, r.token = :2, r.asignado_en = SYSTIMESTAMP' ||
+      -- 006-normalizar-formato-horario: AT TIME ZONE explícito en vez de
+      -- SYSTIMESTAMP crudo, ver research.md Decisión 3.
+      ' SET r.flete_id = :1, r.token = :2,' ||
+      ' r.asignado_en = CAST(SYSTIMESTAMP AT TIME ZONE ''America/Argentina/Buenos_Aires'' AS TIMESTAMP)' ||
       ' WHERE r.id = :3' ||
       '   AND r.estado = ''activo''' ||
       '   AND NOT EXISTS (' ||

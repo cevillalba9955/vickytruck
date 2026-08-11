@@ -41,6 +41,7 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
         estado: r.estado ?? "activo",
         fleteId: r.fleteId ?? null,
         puntos: r.puntos || [],
+        updatedAt: r.updatedAt ?? null,
       },
     ]),
   );
@@ -68,6 +69,7 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
         resultado.push({
           id: r.id,
           flete: { id: r.fleteId, nombre: flete?.nombre ?? null },
+          updatedAt: r.updatedAt,
           progreso: calcularProgreso(r.puntos),
           ultimaUbicacion: {
             lat: flete?.ultimaUbicacionLat ?? null,
@@ -84,7 +86,7 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
       const r = recorridos.get(recorridoId);
       if (!r) return null;
       return {
-        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId },
+        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, updatedAt: r.updatedAt },
         puntos: serializarPuntos(r.puntos),
       };
     },

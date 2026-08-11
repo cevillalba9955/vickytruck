@@ -56,6 +56,43 @@ describe("MonitorView", () => {
     expect(screen.getByText("Diego Ríos").closest("tr")).not.toHaveTextContent("punto");
   });
 
+  it("muestra la hora HH:MM:SS local del último reporte de ubicación junto con reciente/no reciente (006-normalizar-formato-horario, US2)", () => {
+    render(
+      <MonitorView
+        recorridos={[
+          {
+            id: "50",
+            flete: { id: "7", nombre: "Juan Pérez" },
+            progreso: { pendientes: 1, arribados: 1, completados: 1 },
+            ultimaUbicacion: { lat: -34.6, lon: -58.4, en: "2026-08-11T10:35:20.123-03:00", reciente: true },
+          },
+        ]}
+      />,
+    );
+
+    const fila = screen.getByText("Juan Pérez").closest("tr");
+    expect(fila).toHaveTextContent("Ubicación reciente");
+    expect(fila).toHaveTextContent("10:35:20");
+  });
+
+  it("muestra updatedAt del recorrido formateado en HH24:MM:SS local", () => {
+    render(
+      <MonitorView
+        recorridos={[
+          {
+            id: "50",
+            flete: { id: "7", nombre: "Juan Pérez" },
+            updatedAt: "2026-08-11T10:35:20.123-03:00",
+            progreso: { pendientes: 1, arribados: 1, completados: 1 },
+            ultimaUbicacion: { lat: null, lon: null, en: null, reciente: false },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Juan Pérez").closest("tr")).toHaveTextContent("10:35:20");
+  });
+
   it("muestra un mensaje cuando no hay recorridos activos", () => {
     render(<MonitorView recorridos={[]} />);
     expect(screen.getByRole("status")).toHaveTextContent("No hay recorridos activos");

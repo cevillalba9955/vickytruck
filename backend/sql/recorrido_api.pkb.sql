@@ -47,9 +47,14 @@ CREATE OR REPLACE PACKAGE BODY VIC.RECORRIDO_API AS
     END;
 
     -- Transición atómica: solo aplica si el punto está en estado_origen.
+    -- 006-normalizar-formato-horario: se usa AT TIME ZONE explícito en vez
+    -- de SYSTIMESTAMP crudo (hora local del server, sin declarar) para
+    -- garantizar que la columna represente la hora de pared de Argentina
+    -- sin depender de confirmar DBTIMEZONE (research.md Decisión 3).
     EXECUTE IMMEDIATE
       'UPDATE ' || c_tabla_puntos ||
-      ' SET estado = :1, ' || p_col_timestamp || ' = SYSTIMESTAMP, ' ||
+      ' SET estado = :1, ' || p_col_timestamp ||
+      ' = CAST(SYSTIMESTAMP AT TIME ZONE ''America/Argentina/Buenos_Aires'' AS TIMESTAMP), ' ||
       p_col_lat || ' = :2, ' || p_col_lon || ' = :3' ||
       ' WHERE id = :4 AND flt_viaje_id = :5 AND estado = :6'
       USING p_estado_destino, p_lat, p_lon, p_punto_id, v_recorrido_id, p_estado_origen;

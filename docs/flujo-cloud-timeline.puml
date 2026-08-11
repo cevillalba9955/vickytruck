@@ -1,0 +1,52 @@
+@startuml VickyTruck - Timeline operativo cloud, Oracle/APEX y MQTT
+title VickyTruck - Timeline operativo cloud, Oracle/APEX y MQTT
+
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+
+concise "Oracle APEX" as ORA
+concise "Backend cloud" as BE
+concise "Chofer" as CH
+concise "Central" as CE
+
+@0
+ORA is Preparando
+BE is Esperando
+CH is Inicio
+CE is Polling
+
+@1
+ORA is Sincronizando
+BE is Validando
+
+@2
+BE is Aprovisionando
+CH is Conectando
+
+@3
+CH is Publicando
+BE is Persistiendo
+
+@4
+CE is Actualizando
+
+@5
+ORA is Consultando
+CE is EnVivo
+
+@6
+CH is FallbackREST
+BE is Historial
+
+legend right
+== Lectura del timeline ==
+0. Inicio: estado base de cada actor.
+1. Oracle/APEX sincroniza; backend valida y hace upsert.
+2. Backend aprovisiona credencial MQTT; chofer la obtiene.
+3. Chofer publica ubicacion; backend persiste.
+4. Central consume por polling o MQTT directo.
+5. Oracle/APEX consulta estado; Central muestra en vivo.
+6. Si MQTT falla: chofer usa fallback REST silencioso.
+endlegend
+
+@enduml

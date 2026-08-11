@@ -1,6 +1,15 @@
+import { formatearHoraLocal } from "../services/tiempo.js";
+
+// 006-normalizar-formato-horario, US2: se agrega la hora HH24:MM:SS local
+// del último reporte, además del texto reciente/no reciente que ya existía.
 function formatearUbicacion(ultimaUbicacion) {
   if (!ultimaUbicacion || ultimaUbicacion.en == null) return "Sin ubicación reportada";
-  return ultimaUbicacion.reciente ? "Ubicación reciente" : "Ubicación no reciente";
+  const estado = ultimaUbicacion.reciente ? "Ubicación reciente" : "Ubicación no reciente";
+  return `${estado} (${formatearHoraLocal(ultimaUbicacion.en)})`;
+}
+
+function formatearActualizado(updatedAt) {
+  return updatedAt ? formatearHoraLocal(updatedAt) : "—";
 }
 
 const ETIQUETAS_VIAJE_ESTADO = {
@@ -36,6 +45,7 @@ export function MonitorView({ recorridos, onSeleccionar }) {
           <th>Progreso</th>
           <th>Estado de viaje</th>
           <th>Última ubicación</th>
+          <th>Actualizado</th>
           <th aria-hidden="true" />
         </tr>
       </thead>
@@ -50,6 +60,7 @@ export function MonitorView({ recorridos, onSeleccionar }) {
             </td>
             <td>{formatearViajeEstado(r)}</td>
             <td>{formatearUbicacion(r.ultimaUbicacion)}</td>
+            <td>{formatearActualizado(r.updatedAt)}</td>
             <td>
               {onSeleccionar && (
                 <button type="button" onClick={() => onSeleccionar(r.id)}>

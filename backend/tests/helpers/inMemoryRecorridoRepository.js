@@ -1,6 +1,7 @@
 // Repositorio en memoria que implementa el mismo contrato que
 // createOracleRecorridoRepository, para poder testear el contrato HTTP sin
 // depender de una conexión Oracle real.
+import { ahoraLocalIso } from "../../src/util/tiempo.js";
 
 function calcularProgreso(puntos) {
   const progreso = { pendientes: 0, arribados: 0, completados: 0 };
@@ -34,7 +35,7 @@ export function createInMemoryRecorridoRepository(seedRecorridos) {
 
     if (punto.estado === opts.estadoOrigen) {
       punto.estado = opts.estadoDestino;
-      punto[opts.campoTimestamp] = new Date().toISOString();
+      punto[opts.campoTimestamp] = ahoraLocalIso();
       return { outcome: "ok", punto: { ...punto } };
     }
     if (punto.estado === opts.estadoIdempotente) {

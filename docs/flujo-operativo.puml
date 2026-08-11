@@ -1,0 +1,61 @@
+@startuml VickyTruck - Flujo operativo cloud, Oracle/APEX y MQTT
+title VickyTruck - Flujo operativo cloud, Oracle/APEX y MQTT
+
+database "Oracle APEX" as apex
+participant "Backend cloud\nFly.io" as backend
+
+participant "Central\nCloudFlare" as central
+queue "EMQX broker" as mqtt
+
+actor "Chofer\nAppMovil" as chofer
+
+== Sincronizacion de recorrido ==
+
+note right of apex : Despacha Viaje
+apex --> backend : POST /api/integracion/recorridos\nsincronizar_recorrido
+note right of backend : valida INTEGRACION_API_KEY
+backend --> apex : 200 OK recorrido guardado
+backend --> mqtt : aprovisionar_credencial(choferId)
+
+== Inicio de recorrido por el chofer ==
+
+chofer --> backend : GET /api/recorridos/:token
+backend --> chofer : recorrido + credencial MQTT\n{url, username, password, topic}
+
+== Reporte periodico de ubicacion ==
+
+loop cada ciclo de ubicacion
+  chofer --> mqtt : publish chofer/{fleteId}/ubicacion\n{eventId, lat, lon, en}
+  mqtt --> backend : subscribe chofer/+/ubicacion\npersistir_ubicacion
+  mqtt --> central : subscribe chofer/+/ubicacion\nubicacion en vivo 
+end
+
+== Acciones de chofer ==
+
+chofer --> backend : POST /api/recorridos/:token/iniciar
+note right of backend : marca recorrido en_curso
+backend --> chofer : 200 OK
+
+chofer --> backend : POST /api/recorridos/:token/puntos/:puntoId/arribo
+note right of backend : marca punto arribado
+backend --> chofer : 200 OK
+
+chofer --> backend : POST /api/recorridos/:token/puntos/:puntoId/descarga
+note right of backend : marca punto completado
+backend --> chofer : 200 OK
+
+== Consulta de estado por Central ==
+
+loop pooling REST cada 5s
+    central --> backend : GET /api/central/recorridos/activos
+    backend --> central : estado + ultima ubicacion
+end
+
+== Consulta de estado por Oracle APEX ==
+
+apex --> backend : GET /api/integracion/estado
+backend --> apex : estado puntos + GPS auditoria
+
+@enduml
+
+

@@ -1,4 +1,5 @@
 import mqtt from "mqtt";
+import { ahoraLocalIso } from "./tiempo.js";
 
 const TOPIC_TEMPLATE = "chofer/{fleteId}/ubicacion";
 
@@ -48,7 +49,7 @@ export function createPublisherUbicacionMqtt(fleteId, mqttConfig) {
           recorridoId: recorridoId ? String(recorridoId) : null,
           lat,
           lon,
-          en: new Date().toISOString(),
+          en: ahoraLocalIso(),
         });
         client.publish(topic, payload, { qos: 1 }, (err) => resolve(!err));
       });

@@ -75,6 +75,46 @@ describe("DeliveryPointCard — información de recorrido (005-chofer-estados-vi
   });
 });
 
+describe("DeliveryPointCard — horarios de arribo/descarga (006-normalizar-formato-horario, US1)", () => {
+  it("muestra arriboEn/descargaEn formateados en HH24:MM:SS local, no el string ISO crudo (FR-001)", () => {
+    render(<DeliveryPointCard punto={puntoDePrueba({
+      cliente: "Distribuidora Sur SRL",
+      estado: "completado",
+      arriboEn: "2026-08-11T10:35:20.123-03:00",
+      descargaEn: "2026-08-11T10:50:05.000-03:00",
+    })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
+
+    expect(screen.getByText("10:35:20")).toBeInTheDocument();
+    expect(screen.getByText("10:50:05")).toBeInTheDocument();
+    expect(screen.queryByText("2026-08-11T10:35:20.123-03:00")).not.toBeInTheDocument();
+  });
+
+  it("un arriboEn histórico en UTC (Z) también se muestra correcto en hora local (FR-006, sin migración)", () => {
+    render(<DeliveryPointCard punto={puntoDePrueba({
+      cliente: "Cliente histórico",
+      estado: "arribado",
+      arriboEn: "2026-08-11T13:35:20.123Z",
+    })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
+
+    expect(screen.getByText("10:35:20")).toBeInTheDocument();
+  });
+
+  it("sin arriboEn/descargaEn, no muestra ninguna hora (punto todavía pendiente)", () => {
+    const { container } = render(<DeliveryPointCard punto={puntoDePrueba({ cliente: "Cliente E" })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
+    expect(container.querySelector(".delivery-point-card__horarios")).not.toBeInTheDocument();
+  });
+
+  it("rangoHorario se sigue mostrando exactamente como el string recibido, sin reformatear (spec Clarifications, pregunta 3 — regresión)", () => {
+    render(<DeliveryPointCard punto={puntoDePrueba({
+      cliente: "Cliente F",
+      rangoHorario: "09:00–12:00",
+      arriboEn: "2026-08-11T10:35:20.123-03:00",
+    })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);
+
+    expect(screen.getByText("09:00–12:00")).toBeInTheDocument();
+  });
+});
+
 describe("DeliveryPointCard — botón de mapa (aspecto)", () => {
   it("muestra un botón cuadrado con ícono en vez del link de texto, apuntando a la ubicación del punto", () => {
     const { container } = render(<DeliveryPointCard punto={puntoDePrueba({ latitud: -34.6, longitud: -58.4 })} viajeEstado="detenido" esPrimeroPendiente procesando={false} />);

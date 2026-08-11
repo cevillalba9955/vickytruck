@@ -1,4 +1,5 @@
 import mqtt from "mqtt";
+import { ahoraLocalIso } from "../util/tiempo.js";
 
 function opcionesConexion() {
   return {
@@ -40,7 +41,7 @@ function parsearPayload(raw) {
     fleteId: String(body.fleteId),
     lat: Number(body.lat),
     lon: Number(body.lon),
-    en: body.en || new Date().toISOString(),
+    en: body.en || ahoraLocalIso(),
   };
 }
 

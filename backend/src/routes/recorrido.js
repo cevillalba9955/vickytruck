@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { ubicacionEnMemoriaCompartida } from "../state/ubicacionEnMemoria.js";
 import { derivarCredencialChofer, topicPara } from "../mqtt/emqxProvisioning.js";
+import { ahoraLocalIso } from "../util/tiempo.js";
 
 function intervaloReporteUbicacionMs() {
   return Number(process.env.UBICACION_REPORTE_INTERVALO_MS || 60000);
@@ -126,7 +127,7 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
       if (!recorrido) {
         return res.status(404).json({ error: "enlace_invalido" });
       }
-      ubicacionStore.registrar(recorrido.id, { lat, lon, en: new Date().toISOString() });
+      ubicacionStore.registrar(recorrido.id, { lat, lon, en: ahoraLocalIso() });
       res.status(200).json({ ok: true });
     } catch (err) {
       next(err);

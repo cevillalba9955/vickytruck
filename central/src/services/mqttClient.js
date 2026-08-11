@@ -1,4 +1,5 @@
 import mqtt from "mqtt";
+import { ahoraLocalIso } from "./tiempo.js";
 
 const TOPIC_UBICACION = "chofer/+/ubicacion";
 
@@ -35,7 +36,7 @@ export function conectarUbicacionEnTiempoReal({ onEvento, onEstado }) {
         fleteId: String(body.fleteId),
         lat: Number(body.lat),
         lon: Number(body.lon),
-        en: body.en || new Date().toISOString(),
+        en: body.en || ahoraLocalIso(),
         eventId: body.eventId ?? null,
       });
     } catch {

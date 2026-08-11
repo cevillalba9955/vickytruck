@@ -10,6 +10,7 @@ test("GET /api/central/recorridos/:id — 200 con puntos ordenados y eventos (FR
         id: "50",
         estado: "activo",
         fleteId: "7",
+        updatedAt: "2026-08-11T10:35:20.123-03:00",
         puntos: [
           { id: "p2", orden: 2, estado: "arribado", arriboEn: "2026-08-03T12:01:00Z" },
           { id: "p1", orden: 1, estado: "completado", arriboEn: "2026-08-03T11:00:00Z", descargaEn: "2026-08-03T11:15:00Z" },
@@ -31,6 +32,8 @@ test("GET /api/central/recorridos/:id — 200 con puntos ordenados y eventos (FR
       [1, 2],
     );
     assert.equal(body.puntos[0].descargaEn, "2026-08-03T11:15:00Z");
+    // 006-normalizar-formato-horario, US2: updatedAt del recorrido llega a Central.
+    assert.equal(body.recorrido.updatedAt, "2026-08-11T10:35:20.123-03:00");
   } finally {
     await server.cerrar();
   }

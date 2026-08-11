@@ -1,4 +1,5 @@
 import { resolverUbicacion } from "../db/ubicacionResolver.js";
+import { ahoraLocalIso } from "../util/tiempo.js";
 
 function umbralUbicacionMs() {
   return Number(process.env.UBICACION_STALE_MS || 300000);
@@ -125,7 +126,7 @@ export function createIntegracionStore() {
           // un re-push de Oracle — mismo criterio protector que mergearPunto
           // aplica por punto, acá a nivel recorrido (2026-08-10).
           estado: previo?.estado === "finalizado" ? "finalizado" : raw.estado || previo?.estado || "pendiente",
-          updatedAt: raw.updatedAt || new Date().toISOString(),
+          updatedAt: raw.updatedAt || ahoraLocalIso(),
           puntos: puntosEntrantes.map((p) => mergearPunto(p, puntosPreviosPorId.get(String(p.id)), protegerOrden)),
           ultimaUbicacion: previo?.ultimaUbicacion ?? null,
           // Estado de viaje del chofer (005-chofer-estados-viaje): por defecto
@@ -161,7 +162,7 @@ export function createIntegracionStore() {
         en: ubicacion.en,
         eventId: ubicacion.eventId ?? null,
       };
-      recorrido.updatedAt = new Date().toISOString();
+      recorrido.updatedAt = ahoraLocalIso();
       return true;
     },
 
@@ -238,7 +239,7 @@ export function createIntegracionStore() {
         puntoId: primerPendiente.id,
         snapshotPrevio: { viajeEstado: "detenido", puntoActivoId: null },
         sincronizada: false,
-        en: new Date().toISOString(),
+        en: ahoraLocalIso(),
       };
       r.puntoActivoId = primerPendiente.id;
       r.viajeEstado = "manejando";
@@ -260,7 +261,7 @@ export function createIntegracionStore() {
         puntoId: puntoActivoId,
         snapshotPrevio: { viajeEstado: "manejando", puntoActivoId, puntoEstado: "pendiente", arriboEn: null, arriboLat: null, arriboLon: null },
         sincronizada: false,
-        en: new Date().toISOString(),
+        en: ahoraLocalIso(),
       };
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId, punto: resultado.punto };
     },
@@ -281,7 +282,7 @@ export function createIntegracionStore() {
         puntoId: puntoActivoId,
         snapshotPrevio: { viajeEstado: "descargando", puntoActivoId, puntoEstado: "arribado", descargaEn: null, descargaLat: null, descargaLon: null },
         sincronizada: false,
-        en: new Date().toISOString(),
+        en: ahoraLocalIso(),
       };
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: null, punto: resultado.punto };
     },
@@ -368,7 +369,7 @@ export function createIntegracionStore() {
         puntoId: objetivo.id,
         snapshotPrevio: { ordenPrevio },
         sincronizada: false,
-        en: new Date().toISOString(),
+        en: ahoraLocalIso(),
       };
 
       const puntosPendientesActualizados = [...r.puntos]
@@ -403,6 +404,7 @@ export function createIntegracionStore() {
         resultado.push({
           id: r.id,
           flete: { id: r.fleteId, nombre: r.fleteNombre },
+          updatedAt: r.updatedAt,
           progreso: calcularProgreso(r.puntos),
           ultimaUbicacion: resolverUbicacion({ enMemoria: r.ultimaUbicacion, respaldoOracle: null, staleMs, ahora }),
           // Visible para Central en (casi) tiempo real vía el mismo polling
@@ -431,7 +433,7 @@ export function createIntegracionStore() {
       const r = recorridos.get(String(id));
       if (!r) return null;
       return {
-        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId },
+        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, updatedAt: r.updatedAt },
         puntos: serializarPuntosCentral(r.puntos),
       };
     },
@@ -489,7 +491,7 @@ function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicac
 
   if (punto.estado === estadoOrigen) {
     punto.estado = estadoDestino;
-    punto[campoTimestamp] = new Date().toISOString();
+    punto[campoTimestamp] = ahoraLocalIso();
     if (ubicacion?.lat != null && ubicacion?.lon != null) {
       punto[campoLat] = ubicacion.lat;
       punto[campoLon] = ubicacion.lon;

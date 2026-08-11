@@ -10,6 +10,7 @@ test("GET /api/central/recorridos/activos — 200 con progreso y última ubicaci
         id: "50",
         estado: "activo",
         fleteId: "7",
+        updatedAt: "2026-08-11T10:35:20.123-03:00",
         puntos: [
           { id: "p1", orden: 1, estado: "completado" },
           { id: "p2", orden: 2, estado: "arribado" },
@@ -39,6 +40,8 @@ test("GET /api/central/recorridos/activos — 200 con progreso y última ubicaci
     assert.equal(r.flete.nombre, "Juan Pérez");
     assert.deepEqual(r.progreso, { pendientes: 1, arribados: 1, completados: 1 });
     assert.equal(r.ultimaUbicacion.reciente, true);
+    // 006-normalizar-formato-horario, US2: updatedAt del recorrido llega a Central.
+    assert.equal(r.updatedAt, "2026-08-11T10:35:20.123-03:00");
   } finally {
     await server.cerrar();
   }
