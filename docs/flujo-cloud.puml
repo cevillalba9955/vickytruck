@@ -1,0 +1,79 @@
+@startuml VickyTruck - Flujo operativo cloud, Oracle/APEX y MQTT
+title VickyTruck - Flujo operativo cloud, Oracle/APEX y MQTT
+
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+skinparam linetype ortho
+skinparam activity {
+  BackgroundColor #F9FBFF
+  BorderColor #5B6B8C
+  ArrowColor #415A77
+  StartColor #2A9D8F
+  EndColor #E76F51
+}
+
+start
+
+partition "Oracle/APEX local" {
+  :1. Prepara o actualiza recorrido;
+  :2. Invoca POST /api/integracion/recorridos;
+}
+
+partition "Backend cloud" {
+  :3. Valida credenciales tecnicas;
+  :4. Hace upsert del recorrido en el store en memoria;
+  :5. Aprovisiona o reusa credencial MQTT del chofer;
+}
+
+partition "Chofer" {
+  :6. GET /api/recorridos/:token;
+  :7. Obtiene credencial MQTT y topic;
+  :8. Publica ubicacion periodica por MQTT;
+}
+
+partition "Backend cloud" {
+  :9. Suscripcion MQTT del bridge;
+  :10. Persiste la ultima ubicacion;
+}
+
+partition "Central" {
+  :11. Consulta estado por polling REST;
+  :12. Opcionalmente se suscribe al broker MQTT;
+  :13. Muestra ubicacion y progreso;
+}
+
+partition "Oracle/APEX local" {
+  :14. Consulta GET /api/integracion/estado;
+}
+
+if (Publicacion MQTT correcta?) then (si)
+  partition "Central" {
+    :15. Recibe actualizacion en vivo;
+  }
+else (no)
+  partition "Chofer" {
+    :15. Usa fallback REST silencioso;
+  }
+endif
+
+stop
+
+note right
+Flujo vigente, de extremo a extremo:
+1. Oracle/APEX sincroniza recorridos sin acceso directo desde cloud.
+2. El backend valida, guarda y aprovisiona credencial MQTT.
+3. El chofer publica ubicacion por MQTT; fallback REST si falla.
+4. El backend persiste la ultima posicion via bridge.
+5. Central consume por polling REST y opcionalmente por MQTT directo.
+end note
+
+legend right
+== Lectura rapida ==
+1. Oracle/APEX inicia la sincronizacion.
+2. Backend valida, guarda y aprovisiona.
+3. Chofer publica ubicacion.
+4. Backend persiste.
+5. Central visualiza el estado.
+end legend
+
+@enduml
