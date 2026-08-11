@@ -1,3 +1,5 @@
+import { formatearHoraLocal } from "../services/tiempo.js";
+
 const ETIQUETAS_ESTADO = {
   pendiente: "Pendiente",
   arribado: "Arribado",
@@ -77,6 +79,27 @@ export function DeliveryPointCard({
             <div className="delivery-point-card__info-fila">
               <dt>Notas</dt>
               <dd>{punto.notasEntrega}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+
+      {/* 006-normalizar-formato-horario, US1: hora de arribo/descarga en
+          HH24:MM:SS local — funciona igual para timestamps nuevos (-03:00)
+          e históricos (Z, sin migrar, FR-006). rangoHorario (arriba) no se
+          toca: es texto libre fuera de este alcance. */}
+      {!reducido && (punto.arriboEn || punto.descargaEn) && (
+        <dl className="delivery-point-card__horarios">
+          {punto.arriboEn && (
+            <div className="delivery-point-card__info-fila">
+              <dt>Arribo</dt>
+              <dd>{formatearHoraLocal(punto.arriboEn)}</dd>
+            </div>
+          )}
+          {punto.descargaEn && (
+            <div className="delivery-point-card__info-fila">
+              <dt>Descarga</dt>
+              <dd>{formatearHoraLocal(punto.descargaEn)}</dd>
             </div>
           )}
         </dl>

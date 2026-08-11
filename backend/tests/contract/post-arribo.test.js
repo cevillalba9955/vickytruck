@@ -28,6 +28,9 @@ test("POST arribo — 200 aplica la transición pendiente -> arribado", async ()
     assert.equal(body.puntoId, "p1");
     assert.equal(body.estado, "arribado");
     assert.ok(body.arriboEn);
+    // 006-normalizar-formato-horario: contrato interno en hora local de
+    // Argentina con offset explícito, nunca UTC ('Z').
+    assert.match(body.arriboEn, /-03:00$/);
   } finally {
     await server.cerrar();
   }

@@ -44,7 +44,10 @@ export function resolverUbicacion({ enMemoria, respaldoOracle, staleMs, ahora })
   return {
     lat: fuente.lat,
     lon: fuente.lon,
-    en: new Date(fuente.en).toISOString(),
+    // No se re-serializa con toISOString(): eso forzaría UTC ('Z') y
+    // descartaría el offset local ('-03:00') que ya trae `fuente.en` desde
+    // el origen (006-normalizar-formato-horario, research.md Decisión 1).
+    en: fuente.en,
     reciente: ahora - enMs <= staleMs,
   };
 }

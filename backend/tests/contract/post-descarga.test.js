@@ -24,6 +24,9 @@ test("POST descarga — 200 aplica la transición arribado -> completado", async
     const body = await res.json();
     assert.equal(body.estado, "completado");
     assert.ok(body.descargaEn);
+    // 006-normalizar-formato-horario: contrato interno en hora local de
+    // Argentina con offset explícito, nunca UTC ('Z').
+    assert.match(body.descargaEn, /-03:00$/);
   } finally {
     await server.cerrar();
   }

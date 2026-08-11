@@ -200,14 +200,14 @@ descarga (`ARRIBO_EN`/`ARRIBO_LAT`/`ARRIBO_LON`,
 `DESCARGA_EN`/`DESCARGA_LAT`/`DESCARGA_LON` — mismas columnas que ya usa
 `RECORRIDO_API`, ver `backend/sql/recorrido_api.pkb.sql`).
 
-**No validado todavía**: si `ARRIBO_EN`/`DESCARGA_EN` es `TIMESTAMP` sin zona
-horaria (como asume `RECORRIDO_API`, que las llena con `SYSTIMESTAMP` — hora
-local del server Oracle), mientras que acá se parsean como UTC (el cloud
-manda todo en UTC vía `Date.toISOString()`). Si el server Oracle no corre en
-UTC, los valores escritos por este camino van a quedar corridos respecto de
-los que en algún momento escriba `RECORRIDO_API` directo. Confirmar
-`DBTIMEZONE`/el timezone del server antes de usar estas columnas para
-reportes o auditoría.
+**Resuelto (006-normalizar-formato-horario)**: `ARRIBO_EN`/`DESCARGA_EN`
+sigue siendo `TIMESTAMP` sin zona horaria — no se migró el esquema — pero
+ambos caminos ya escriben explícitamente la hora de pared de Argentina, sin
+depender de `DBTIMEZONE`: `RECORRIDO_API` vía
+`SYSTIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'`, y acá vía
+`TO_TIMESTAMP_TZ` (el cloud manda `-03:00` explícito desde esta feature, ya
+no UTC) + `CAST(... AS TIMESTAMP)`. Ver
+`specs/006-normalizar-formato-horario/research.md` Decisión 3-4.
 
 ### Probar
 

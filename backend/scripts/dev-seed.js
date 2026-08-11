@@ -13,6 +13,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
+import { ahoraLocalIso } from "../src/util/tiempo.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BACKEND_DIR = join(__dirname, "..");
@@ -106,7 +107,9 @@ async function seedearRecorrido(token, cantidadPuntos) {
         fleteNombre: "Chofer de Prueba (dev-seed)",
         estado: "activo",
         puntos: generarPuntos(cantidadPuntos),
-        updatedAt: new Date().toISOString(),
+        // 006-normalizar-formato-horario: simula el payload real de Oracle
+        // (integracion_cloud_api.pkb.sql), que ya manda hora local -03:00.
+        updatedAt: ahoraLocalIso(),
       },
     ],
   };

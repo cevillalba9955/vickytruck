@@ -26,6 +26,9 @@ test("POST /api/recorridos/:token/ubicacion — 200 registra la posición en mem
     assert.equal(guardada.lat, -34.6);
     assert.equal(guardada.lon, -58.4);
     assert.ok(guardada.en);
+    // 006-normalizar-formato-horario: contrato interno en hora local de
+    // Argentina con offset explícito, nunca UTC ('Z').
+    assert.match(guardada.en, /-03:00$/);
   } finally {
     await server.cerrar();
   }

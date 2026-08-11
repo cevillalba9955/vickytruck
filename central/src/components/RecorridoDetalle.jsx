@@ -1,5 +1,6 @@
 import { MapaSeguimiento } from "./MapaSeguimiento.jsx";
 import { construirPuntosEnMapa } from "../services/marcadores.js";
+import { formatearHoraLocal } from "../services/tiempo.js";
 
 const ETIQUETAS_ESTADO = {
   pendiente: "Pendiente",
@@ -38,8 +39,10 @@ export function RecorridoDetalle({ detalle, marcadorFlete }) {
               {p.orden} de {puntos.length}
             </strong>{" "}
             — {ETIQUETAS_ESTADO[p.estado] ?? p.estado}
-            {p.arriboEn && <div>Arribo: {p.arriboEn}</div>}
-            {p.descargaEn && <div>Descarga: {p.descargaEn}</div>}
+            {/* 006-normalizar-formato-horario, US2: HH24:MM:SS local — funciona
+                igual para timestamps nuevos (-03:00) e históricos (Z, FR-006). */}
+            {p.arriboEn && <div>Arribo: {formatearHoraLocal(p.arriboEn)}</div>}
+            {p.descargaEn && <div>Descarga: {formatearHoraLocal(p.descargaEn)}</div>}
           </li>
         ))}
       </ol>
