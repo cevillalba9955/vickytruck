@@ -26,6 +26,13 @@
    se sigue mostrando exactamente igual que antes de esta feature — texto
    libre, sin reformatear (Clarifications, pregunta 3).
 
+**Nota sobre SC-002**: la exactitud del offset (`-03:00` fijo, sin horario
+de verano) está garantizada matemáticamente por `ahoraLocalIso()` y cubierta
+por aserciones exactas en `backend/tests/unit/tiempo.test.js` (y sus
+equivalentes en `frontend/`/`central/`) — la comparación contra un reloj
+real en el paso 3 es una verificación adicional de sentido común durante
+pruebas manuales, no la única fuente de garantía de precisión.
+
 ## Escenario 2 — Consistencia entre app chofer y panel Central (User Story 2)
 
 1. Con el mismo punto de entrega del Escenario 1, abrir el panel de Central
