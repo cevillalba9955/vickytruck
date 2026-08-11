@@ -30,18 +30,9 @@ campo cambia de nombre ni de significado.
 
 | Campo | Wire format hoy | Wire format nuevo | Dónde se genera | Dónde se muestra |
 |---|---|---|---|---|
-| `updatedAt` | `toISOString()` (UTC `Z`) | `ahoraLocalIso()` (`-03:00`) | `integracionStore.js:128,164`; Oracle `integracion_cloud_api.pkb.sql:200` | **Nuevo**: agregar a `listarActivos()`/`obtenerDetalle()` en `central.js` (hoy NO serializado) y mostrarlo en `MonitorView.jsx`/`RecorridoDetalle.jsx` |
-| `asignadoEn`* | `SYSTIMESTAMP` crudo (Oracle) | `SYSTIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'` | `central_api.pkb.sql:38,105` | Mismo tratamiento que `updatedAt` (representa el evento de "asignación" del spec, Key Entities) |
+| `updatedAt` | `toISOString()` (UTC `Z`) | `ahoraLocalIso()` (`-03:00`) | `integracionStore.js:128,164`; Oracle `integracion_cloud_api.pkb.sql:200` | Agregado a `listarActivos()`/`obtenerDetalle()` en `central.js` (antes NO serializado) y mostrado en `MonitorView.jsx` (columna "Actualizado"). **Representa también el evento de "asignación" de FR-001**: el push de Oracle que asigna un flete fija `updatedAt` en ese mismo momento, no hay un campo de asignación separado expuesto a Central (decisión de `/speckit-analyze`, ver spec.md Assumptions) |
+| `asignadoEn` | `SYSTIMESTAMP` crudo (Oracle) | `SYSTIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'` | `central_api.pkb.sql:38,105` | Corregido en origen (Decisión 3) por consistencia con el resto de las columnas Oracle, pero **no se expone a ningún endpoint ni UI** — no tiene campo JS equivalente en `integracionStore.js`; no llega hoy al cloud vía `sincronizar_recorrido`. `updatedAt` cumple el rol de "asignación" visible en Central (ver fila de arriba) |
 | `viajeEstado`, `puntoActivoId` | Sin cambios (no son horarios) | — | — | — |
-
-\* `asignadoEn` no tiene un campo JS equivalente confirmado en
-`integracionStore.js` — es el timestamp Oracle-side de la asignación de
-flete (`central_api.pkb.sql`). Si no llega hoy al cloud vía el payload de
-`sincronizar_recorrido`, la corrección en Oracle (Decisión 3) sigue
-aplicando igual para cuando se consulte directo en Oracle/APEX, aunque no
-haya UI en Central para ese campo específico en el alcance de esta feature
-(no es un requisito explícito de FR-001; se corrige en origen por
-consistencia, sin agregar UI nueva si no hay endpoint que lo exponga hoy).
 
 ### PuntoEntrega (`backend/src/state/integracionStore.js`, Oracle `T_PUNTOS_ENTREGA`)
 

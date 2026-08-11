@@ -232,3 +232,4 @@ Task: "Component test en central/tests/components/MonitorView.test.jsx"
 - El cambio de formato en Oracle (T017-T020) y en JS (T008-T013) DEBE desplegarse junto — no hay forma segura de desplegar uno sin el otro en producción sin romper `leer_estado_puntos` (contracts/formato-horario.md)
 - `rangoHorario` no se toca en ninguna tarea — confirmado explícitamente en T021 como caso de regresión
 - Ningún timestamp histórico se migra (FR-006) — T031/T032 validan que el formateo de visualización los maneja correctamente sin migración
+- `/speckit-analyze` (2026-08-11, hallazgo C1): el evento de "asignación de recorrido" de FR-001 se satisface con `recorrido.updatedAt` (T027-T030), no con un campo `asignado_en` separado — decisión documentada en spec.md Assumptions y data-model.md. `asignado_en` de Oracle (corregido en T018) queda sin exponer a ningún endpoint/UI, por diseño.

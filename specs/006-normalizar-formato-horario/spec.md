@@ -74,7 +74,7 @@ Un operador o chofer consulta el historial de un viaje ya finalizado (arribo, de
 
 ### Functional Requirements
 
-- **FR-001**: El sistema DEBE mostrar todo horario de eventos puntuales visibles al usuario (asignación de recorrido, arribo a punto de entrega, descarga, última actualización de ubicación) en formato de 24 horas con horas, minutos y segundos de dos dígitos cada uno (HH24:MM:SS), por ejemplo "08:05:09", nunca en formato de 12 horas con AM/PM.
+- **FR-001**: El sistema DEBE mostrar todo horario de eventos puntuales visibles al usuario (asignación de recorrido, arribo a punto de entrega, descarga, última actualización de ubicación) en formato de 24 horas con horas, minutos y segundos de dos dígitos cada uno (HH24:MM:SS), por ejemplo "08:05:09", nunca en formato de 12 horas con AM/PM. El evento de "asignación de recorrido" se representa con `recorrido.updatedAt` (última sincronización del recorrido desde Oracle): no existe un campo separado de asignación expuesto a Central; la actualización que empuja un recorrido recién asignado ya fija `updatedAt`, por lo que ese campo cumple el requisito sin agregar un endpoint/campo nuevo (decisión post-implementación, ver Assumptions).
 - **FR-002**: El sistema DEBE mostrar todo horario al usuario convertido a la zona horaria local de operación (Argentina, UTC-3), independientemente de en qué zona horaria haya sido originalmente registrado o transmitido internamente el instante correspondiente.
 - **FR-003**: El sistema DEBE aplicar el mismo formato de hora de 24 horas y ceros a la izquierda de forma consistente en todas las pantallas donde se muestre un horario (app chofer y panel de Central), de modo que el mismo evento se lea igual en ambos lugares.
 - **FR-004**: La ventana horaria de entrega de un cliente (`rangoHorario`) es un campo de texto libre (string) provisto tal cual por Oracle; el sistema DEBE mostrarlo textualmente, sin validarlo, reformatearlo ni reinterpretarlo. Queda fuera del alcance del formato HH24:MM:SS que aplica a los demás horarios de la app (FR-001 a FR-003).
@@ -84,7 +84,7 @@ Un operador o chofer consulta el historial de un viaje ya finalizado (arribo, de
 
 ### Key Entities *(include if feature involves data)*
 
-- **Evento de horario de Recorrido**: instantes de asignación y última actualización de un recorrido/viaje.
+- **Evento de horario de Recorrido**: instante de última actualización de un recorrido/viaje (`updatedAt`), que también representa el momento de asignación cuando el recorrido llega recién asignado desde Oracle — un único campo cubre ambos casos (ver FR-001).
 - **Evento de horario de Punto de Entrega**: instantes de arribo y descarga en cada parada del recorrido, y ventana horaria (rango) de entrega esperada por el cliente.
 - **Evento de ubicación (GPS/seguimiento en vivo)**: instante en que se registró cada posición del chofer durante el recorrido.
 
@@ -92,7 +92,7 @@ Un operador o chofer consulta el historial de un viaje ya finalizado (arribo, de
 
 ### Measurable Outcomes
 
-- **SC-001**: El 100% de los horarios de eventos puntuales (asignación, arribo, descarga, última actualización de ubicación) visibles para choferes y operadores de Central se presentan en formato de 24 horas con segundos (HH24:MM:SS), sin ninguna pantalla remanente en formato de 12 horas o sin segundos. (No incluye `rangoHorario`, que es texto libre fuera de alcance.)
+- **SC-001**: El 100% de los horarios de eventos puntuales (asignación —vía `updatedAt`, ver FR-001—, arribo, descarga, última actualización de ubicación) visibles para choferes y operadores de Central se presentan en formato de 24 horas con segundos (HH24:MM:SS), sin ninguna pantalla remanente en formato de 12 horas o sin segundos. (No incluye `rangoHorario`, que es texto libre fuera de alcance.)
 - **SC-002**: La hora mostrada en la app coincide con la hora real del huso horario local (Argentina) con exactitud al segundo, verificado comparando eventos conocidos contra un reloj de referencia.
 - **SC-003**: Un mismo evento (por ejemplo, un arribo) se muestra con el horario idéntico tanto en la app del chofer como en el panel de Central, en el 100% de los casos verificados.
 - **SC-004**: Los horarios de viajes históricos, registrados antes del cambio, se visualizan correctamente en el nuevo formato sin alterar el instante tal como fue registrado (no se corrigen retroactivamente los posibles desfasajes ya conocidos en datos históricos), verificado sobre una muestra de viajes cerrados previos.
@@ -105,3 +105,4 @@ Un operador o chofer consulta el historial de un viaje ya finalizado (arribo, de
 - La normalización de formato incluye tanto lo que se muestra en pantalla (app chofer y panel de Central) como los horarios que viajan entre los sistemas del backend (API, eventos MQTT de ubicación, Oracle), reemplazando el uso interno de UTC por hora local de Argentina con offset explícito, de modo que el problema de fondo —falta de una zona horaria consistente entre el origen de datos y lo que ve el usuario— quede resuelto y no solo maquillado en la última capa visual.
 - Los horarios ya almacenados (arribos, descargas, actualizaciones pasadas) no se migran ni se les cambia el instante registrado; solo cambia cómo se calculan y presentan al mostrarlos.
 - La ventana horaria de entrega (`rangoHorario`) es un campo de texto libre (string) provisto por Oracle, no un horario estructurado; queda fuera del alcance de esta normalización y se muestra tal cual llega, sin validación ni reformateo.
+- El evento de "asignación de recorrido" (FR-001) se satisface con `recorrido.updatedAt` en vez de un campo de asignación separado: no existe hoy ningún endpoint que exponga el `asignado_en` de Oracle hacia Central, y agregar uno era una expansión de alcance no pedida por la feature original ("normalizar formato horario"). `updatedAt` se actualiza junto con la asignación (el push de Oracle que asigna un flete a un recorrido fija `updatedAt` en ese mismo momento), por lo que cubre el caso de uso sin infraestructura nueva (decisión tomada en revisión post-implementación, `/speckit-analyze` 2026-08-11, hallazgo C1).
