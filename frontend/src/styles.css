@@ -52,6 +52,15 @@ body {
   opacity: 0.5;
 }
 
+.app__aviso-offline {
+  margin: 0.5rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, orange 25%, transparent);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .route-view__lista {
   list-style: none;
   margin: 0;

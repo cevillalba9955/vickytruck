@@ -23,8 +23,8 @@ export function createViajeRouter(repository) {
   // POST /api/recorridos/:token/viaje/llegue — FR-008, FR-009
   router.post("/:token/viaje/llegue", async (req, res, next) => {
     try {
-      const { lat, lon } = req.body || {};
-      const resultado = await repository.registrarLlegue(req.params.token, { lat, lon });
+      const { lat, lon, clienteEn } = req.body || {};
+      const resultado = await repository.registrarLlegue(req.params.token, { lat, lon }, clienteEn);
       responderViaje(res, resultado);
     } catch (err) {
       next(err);
@@ -34,8 +34,8 @@ export function createViajeRouter(repository) {
   // POST /api/recorridos/:token/viaje/descarga-completa — FR-010, FR-011
   router.post("/:token/viaje/descarga-completa", async (req, res, next) => {
     try {
-      const { lat, lon } = req.body || {};
-      const resultado = await repository.registrarDescargaCompleta(req.params.token, { lat, lon });
+      const { lat, lon, clienteEn } = req.body || {};
+      const resultado = await repository.registrarDescargaCompleta(req.params.token, { lat, lon }, clienteEn);
       responderViaje(res, resultado);
     } catch (err) {
       next(err);

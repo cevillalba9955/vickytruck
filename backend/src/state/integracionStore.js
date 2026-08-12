@@ -1,5 +1,5 @@
 import { resolverUbicacion } from "../db/ubicacionResolver.js";
-import { ahoraLocalIso } from "../util/tiempo.js";
+import { ahoraLocalIso, parsearClienteEn } from "../util/tiempo.js";
 
 function umbralUbicacionMs() {
   return Number(process.env.UBICACION_STALE_MS || 300000);
@@ -210,12 +210,12 @@ export function createIntegracionStore() {
       };
     },
 
-    async marcarArribo(token, puntoId, ubicacion) {
-      return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, PUNTO_ESTADO_TRANSICION.arribo);
+    async marcarArribo(token, puntoId, ubicacion, clienteEn) {
+      return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, clienteEn, PUNTO_ESTADO_TRANSICION.arribo);
     },
 
-    async marcarDescarga(token, puntoId, ubicacion) {
-      return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, PUNTO_ESTADO_TRANSICION.descarga);
+    async marcarDescarga(token, puntoId, ubicacion, clienteEn) {
+      return transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, clienteEn, PUNTO_ESTADO_TRANSICION.descarga);
     },
 
     // Estado de viaje guiado (005-chofer-estados-viaje, FR-005 a FR-013):
@@ -246,14 +246,14 @@ export function createIntegracionStore() {
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
     },
 
-    async registrarLlegue(token, ubicacion) {
+    async registrarLlegue(token, ubicacion, clienteEn) {
       const r = recorridoDeToken(recorridoPorToken, recorridos, token);
       if (!r) return { outcome: "invalid_token" };
       if (r.viajeEstado !== "manejando") {
         return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
       }
       const puntoActivoId = r.puntoActivoId;
-      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, puntoActivoId, ubicacion, PUNTO_ESTADO_TRANSICION.arribo);
+      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, puntoActivoId, ubicacion, clienteEn, PUNTO_ESTADO_TRANSICION.arribo);
       if (resultado.outcome !== "ok") return resultado;
       r.viajeEstado = "descargando";
       r.ultimaOperacion = {
@@ -266,14 +266,14 @@ export function createIntegracionStore() {
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId, punto: resultado.punto };
     },
 
-    async registrarDescargaCompleta(token, ubicacion) {
+    async registrarDescargaCompleta(token, ubicacion, clienteEn) {
       const r = recorridoDeToken(recorridoPorToken, recorridos, token);
       if (!r) return { outcome: "invalid_token" };
       if (r.viajeEstado !== "descargando") {
         return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
       }
       const puntoActivoId = r.puntoActivoId;
-      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, puntoActivoId, ubicacion, PUNTO_ESTADO_TRANSICION.descarga);
+      const resultado = transicionarPunto(recorridoPorToken, recorridos, token, puntoActivoId, ubicacion, clienteEn, PUNTO_ESTADO_TRANSICION.descarga);
       if (resultado.outcome !== "ok") return resultado;
       r.viajeEstado = "detenido";
       r.puntoActivoId = null;
@@ -483,7 +483,7 @@ function serializarPuntoTransicion(punto) {
 // marcar arribo/descarga — que Oracle/APEX consume vía GET /api/integracion/estado.
 // Solo se captura en la transición real, no en repeticiones idempotentes, para
 // no pisar el primer registro con una posición GPS posterior.
-function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, { estadoOrigen, estadoDestino, estadoIdempotente, campoTimestamp, campoLat, campoLon }) {
+function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicacion, clienteEn, { estadoOrigen, estadoDestino, estadoIdempotente, campoTimestamp, campoLat, campoLon }) {
   const r = recorridoDeToken(recorridoPorToken, recorridos, token);
   if (!r) return { outcome: "invalid_token" };
   const punto = r.puntos.find((p) => p.id === String(puntoId));
@@ -491,7 +491,11 @@ function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicac
 
   if (punto.estado === estadoOrigen) {
     punto.estado = estadoDestino;
-    punto[campoTimestamp] = ahoraLocalIso();
+    // Usa la hora capturada por el chofer al momento del press si es válida
+    // (no se perdió por haber quedado encolada offline y reintentada más
+    // tarde); si no vino o no pasa la validación, cae a la hora del
+    // servidor como antes (ver parsearClienteEn en util/tiempo.js).
+    punto[campoTimestamp] = ahoraLocalIso(parsearClienteEn(clienteEn) ?? undefined);
     if (ubicacion?.lat != null && ubicacion?.lon != null) {
       punto[campoLat] = ubicacion.lat;
       punto[campoLon] = ubicacion.lon;

@@ -15,6 +15,7 @@ import {
   iniciarSincronizacionOffline,
 } from "./services/api.js";
 import { iniciarReportePeriodico } from "./services/ubicacionPeriodica.js";
+import { guardarCacheRecorrido, leerCacheRecorrido } from "./services/recorridoCache.js";
 
 const INTERVALO_UBICACION_DEFAULT_MS = 60000;
 
@@ -50,6 +51,10 @@ function App() {
   // acción ya aplicada en el servidor, cuyo botón CANCELAR depende de
   // `recorrido.recorrido.puedeCancelar` (persistido server-side, FR-019).
   const [ultimaAccionEncolada, setUltimaAccionEncolada] = useState(null);
+  // true si lo que se ve en pantalla viene de la caché local (recorridoCache.js)
+  // porque la carga real falló por falta de conectividad, no de un token
+  // inválido — distingue "sin señal" de "enlace roto" (ver cargarRecorrido).
+  const [sinConexion, setSinConexion] = useState(false);
 
   const cargarRecorrido = useCallback(async () => {
     if (!token) {
@@ -61,8 +66,24 @@ function App() {
       const data = await obtenerRecorrido(token);
       setRecorrido(data);
       setError(null);
+      setSinConexion(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.codigo : "error_desconocido");
+      if (err instanceof ApiError) {
+        // Respuesta HTTP real (p.ej. 404 de token inválido): no es un
+        // problema de conectividad, no tiene sentido caer a la caché.
+        setSinConexion(false);
+        setError(err.codigo);
+      } else {
+        const cache = leerCacheRecorrido(token);
+        if (cache) {
+          setRecorrido(cache);
+          setError(null);
+          setSinConexion(true);
+        } else {
+          setSinConexion(false);
+          setError("sin_conexion");
+        }
+      }
     } finally {
       setCargando(false);
     }
@@ -72,11 +93,30 @@ function App() {
     cargarRecorrido();
   }, [cargarRecorrido]);
 
+  // Mantiene la caché al día con cada cambio de estado (incluidas las
+  // actualizaciones optimistas hechas offline): sin esto, un segundo reload
+  // offline mostraría de nuevo el snapshot original y el chofer podría
+  // terminar re-marcando un punto ya encolado.
+  useEffect(() => {
+    if (token && recorrido) guardarCacheRecorrido(token, recorrido);
+  }, [token, recorrido]);
+
   // FR-010: reintento automático de la cola offline al recuperar conectividad.
+  // El fetch de reintento ya actualiza el servidor; acá resincronizamos el
+  // estado en pantalla con `cargarRecorrido()` para que no se quede mostrando
+  // la acción como pendiente después de que el servidor ya la aplicó (o la
+  // descartó por inválida). Si la acción sincronizada era la que CANCELAR
+  // podía descartar localmente (`ultimaAccionEncolada`), esa referencia deja
+  // de ser válida — ya salió del dispositivo — así que se limpia; CANCELAR
+  // vuelve a depender de `recorrido.recorrido.puedeCancelar`, ya al día tras
+  // el resync.
   useEffect(() => {
     if (!token) return undefined;
-    return iniciarSincronizacionOffline();
-  }, [token]);
+    return iniciarSincronizacionOffline((idSincronizado) => {
+      setUltimaAccionEncolada((actual) => (actual?.id === idSincronizado ? null : actual));
+      cargarRecorrido();
+    });
+  }, [token, cargarRecorrido]);
 
   // FR-014: reporte periódico de ubicación instantánea mientras el recorrido
   // está activo; el intervalo lo decide el backend (recorrido.intervaloUbicacionMs).
@@ -246,13 +286,22 @@ function App() {
     return <p role="status">Cargando recorrido…</p>;
   }
 
+  if (error === "sin_conexion") {
+    return <p role="alert">Sin conexión y sin datos guardados de este recorrido. Reintentá cuando tengas señal.</p>;
+  }
+
   if (error) {
     return <p role="alert">Este enlace no es válido o ya no está disponible.</p>;
   }
 
   return (
     <main className="app">
-      <AppHeader puedeCancelar={puedeCancelar} onCancelar={handleCancelar} procesando={procesandoViaje} />
+      <AppHeader
+        puedeCancelar={puedeCancelar}
+        onCancelar={handleCancelar}
+        procesando={procesandoViaje}
+        sinConexion={sinConexion}
+      />
       <RouteView
         puntos={recorrido.puntos}
         viajeEstado={recorrido.recorrido?.viajeEstado ?? "detenido"}

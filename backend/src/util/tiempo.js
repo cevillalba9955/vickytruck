@@ -31,3 +31,23 @@ const formateadorHora = new Intl.DateTimeFormat("es-AR", {
 export function formatearHoraLocal(iso) {
   return formateadorHora.format(new Date(iso));
 }
+
+const TOLERANCIA_FUTURO_MS = 5 * 60 * 1000;
+
+/**
+ * Valida la hora que manda el chofer en el momento de marcar (capturada en
+ * el cliente para no perderla si la request queda encolada offline y se
+ * reintenta más tarde — ver frontend/src/services/api.js). Devuelve un
+ * `Date` si es un ISO parseable y no cae más de 5 minutos en el futuro
+ * respecto del reloj del servidor (guarda contra un reloj de celular mal
+ * configurado pisando el dato de auditoría que consume Oracle/APEX);
+ * `null` en cualquier otro caso, para que el caller caiga al reloj del
+ * servidor como hacía antes.
+ */
+export function parsearClienteEn(iso) {
+  if (!iso) return null;
+  const fecha = new Date(iso);
+  if (Number.isNaN(fecha.getTime())) return null;
+  if (fecha.getTime() - Date.now() > TOLERANCIA_FUTURO_MS) return null;
+  return fecha;
+}

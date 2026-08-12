@@ -4,19 +4,26 @@
  * corresponde mostrarlo (`visibility: hidden`, no `display: none`) para que
  * aparecer/desaparecer nunca desplace el título ni el contenido de abajo.
  */
-export function AppHeader({ puedeCancelar, onCancelar, procesando }) {
+export function AppHeader({ puedeCancelar, onCancelar, procesando, sinConexion }) {
   return (
-    <header className="app__header">
-      <h1 className="app__titulo">VICKYTRUCK</h1>
-      <button
-        type="button"
-        className="app__cancelar"
-        style={{ visibility: puedeCancelar ? "visible" : "hidden" }}
-        disabled={procesando}
-        onClick={onCancelar}
-      >
-        CANCELAR
-      </button>
+    <header>
+      <div className="app__header">
+        <h1 className="app__titulo">VICKYTRUCK</h1>
+        <button
+          type="button"
+          className="app__cancelar"
+          style={{ visibility: puedeCancelar ? "visible" : "hidden" }}
+          disabled={procesando}
+          onClick={onCancelar}
+        >
+          CANCELAR
+        </button>
+      </div>
+      {sinConexion && (
+        <p className="app__aviso-offline" role="status">
+          Sin conexión — mostrando última info guardada
+        </p>
+      )}
     </header>
   );
 }

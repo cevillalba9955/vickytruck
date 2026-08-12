@@ -88,11 +88,13 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
   // POST /api/recorridos/:token/puntos/:puntoId/arribo — FR-004, FR-006, FR-007
   router.post("/:token/puntos/:puntoId/arribo", async (req, res, next) => {
     try {
-      const { lat, lon } = req.body || {};
-      const resultado = await repository.marcarArribo(req.params.token, req.params.puntoId, {
-        lat,
-        lon,
-      });
+      const { lat, lon, clienteEn } = req.body || {};
+      const resultado = await repository.marcarArribo(
+        req.params.token,
+        req.params.puntoId,
+        { lat, lon },
+        clienteEn,
+      );
       responderTransicion(res, resultado);
     } catch (err) {
       next(err);
@@ -102,11 +104,13 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
   // POST /api/recorridos/:token/puntos/:puntoId/descarga — FR-005, FR-006, FR-007
   router.post("/:token/puntos/:puntoId/descarga", async (req, res, next) => {
     try {
-      const { lat, lon } = req.body || {};
-      const resultado = await repository.marcarDescarga(req.params.token, req.params.puntoId, {
-        lat,
-        lon,
-      });
+      const { lat, lon, clienteEn } = req.body || {};
+      const resultado = await repository.marcarDescarga(
+        req.params.token,
+        req.params.puntoId,
+        { lat, lon },
+        clienteEn,
+      );
       responderTransicion(res, resultado);
     } catch (err) {
       next(err);

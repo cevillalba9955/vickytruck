@@ -60,12 +60,20 @@ function bodyPara(item) {
   if (item.tipo === "viaje-ir-primero") {
     return JSON.stringify({ puntoId: item.puntoId });
   }
-  return JSON.stringify(item.ubicacion ? { lat: item.ubicacion.lat, lon: item.ubicacion.lon } : {});
+  return JSON.stringify({
+    ...(item.ubicacion ? { lat: item.ubicacion.lat, lon: item.ubicacion.lon } : {}),
+    ...(item.clienteEn ? { clienteEn: item.clienteEn } : {}),
+  });
 }
 
 async function enviarAccion(tipo, token, { puntoId, conUbicacion = false } = {}) {
+  // Capturada acá, antes del GPS (que puede tardar hasta ~5s) y antes de
+  // intentar la red: si la request falla por falta de conectividad, esta
+  // hora viaja con el item encolado y sobrevive hasta el reintento, en vez
+  // de perderse y que el servidor termine estampando la hora de reconexión.
+  const clienteEn = new Date().toISOString();
   const ubicacion = conUbicacion ? await obtenerUbicacionBestEffort() : null;
-  const item = { tipo, token, puntoId, ubicacion };
+  const item = { tipo, token, puntoId, ubicacion, clienteEn };
   const body = bodyPara(item);
 
   let res;
@@ -141,8 +149,15 @@ export function descartarAccionEncolada(id) {
 /**
  * Arranca el reintento automático de la cola offline. Devuelve una función
  * para desregistrar los listeners (útil en tests/cleanup de componentes).
+ *
+ * `onSincronizado(id)` se llama cada vez que un item deja la cola porque ya
+ * no hace falta reintentarlo (2xx aplicado, o 404/409 descartado) — nunca
+ * para el caso que sí se reintenta más tarde (5xx/red). El fetch en sí ya
+ * actualiza el servidor; sin este callback, el estado React de `main.jsx`
+ * (poblado una sola vez al montar) queda desactualizado y la pantalla sigue
+ * mostrando la acción como pendiente aunque el servidor ya la aplicó.
  */
-export function iniciarSincronizacionOffline() {
+export function iniciarSincronizacionOffline(onSincronizado) {
   return iniciarReintentoAutomatico(async (item) => {
     const res = await fetch(rutaAccion(item), {
       method: "POST",
@@ -155,5 +170,6 @@ export function iniciarSincronizacionOffline() {
     if (!res.ok && res.status >= 500) {
       throw new Error("reintentar_luego");
     }
+    onSincronizado?.(item.id);
   });
 }
