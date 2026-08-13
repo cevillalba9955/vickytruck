@@ -27,6 +27,9 @@ export function createCentralRouter(repository) {
         recorridos: historial.map((d) => ({
           id: d.recorrido.id,
           fleteId: d.recorrido.fleteId,
+          // cierreEn (008-registro-inicio-fin-recorrido, FR-005): sin esto,
+          // Central no puede calcular el tiempo de regreso a base (SC-003).
+          cierreEn: d.recorrido.cierreEn,
           puntos: d.puntos,
         })),
       });

@@ -40,6 +40,9 @@ function serializePunto(punto, totalPuntos) {
     latitud: punto.latitud,
     longitud: punto.longitud,
     estado: punto.estado,
+    // inicioEn (008-registro-inicio-fin-recorrido, FR-001): mismo nivel de
+    // visibilidad que arriboEn/descargaEn — sin inicioLat/inicioLon.
+    inicioEn: punto.inicioEn,
     arriboEn: punto.arriboEn,
     descargaEn: punto.descargaEn,
     cliente: punto.cliente ?? null,
@@ -69,6 +72,9 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
         recorrido: {
           estado: recorrido.estado,
           fleteId: recorrido.fleteId ?? null,
+          // cierreEn (008-registro-inicio-fin-recorrido, FR-005): sin
+          // cierreLat/cierreLon, mismo criterio que el resto de esta lista.
+          cierreEn: recorrido.cierreEn ?? null,
           intervaloUbicacionMs: intervaloReporteUbicacionMs(),
           mqtt: mqttConfigPara(recorrido.fleteId, recorrido.choferId),
           // Estado de viaje guiado (005-chofer-estados-viaje, FR-005).

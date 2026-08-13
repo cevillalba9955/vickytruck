@@ -176,6 +176,70 @@ test("US4 — CANCELAR deja de estar disponible después de que Oracle lee el es
   }
 });
 
+test("008 — INICIAR con lat/lon queda visible en GET /:token como inicioEn del punto activo", async () => {
+  const store = createIntegracionStore();
+  store.upsertRecorridos([
+    {
+      id: "R-8",
+      token: "tok-8",
+      fleteId: "F-8",
+      estado: "activo",
+      puntos: [{ id: "p1", orden: 1, estado: "pendiente" }],
+    },
+  ]);
+  const server = await iniciarServidorDePrueba(store, undefined, undefined, store);
+
+  try {
+    await fetch(`${server.baseUrl}/tok-8/viaje/iniciar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: -34.6, lon: -58.4 }),
+    });
+
+    const recorrido = await (await fetch(`${server.baseUrl}/tok-8`)).json();
+    assert.ok(recorrido.puntos[0].inicioEn);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("008 — el recorrido queda 'activo' tras completar el último punto, y pasa a 'finalizado' recién con FINALIZAR (regreso a base)", async () => {
+  const store = createIntegracionStore();
+  store.upsertRecorridos([
+    {
+      id: "R-9",
+      token: "tok-9",
+      fleteId: "F-9",
+      estado: "activo",
+      puntos: [{ id: "p1", orden: 1, estado: "pendiente" }],
+    },
+  ]);
+  const server = await iniciarServidorDePrueba(store, undefined, undefined, store);
+
+  try {
+    await fetch(`${server.baseUrl}/tok-9/viaje/iniciar`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-9/viaje/llegue`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-9/viaje/descarga-completa`, { method: "POST" });
+
+    let recorrido = await (await fetch(`${server.baseUrl}/tok-9`)).json();
+    assert.equal(recorrido.recorrido.estado, "activo", "todos los puntos completado, pero sin FINALIZAR sigue activo (FR-004)");
+    const descargaEn = recorrido.puntos[0].descargaEn;
+
+    const res = await fetch(`${server.baseUrl}/tok-9/viaje/finalizar`, { method: "POST" });
+    assert.equal(res.status, 200);
+
+    recorrido = await (await fetch(`${server.baseUrl}/tok-9`)).json();
+    assert.equal(recorrido.recorrido.estado, "finalizado");
+    assert.ok(recorrido.recorrido.cierreEn);
+    assert.ok(
+      new Date(recorrido.recorrido.cierreEn).getTime() >= new Date(descargaEn).getTime(),
+      "cierreEn debe ser posterior (o igual) al descargaEn del último punto — es el tiempo de regreso a base",
+    );
+  } finally {
+    await server.cerrar();
+  }
+});
+
 test("US2 — LLEGUE/DESCARGA COMPLETA operan siempre sobre el punto activo, no sobre cualquier pendiente", async () => {
   const store = createIntegracionStore();
   store.upsertRecorridos([

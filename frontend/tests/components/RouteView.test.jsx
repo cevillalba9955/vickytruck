@@ -18,6 +18,7 @@ function handlers() {
     onIrPrimero: vi.fn(),
     onLlegue: vi.fn(),
     onDescargaCompleta: vi.fn(),
+    onFinalizar: vi.fn(),
   };
 }
 
@@ -58,21 +59,32 @@ describe("RouteView — estado de viaje guiado (005-chofer-estados-viaje, US2)",
   });
 });
 
-describe("RouteView — FINALIZAR (005-chofer-estados-viaje, US5)", () => {
-  it("cuando no quedan pendientes muestra el botón FINALIZAR en vez de la lista (FR-012)", () => {
+describe("RouteView — FINALIZAR (008-registro-inicio-fin-recorrido, FR-004/FR-007)", () => {
+  it("cuando no quedan pendientes pero el recorrido sigue 'activo' (server), muestra el botón FINALIZAR en vez de la lista", () => {
     const puntos = puntosDePrueba().map((p) => ({ ...p, estado: "completado" }));
-    render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} {...handlers()} procesando={false} />);
+    render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} estadoRecorrido="activo" {...handlers()} procesando={false} />);
 
     expect(screen.getByRole("button", { name: "FINALIZAR" })).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
   });
 
-  it("al tocar FINALIZAR muestra la confirmación de recorrido finalizado (FR-013)", () => {
+  it("al tocar FINALIZAR llama a onFinalizar (la confirmación depende del servidor, no de un estado local)", () => {
     const puntos = puntosDePrueba().map((p) => ({ ...p, estado: "completado" }));
-    render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} {...handlers()} procesando={false} />);
+    const propHandlers = handlers();
+    render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} estadoRecorrido="activo" {...propHandlers} procesando={false} />);
 
     fireEvent.click(screen.getByRole("button", { name: "FINALIZAR" }));
+
+    expect(propHandlers.onFinalizar).toHaveBeenCalledTimes(1);
+    // Sin que el servidor haya confirmado (estadoRecorrido sigue "activo"),
+    // el botón sigue mostrándose — no hay confirmación optimista local.
+    expect(screen.getByRole("button", { name: "FINALIZAR" })).toBeInTheDocument();
+  });
+
+  it("cuando estadoRecorrido === 'finalizado' (confirmado por el servidor) muestra el mensaje de cierre en vez del botón", () => {
+    const puntos = puntosDePrueba().map((p) => ({ ...p, estado: "completado" }));
+    render(<RouteView puntos={puntos} viajeEstado="detenido" puntoActivoId={null} estadoRecorrido="finalizado" {...handlers()} procesando={false} />);
 
     expect(screen.queryByRole("button", { name: "FINALIZAR" })).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/recorrido finalizado/i);

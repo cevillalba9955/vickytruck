@@ -59,6 +59,13 @@ function mergearPunto(entrante, previo, protegerOrden = false) {
     id: String(entrante.id),
     orden: ordenProtegido ? previo.orden : Number(entrante.orden),
     estado: entrante.estado || "pendiente",
+    // inicioEn/inicioLat/inicioLon (008-registro-inicio-fin-recorrido, FR-001/
+    // FR-002): evento de INICIAR sobre este punto — nunca viene de Oracle, solo
+    // lo escribe iniciarViaje(); se preserva en cada re-push como el resto de
+    // los eventos (arribo/descarga), no se resetea a null en un upsert.
+    inicioEn: previo?.inicioEn ?? null,
+    inicioLat: previo?.inicioLat ?? null,
+    inicioLon: previo?.inicioLon ?? null,
     arriboEn: entrante.arriboEn ?? null,
     arriboLat: entrante.arriboLat ?? null,
     arriboLon: entrante.arriboLon ?? null,
@@ -135,6 +142,12 @@ export function createIntegracionStore() {
           viajeEstado: previo?.viajeEstado ?? "detenido",
           puntoActivoId: previo?.puntoActivoId ?? null,
           ultimaOperacion: previo?.ultimaOperacion ?? null,
+          // Evento de cierre (008-registro-inicio-fin-recorrido, FR-005/FR-006):
+          // nunca viene de Oracle, solo lo escribe finalizarRecorrido(); se
+          // preserva igual que viajeEstado en cada re-push.
+          cierreEn: previo?.cierreEn ?? null,
+          cierreLat: previo?.cierreLat ?? null,
+          cierreLon: previo?.cierreLon ?? null,
         };
 
         indexarRecorrido(normalizado);
@@ -180,6 +193,10 @@ export function createIntegracionStore() {
           latitud: p.lat,
           longitud: p.lon,
           estado: p.estado,
+          // inicioEn (008-registro-inicio-fin-recorrido): mismo nivel de
+          // visibilidad que arriboEn/descargaEn — sin inicioLat/inicioLon,
+          // igual que esos dos tampoco exponen lat/lon acá (data-model.md).
+          inicioEn: p.inicioEn,
           arriboEn: p.arriboEn,
           descargaEn: p.descargaEn,
           // Campos informativos visibles para el chofer (005-chofer-estados-viaje,
@@ -196,8 +213,11 @@ export function createIntegracionStore() {
       return {
         id: r.id,
         fleteId: r.fleteId,
-        choferId: r.choferId, 
+        choferId: r.choferId,
         estado: r.estado,
+        // cierreEn (008-registro-inicio-fin-recorrido, FR-005): sin lat/lon,
+        // mismo criterio que arriba (data-model.md § Serialización).
+        cierreEn: r.cierreEn,
         puntos,
         progreso: calcularProgreso(puntos),
         viajeEstado: r.viajeEstado,
@@ -224,7 +244,10 @@ export function createIntegracionStore() {
     // server-side (research.md, Decisión 7): cada mutador valida su propio
     // `viajeEstado` de origen antes de aplicar nada, igual que ya hace
     // `transicionarPunto` con el estado por punto.
-    async iniciarViaje(token) {
+    // ubicacion/clienteEn (008-registro-inicio-fin-recorrido, FR-001/FR-002):
+    // registra el evento de inicio sobre el punto que pasa a ser el activo,
+    // mismo criterio best-effort que transicionarPunto (sin GPS no bloquea).
+    async iniciarViaje(token, ubicacion, clienteEn) {
       const r = recorridoDeToken(recorridoPorToken, recorridos, token);
       if (!r) return { outcome: "invalid_token" };
       if (r.viajeEstado !== "detenido") {
@@ -237,10 +260,22 @@ export function createIntegracionStore() {
       r.ultimaOperacion = {
         tipo: "iniciar",
         puntoId: primerPendiente.id,
-        snapshotPrevio: { viajeEstado: "detenido", puntoActivoId: null },
+        snapshotPrevio: {
+          viajeEstado: "detenido",
+          puntoActivoId: null,
+          puntoEstado: "pendiente",
+          inicioEn: null,
+          inicioLat: null,
+          inicioLon: null,
+        },
         sincronizada: false,
         en: ahoraLocalIso(),
       };
+      primerPendiente.inicioEn = ahoraLocalIso(parsearClienteEn(clienteEn) ?? undefined);
+      if (ubicacion?.lat != null && ubicacion?.lon != null) {
+        primerPendiente.inicioLat = ubicacion.lat;
+        primerPendiente.inicioLon = ubicacion.lon;
+      }
       r.puntoActivoId = primerPendiente.id;
       r.viajeEstado = "manejando";
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
@@ -287,6 +322,32 @@ export function createIntegracionStore() {
       return { outcome: "ok", viajeEstado: r.viajeEstado, puntoActivoId: null, punto: resultado.punto };
     },
 
+    // FINALIZAR (008-registro-inicio-fin-recorrido, FR-004 a FR-007): única
+    // vía que queda para llevar `estado` a "finalizado" — reemplaza la
+    // derivación automática que antes vivía en transicionarPunto. Requiere
+    // viajeEstado 'detenido' y todos los puntos 'completado' (misma condición
+    // que antes disparaba el cierre automático). Idempotente: si el recorrido
+    // ya está finalizado, no pisa cierreEn/cierreLat/cierreLon originales
+    // (research.md, Decisión 3 — necesario porque pasa por la cola offline).
+    async finalizarRecorrido(token, ubicacion, clienteEn) {
+      const r = recorridoDeToken(recorridoPorToken, recorridos, token);
+      if (!r) return { outcome: "invalid_token" };
+      if (r.estado === "finalizado") {
+        return { outcome: "ok", estado: r.estado, cierreEn: r.cierreEn };
+      }
+      const puedeFinalizar = r.viajeEstado === "detenido" && r.puntos.length > 0 && r.puntos.every((p) => p.estado === "completado");
+      if (!puedeFinalizar) {
+        return { outcome: "conflict" };
+      }
+      r.estado = "finalizado";
+      r.cierreEn = ahoraLocalIso(parsearClienteEn(clienteEn) ?? undefined);
+      if (ubicacion?.lat != null && ubicacion?.lon != null) {
+        r.cierreLat = ubicacion.lat;
+        r.cierreLon = ubicacion.lon;
+      }
+      return { outcome: "ok", estado: r.estado, cierreEn: r.cierreEn };
+    },
+
     // CANCELAR (005-chofer-estados-viaje, FR-017 a FR-020): revierte
     // `ultimaOperacion` desde su `snapshotPrevio`, solo si Oracle todavía no
     // la leyó (`sincronizada === false`, research.md Decisión 3). No es una
@@ -312,6 +373,11 @@ export function createIntegracionStore() {
         const punto = r.puntos.find((p) => p.id === op.puntoId);
         if (punto && snap.puntoEstado) {
           punto.estado = snap.puntoEstado;
+          if ("inicioEn" in snap) {
+            punto.inicioEn = snap.inicioEn;
+            punto.inicioLat = snap.inicioLat;
+            punto.inicioLon = snap.inicioLon;
+          }
           if ("arriboEn" in snap) {
             punto.arriboEn = snap.arriboEn;
             punto.arriboLat = snap.arriboLat;
@@ -412,6 +478,11 @@ export function createIntegracionStore() {
           // Decisión 6: sin tópico MQTT nuevo).
           viajeEstado: r.viajeEstado,
           puntoActivoId: r.puntoActivoId,
+          // esperandoFinalizar (008-registro-inicio-fin-recorrido, research.md
+          // Decisión 5): todos los puntos completado pero el chofer todavía no
+          // tocó FINALIZAR — sin esta señal Central no puede distinguir este
+          // caso ("volviendo a base") de cualquier otro Detenido intermedio.
+          esperandoFinalizar: r.viajeEstado === "detenido" && r.puntos.length > 0 && r.puntos.every((p) => p.estado === "completado"),
         });
       }
       return resultado;
@@ -422,7 +493,7 @@ export function createIntegracionStore() {
       for (const r of recorridos.values()) {
         if (r.estado !== "finalizado") continue;
         resultado.push({
-          recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId },
+          recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, cierreEn: r.cierreEn },
           puntos: serializarPuntosCentral(r.puntos),
         });
       }
@@ -433,7 +504,7 @@ export function createIntegracionStore() {
       const r = recorridos.get(String(id));
       if (!r) return null;
       return {
-        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, updatedAt: r.updatedAt },
+        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, updatedAt: r.updatedAt, cierreEn: r.cierreEn },
         puntos: serializarPuntosCentral(r.puntos),
       };
     },
@@ -451,6 +522,10 @@ function serializarPuntosCentral(puntos) {
       lat: p.lat,
       lon: p.lon,
       estado: p.estado,
+      // inicioEn (008-registro-inicio-fin-recorrido): mismo nivel que
+      // arriboEn/descargaEn ya expuestos acá — sin inicioLat/inicioLon
+      // (research.md, Decisión 4).
+      inicioEn: p.inicioEn,
       arriboEn: p.arriboEn,
       descargaEn: p.descargaEn,
       // remitoIds SÍ es visible para Central (005-chofer-estados-viaje,
@@ -504,16 +579,10 @@ function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicac
     return { outcome: "conflict", punto: serializarPuntoTransicion(punto) };
   }
 
-  // 2026-08-10: cierre automático del recorrido cuando el último punto pasa
-  // a "completado" — no depende de un nuevo push de Oracle (que ahora solo
-  // sincroniza recorridos activos, nunca reenvía con estado "finalizado") ni
-  // de un comando aparte del chofer: es la acción "Descarga completa" sobre
-  // el último punto pendiente, ya existente en RouteView.jsx. Sin esto,
-  // listarHistorial() nunca devolvía nada (nada ponía estado="finalizado") y
-  // el recorrido quedaba mostrado como activo en Central indefinidamente.
-  if (r.puntos.length > 0 && r.puntos.every((p) => p.estado === "completado")) {
-    r.estado = "finalizado";
-  }
+  // 008-registro-inicio-fin-recorrido, FR-004: el cierre automático que vivía
+  // acá (2026-08-10) se retira — completar el último punto ya NO finaliza el
+  // recorrido. La única vía para `estado = "finalizado"` es finalizarRecorrido()
+  // (evento FINALIZAR explícito del chofer, más abajo).
 
   return { outcome: "ok", punto: serializarPuntoTransicion(punto) };
 }

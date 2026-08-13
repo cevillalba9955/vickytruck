@@ -47,6 +47,58 @@ test("GET /api/central/recorridos/activos — 200 con progreso y última ubicaci
   }
 });
 
+test("GET /api/central/recorridos/activos — esperandoFinalizar es true cuando todos los puntos están completados (008, research.md Decisión 5)", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "60",
+        estado: "activo",
+        fleteId: "7",
+        puntos: [
+          { id: "p1", orden: 1, estado: "completado" },
+          { id: "p2", orden: 2, estado: "completado" },
+        ],
+      },
+    ],
+    fletes: [{ id: "7", nombre: "Juan Pérez" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/activos`);
+    const body = await res.json();
+    assert.equal(body.recorridos[0].esperandoFinalizar, true);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("GET /api/central/recorridos/activos — esperandoFinalizar es false si todavía hay puntos pendientes/arribados", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "61",
+        estado: "activo",
+        fleteId: "7",
+        puntos: [
+          { id: "p1", orden: 1, estado: "completado" },
+          { id: "p2", orden: 2, estado: "pendiente" },
+        ],
+      },
+    ],
+    fletes: [{ id: "7", nombre: "Juan Pérez" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/activos`);
+    const body = await res.json();
+    assert.equal(body.recorridos[0].esperandoFinalizar, false);
+  } finally {
+    await server.cerrar();
+  }
+});
+
 test("GET /api/central/recorridos/activos — un recorrido sin flete asignado no aparece", async () => {
   const repository = createInMemoryCentralRepository({
     recorridos: [{ id: "51", fleteId: null, puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] }],

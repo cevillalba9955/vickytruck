@@ -10,10 +10,12 @@ import { Router } from "express";
 export function createViajeRouter(repository) {
   const router = Router();
 
-  // POST /api/recorridos/:token/viaje/iniciar — FR-007
+  // POST /api/recorridos/:token/viaje/iniciar — FR-007 (005); lat/lon/clienteEn
+  // opcionales registran el evento de inicio del punto (008, FR-001/FR-002)
   router.post("/:token/viaje/iniciar", async (req, res, next) => {
     try {
-      const resultado = await repository.iniciarViaje(req.params.token);
+      const { lat, lon, clienteEn } = req.body || {};
+      const resultado = await repository.iniciarViaje(req.params.token, { lat, lon }, clienteEn);
       responderViaje(res, resultado);
     } catch (err) {
       next(err);
@@ -57,6 +59,23 @@ export function createViajeRouter(repository) {
         return res.status(409).json({ error: "transicion_invalida", motivo: resultado.motivo ?? null });
       }
       return res.status(200).json({ ok: true, puntos: resultado.puntos, puedeCancelar: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /api/recorridos/:token/viaje/finalizar — 008, FR-004 a FR-007
+  router.post("/:token/viaje/finalizar", async (req, res, next) => {
+    try {
+      const { lat, lon, clienteEn } = req.body || {};
+      const resultado = await repository.finalizarRecorrido(req.params.token, { lat, lon }, clienteEn);
+      if (resultado.outcome === "invalid_token") {
+        return res.status(404).json({ error: "enlace_invalido" });
+      }
+      if (resultado.outcome === "conflict") {
+        return res.status(409).json({ error: "recorrido_no_completado" });
+      }
+      return res.status(200).json({ estado: resultado.estado, cierreEn: resultado.cierreEn });
     } catch (err) {
       next(err);
     }

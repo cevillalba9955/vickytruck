@@ -46,3 +46,32 @@ describe("RecorridoDetalle — horarios de arribo/descarga (006-normalizar-forma
     expect(screen.getByText("Arribo: 10:35:20")).toBeInTheDocument();
   });
 });
+
+describe("RecorridoDetalle — cierre e inicio (008-registro-inicio-fin-recorrido)", () => {
+  it("muestra Inicio por punto y Cierre + tiempo de regreso a base cuando el recorrido está finalizado", () => {
+    render(
+      <RecorridoDetalle
+        detalle={detalleDePrueba({
+          recorrido: { id: "50", estado: "finalizado", fleteId: "7", cierreEn: "2026-08-13T14:40:00-03:00" },
+          puntos: [{ id: "p1", orden: 1, estado: "completado", inicioEn: "2026-08-13T14:02:00-03:00", descargaEn: "2026-08-13T14:25:00-03:00" }],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Inicio: 14:02:00")).toBeInTheDocument();
+    expect(screen.getByText(/Cierre:/)).toHaveTextContent("14:40:00");
+    expect(screen.getByText(/Cierre:/)).toHaveTextContent("regreso a base: 15 min");
+  });
+
+  it("no muestra la línea de Cierre si el recorrido todavía no fue finalizado", () => {
+    render(
+      <RecorridoDetalle
+        detalle={detalleDePrueba({
+          puntos: [{ id: "p1", orden: 1, estado: "completado", descargaEn: "2026-08-13T14:25:00-03:00" }],
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/Cierre:/)).not.toBeInTheDocument();
+  });
+});

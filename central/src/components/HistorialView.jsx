@@ -47,7 +47,10 @@ export function HistorialView() {
                 type="button"
                 onClick={() =>
                   setSeleccionado({
-                    recorrido: { id: h.id, estado: "finalizado", fleteId: h.fleteId },
+                    // cierreEn (008-registro-inicio-fin-recorrido): viene del
+                    // mapeo de GET /api/central/recorridos/historial en
+                    // backend/src/routes/central.js.
+                    recorrido: { id: h.id, estado: "finalizado", fleteId: h.fleteId, cierreEn: h.cierreEn },
                     puntos: h.puntos,
                   })
                 }

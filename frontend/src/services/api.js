@@ -51,6 +51,8 @@ export function rutaAccion(item) {
       return `${base}/viaje/ir-primero`;
     case "viaje-cancelar":
       return `${base}/viaje/cancelar`;
+    case "viaje-finalizar":
+      return `${base}/viaje/finalizar`;
     default:
       throw new Error(`tipo de acción offline desconocido: ${item.tipo}`);
   }
@@ -107,9 +109,13 @@ export function marcarDescarga(token, puntoId) {
   return enviarAccion("descarga", token, { puntoId, conUbicacion: true });
 }
 
-/** Detenido -> Manejando sobre el primer punto pendiente (FR-007). */
+/**
+ * Detenido -> Manejando sobre el primer punto pendiente (FR-007), registrando
+ * fecha/hora + ubicación GPS best-effort como evento de inicio del punto
+ * (008-registro-inicio-fin-recorrido, FR-001/FR-002).
+ */
 export function iniciarViaje(token) {
-  return enviarAccion("viaje-iniciar", token, {});
+  return enviarAccion("viaje-iniciar", token, { conUbicacion: true });
 }
 
 /** Manejando -> Descargando; marca arribo sobre el punto activo (FR-008, FR-009). */
@@ -135,6 +141,17 @@ export function irPrimero(token, puntoId) {
  */
 export function cancelarUltimaOperacion(token) {
   return enviarAccion("viaje-cancelar", token, {});
+}
+
+/**
+ * Registra el cierre del recorrido (fecha/hora + ubicación GPS best-effort),
+ * único evento que pasa `recorrido.estado` a "finalizado"
+ * (008-registro-inicio-fin-recorrido, FR-004 a FR-007). Solo válido en
+ * Detenido con todos los puntos completado — el servidor es quien gatea de
+ * verdad, esto es la llamada del cliente.
+ */
+export function finalizarViaje(token) {
+  return enviarAccion("viaje-finalizar", token, { conUbicacion: true });
 }
 
 /**

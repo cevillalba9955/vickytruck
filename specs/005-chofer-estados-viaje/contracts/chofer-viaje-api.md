@@ -137,3 +137,11 @@ está sincronizada.
   Decisión 2 y 7).
 - Todas las respuestas de error mantienen el formato
   `{ "error": "<código>" }` ya usado en 001-chofer-recorrido.
+
+> **Superseded por 008-registro-inicio-fin-recorrido**: esta feature no
+> definía un endpoint para FINALIZAR (era una confirmación puramente
+> client-side sobre un `recorrido.estado` que ya se derivaba automáticamente
+> del lado del servidor). 008 agrega `POST .../viaje/finalizar` como único
+> evento que finaliza el recorrido, y extiende `POST .../viaje/iniciar` con
+> `lat`/`lon`/`clienteEn` opcionales — ver
+> `specs/008-registro-inicio-fin-recorrido/contracts/chofer-viaje-cierre.md`.

@@ -20,6 +20,9 @@ function serializarPuntos(puntos) {
       id: p.id,
       orden: p.orden,
       estado: p.estado,
+      // inicioEn (008-registro-inicio-fin-recorrido): mismo nivel que
+      // arriboEn/descargaEn ya expuestos acá.
+      inicioEn: p.inicioEn ?? null,
       arriboEn: p.arriboEn ?? null,
       descargaEn: p.descargaEn ?? null,
       // remitoIds SÍ es visible para Central (005-chofer-estados-viaje,
@@ -42,6 +45,10 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
         fleteId: r.fleteId ?? null,
         puntos: r.puntos || [],
         updatedAt: r.updatedAt ?? null,
+        // cierreEn (008-registro-inicio-fin-recorrido): nunca viene de Oracle,
+        // solo lo escribiría finalizarRecorrido() en el store real — acá se
+        // toma del seed de test tal cual.
+        cierreEn: r.cierreEn ?? null,
       },
     ]),
   );
@@ -77,6 +84,9 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
             en: flete?.ultimaUbicacionEn ?? null,
             reciente: ultimaEnMs != null ? now() - ultimaEnMs <= staleMs : false,
           },
+          // esperandoFinalizar (008-registro-inicio-fin-recorrido, research.md
+          // Decisión 5): mismo cálculo derivado que el store real.
+          esperandoFinalizar: r.puntos.length > 0 && r.puntos.every((p) => p.estado === "completado"),
         });
       }
       return resultado;
@@ -86,7 +96,7 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
       const r = recorridos.get(recorridoId);
       if (!r) return null;
       return {
-        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, updatedAt: r.updatedAt },
+        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, updatedAt: r.updatedAt, cierreEn: r.cierreEn },
         puntos: serializarPuntos(r.puntos),
       };
     },
@@ -96,7 +106,7 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
       for (const r of recorridos.values()) {
         if (r.estado !== "finalizado") continue;
         resultado.push({
-          recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId },
+          recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, cierreEn: r.cierreEn },
           puntos: serializarPuntos(r.puntos),
         });
       }
