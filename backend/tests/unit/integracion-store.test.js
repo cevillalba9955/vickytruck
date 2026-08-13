@@ -156,9 +156,75 @@ test("marcarDescarga — captura el GPS del chofer al marcar (dato para Oracle/A
   assert.equal(p1.descargaLon, -58.42);
 });
 
-// 2026-08-10: cierre automático del recorrido al completar el último punto.
+// 008-registro-inicio-fin-recorrido: INICIAR registra hora + ubicación del
+// punto que pasa a ser el activo (FR-001, FR-002).
 
-test("marcarDescarga — el recorrido queda 'finalizado' cuando el ÚLTIMO punto pasa a completado", async () => {
+test("iniciarViaje — registra fecha/hora y ubicación GPS como evento de inicio del punto activo", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+
+  const resultado = await store.iniciarViaje("tok-1", { lat: -34.6, lon: -58.4 });
+  assert.equal(resultado.outcome, "ok");
+
+  const [recorrido] = store.listarEstado("R-1");
+  const p1 = recorrido.puntos.find((p) => p.id === "p1");
+  assert.ok(p1.inicioEn);
+  assert.equal(p1.inicioLat, -34.6);
+  assert.equal(p1.inicioLon, -58.4);
+});
+
+test("iniciarViaje — sin GPS (lat/lon ausentes) no rompe, solo no captura posición", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+
+  const resultado = await store.iniciarViaje("tok-1");
+  assert.equal(resultado.outcome, "ok");
+
+  const [recorrido] = store.listarEstado("R-1");
+  const p1 = recorrido.puntos.find((p) => p.id === "p1");
+  assert.ok(p1.inicioEn, "el evento de inicio se registra igual, sin bloquear la transición");
+  assert.equal(p1.inicioLat, null);
+  assert.equal(p1.inicioLon, null);
+});
+
+test("iniciarViaje — el segundo ciclo registra su propio inicioEn sin tocar el del punto anterior", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+
+  await store.iniciarViaje("tok-1", { lat: -34.6, lon: -58.4 }); // activa p1
+  await store.registrarLlegue("tok-1");
+  await store.registrarDescargaCompleta("tok-1"); // p1 completado
+
+  await store.iniciarViaje("tok-1", { lat: -34.7, lon: -58.5 }); // activa p2
+
+  const [recorrido] = store.listarEstado("R-1");
+  const p1 = recorrido.puntos.find((p) => p.id === "p1");
+  const p2 = recorrido.puntos.find((p) => p.id === "p2");
+  assert.ok(p1.inicioEn);
+  assert.equal(p1.inicioLat, -34.6);
+  assert.ok(p2.inicioEn);
+  assert.equal(p2.inicioLat, -34.7);
+});
+
+test("iniciarViaje — CANCELAR inmediato revierte inicioEn/inicioLat/inicioLon del punto", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+
+  await store.iniciarViaje("tok-1", { lat: -34.6, lon: -58.4 });
+  await store.cancelarUltimaOperacion("tok-1");
+
+  const [recorrido] = store.listarEstado("R-1");
+  const p1 = recorrido.puntos.find((p) => p.id === "p1");
+  assert.equal(p1.inicioEn, null);
+  assert.equal(p1.inicioLat, null);
+  assert.equal(p1.inicioLon, null);
+});
+
+// 008-registro-inicio-fin-recorrido: el cierre automático de 2026-08-10 se
+// retira (FR-004) — completar el último punto ya NO finaliza el recorrido;
+// solo finalizarRecorrido() (más abajo) puede hacerlo.
+
+test("marcarDescarga — completar el ÚLTIMO punto NO finaliza el recorrido (queda 'activo', esperando FINALIZAR)", async () => {
   const store = createIntegracionStore();
   seedRecorrido(store);
   await store.marcarArribo("tok-1", "p1");
@@ -172,10 +238,11 @@ test("marcarDescarga — el recorrido queda 'finalizado' cuando el ÚLTIMO punto
   await store.marcarDescarga("tok-1", "p2");
 
   [recorrido] = store.listarEstado("R-1");
-  assert.equal(recorrido.estado, "finalizado");
+  assert.equal(recorrido.estado, "activo", "todos los puntos completado, pero sin FINALIZAR explícito el recorrido sigue activo");
+  assert.ok(recorrido.puntos.every((p) => p.estado === "completado"));
 });
 
-test("marcarDescarga — un recorrido finalizado sale de listarActivos y aparece en listarHistorial", async () => {
+test("finalizarRecorrido — un recorrido finalizado sale de listarActivos y aparece en listarHistorial", async () => {
   const store = createIntegracionStore();
   seedRecorrido(store);
   await store.marcarArribo("tok-1", "p1");
@@ -183,11 +250,97 @@ test("marcarDescarga — un recorrido finalizado sale de listarActivos y aparece
   await store.marcarArribo("tok-1", "p2");
   await store.marcarDescarga("tok-1", "p2");
 
-  const activos = await store.listarActivos();
+  let activos = await store.listarActivos();
+  assert.equal(activos.some((r) => r.id === "R-1"), true, "sigue activo hasta FINALIZAR");
+
+  const resultado = await store.finalizarRecorrido("tok-1");
+  assert.equal(resultado.outcome, "ok");
+  assert.equal(resultado.estado, "finalizado");
+  assert.ok(resultado.cierreEn);
+
+  activos = await store.listarActivos();
   assert.equal(activos.some((r) => r.id === "R-1"), false);
 
   const historial = await store.listarHistorial();
   assert.equal(historial.some((r) => r.recorrido.id === "R-1"), true);
+});
+
+test("finalizarRecorrido — 409 conflict si quedan puntos sin completar", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store);
+  await store.marcarArribo("tok-1", "p1");
+  await store.marcarDescarga("tok-1", "p1"); // p2 sigue pendiente
+
+  const resultado = await store.finalizarRecorrido("tok-1");
+  assert.equal(resultado.outcome, "conflict");
+
+  const [recorrido] = store.listarEstado("R-1");
+  assert.equal(recorrido.estado, "activo");
+});
+
+test("finalizarRecorrido — 409 conflict si viajeEstado no es 'detenido' (aunque todos los puntos estén completado)", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store, { puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] });
+  await store.iniciarViaje("tok-1"); // viajeEstado: 'manejando', puntoActivoId: 'p1'
+
+  // Completa p1 vía los endpoints directos de 001 (no tocan viajeEstado),
+  // dejando el viaje guiado "colgado" en manejando — estado inconsistente
+  // pero alcanzable (ver research.md, FINALIZAR solo válido en 'detenido').
+  await store.marcarArribo("tok-1", "p1");
+  await store.marcarDescarga("tok-1", "p1");
+
+  const [recorrido] = store.listarEstado("R-1");
+  assert.equal(recorrido.viajeEstado, "manejando", "los endpoints directos no mueven viajeEstado");
+  assert.ok(recorrido.puntos.every((p) => p.estado === "completado"));
+
+  const resultado = await store.finalizarRecorrido("tok-1");
+  assert.equal(resultado.outcome, "conflict");
+});
+
+test("finalizarRecorrido — captura fecha/hora y ubicación GPS del chofer (dato para Central)", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store, { puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] });
+  await store.marcarArribo("tok-1", "p1");
+  await store.marcarDescarga("tok-1", "p1");
+
+  const resultado = await store.finalizarRecorrido("tok-1", { lat: -34.6, lon: -58.4 });
+  assert.equal(resultado.outcome, "ok");
+
+  const [recorrido] = store.listarEstado("R-1");
+  assert.ok(recorrido.cierreEn);
+  assert.equal(recorrido.cierreLat, -34.6);
+  assert.equal(recorrido.cierreLon, -58.4);
+});
+
+test("finalizarRecorrido — sin GPS (lat/lon ausentes) no rompe, solo no captura posición", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store, { puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] });
+  await store.marcarArribo("tok-1", "p1");
+  await store.marcarDescarga("tok-1", "p1");
+
+  const resultado = await store.finalizarRecorrido("tok-1");
+  assert.equal(resultado.outcome, "ok");
+
+  const [recorrido] = store.listarEstado("R-1");
+  assert.ok(recorrido.cierreEn);
+  assert.equal(recorrido.cierreLat, null);
+  assert.equal(recorrido.cierreLon, null);
+});
+
+test("finalizarRecorrido — reintento sobre un recorrido ya finalizado es idempotente (no pisa cierreEn original)", async () => {
+  const store = createIntegracionStore();
+  seedRecorrido(store, { puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] });
+  await store.marcarArribo("tok-1", "p1");
+  await store.marcarDescarga("tok-1", "p1");
+
+  const primero = await store.finalizarRecorrido("tok-1", { lat: -34.6, lon: -58.4 });
+  const segundo = await store.finalizarRecorrido("tok-1", { lat: -34.9, lon: -58.9 });
+
+  assert.equal(segundo.outcome, "ok");
+  assert.equal(segundo.cierreEn, primero.cierreEn, "el reintento offline no debe pisar la hora de cierre real");
+
+  const [recorrido] = store.listarEstado("R-1");
+  assert.equal(recorrido.cierreLat, -34.6, "tampoco pisa la ubicación original");
 });
 
 test("upsert — un re-push con estado 'activo' no revierte un recorrido ya finalizado", async () => {
@@ -197,6 +350,7 @@ test("upsert — un re-push con estado 'activo' no revierte un recorrido ya fina
   await store.marcarDescarga("tok-1", "p1");
   await store.marcarArribo("tok-1", "p2");
   await store.marcarDescarga("tok-1", "p2");
+  await store.finalizarRecorrido("tok-1");
 
   let [recorrido] = store.listarEstado("R-1");
   assert.equal(recorrido.estado, "finalizado");

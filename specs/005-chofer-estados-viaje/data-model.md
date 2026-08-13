@@ -86,6 +86,13 @@ descargando --(DESCARGA COMPLETA, marca descarga en puntoActivoId)--> detenido (
   queda `finalizado` por la regla derivada existente de 001-chofer-recorrido:
   todos los puntos `completado`).
 
+  > **Superseded por 008-registro-inicio-fin-recorrido**: la derivación
+  > automática de `estado = 'finalizado'` descrita arriba se retira. FINALIZAR
+  > deja de ser una confirmación puramente client-side: pasa a ser un evento
+  > explícito (`POST .../viaje/finalizar`) que es la única vía para llegar a
+  > `estado = 'finalizado'`, y que además registra `cierreEn`/`cierreLat`/
+  > `cierreLon` — ver `specs/008-registro-inicio-fin-recorrido/data-model.md`.
+
 ## Serialización por consumidor (quién ve qué)
 
 | Consumidor | Endpoint | Ve `cliente`/`direccion`/`rangoHorario`/`notasEntrega` | Ve `remitoIds` | Ve `viajeEstado`/`puntoActivoId` |

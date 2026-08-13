@@ -11,6 +11,7 @@ import {
   marcarDescargaCompleta,
   irPrimero,
   cancelarUltimaOperacion,
+  finalizarViaje,
   descartarAccionEncolada,
   iniciarSincronizacionOffline,
 } from "./services/api.js";
@@ -280,6 +281,27 @@ function App() {
     }
   };
 
+  // FINALIZAR (008-registro-inicio-fin-recorrido, FR-004/FR-007): a
+  // diferencia del resto del ciclo guiado, no cambia viajeEstado/puntoActivoId
+  // (ya está en 'detenido' con puntoActivoId null) — solo `recorrido.estado`.
+  // Optimista + resync-en-409, mismo patrón que ejecutarAccionViaje.
+  const handleFinalizar = async () => {
+    setProcesandoViaje(true);
+    actualizarViajeLocal({ estado: "finalizado" });
+    try {
+      const resultado = await finalizarViaje(token);
+      if (!resultado.queued) {
+        actualizarViajeLocal({ estado: resultado.data.estado, cierreEn: resultado.data.cierreEn });
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        await cargarRecorrido();
+      }
+    } finally {
+      setProcesandoViaje(false);
+    }
+  };
+
   const puedeCancelar = ultimaAccionEncolada != null || (recorrido?.recorrido?.puedeCancelar ?? false);
 
   if (cargando) {
@@ -306,10 +328,12 @@ function App() {
         puntos={recorrido.puntos}
         viajeEstado={recorrido.recorrido?.viajeEstado ?? "detenido"}
         puntoActivoId={recorrido.recorrido?.puntoActivoId ?? null}
+        estadoRecorrido={recorrido.recorrido?.estado ?? "activo"}
         onIniciar={handleIniciar}
         onIrPrimero={handleIrPrimero}
         onLlegue={handleLlegue}
         onDescargaCompleta={handleDescargaCompleta}
+        onFinalizar={handleFinalizar}
         procesando={procesandoViaje}
       />
     </main>

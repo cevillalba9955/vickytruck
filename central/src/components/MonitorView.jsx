@@ -21,6 +21,10 @@ const ETIQUETAS_VIAJE_ESTADO = {
 // Estado de viaje del chofer (005-chofer-estados-viaje, FR-021), visible en
 // (casi) tiempo real vía el mismo polling que ya trae `progreso`/`ultimaUbicacion`.
 function formatearViajeEstado(r) {
+  // esperandoFinalizar (008-registro-inicio-fin-recorrido, research.md
+  // Decisión 5): todos los puntos completado pero el chofer todavía no tocó
+  // FINALIZAR — distinto de cualquier otro "Detenido" intermedio entre puntos.
+  if (r.esperandoFinalizar) return "Regresando a base";
   const etiqueta = ETIQUETAS_VIAJE_ESTADO[r.viajeEstado] ?? "—";
   if (r.puntoActivoId == null) return etiqueta;
   return `${etiqueta} (punto ${r.puntoActivoId})`;

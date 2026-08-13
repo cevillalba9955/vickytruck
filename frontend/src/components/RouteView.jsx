@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { DeliveryPointCard } from "./DeliveryPointCard.jsx";
 
 /**
@@ -9,19 +8,21 @@ import { DeliveryPointCard } from "./DeliveryPointCard.jsx";
  * reducidos (FR-008). Reemplaza el modelo de "marcado libre" de
  * 001-chofer-recorrido, que mostraba todos los puntos con sus botones de
  * arribo/descarga simultáneamente sin importar el orden.
+ *
+ * FINALIZAR (008-registro-inicio-fin-recorrido, FR-004/FR-007): a diferencia
+ * de la versión original de 005, el cierre del recorrido ya NO se deriva
+ * localmente de que todos los puntos estén completado — eso solo habilita
+ * mostrar el botón. `estadoRecorrido` (server-autoritativo, viene de
+ * `recorrido.recorrido.estado`) es lo único que decide si ya está
+ * "finalizado"; tocar el botón llama a `onFinalizar`, que hace la request
+ * real (registra hora/ubicación de cierre).
  */
-export function RouteView({ puntos, viajeEstado, puntoActivoId, onIniciar, onIrPrimero, onLlegue, onDescargaCompleta, procesando }) {
-  // FINALIZAR (US5, FR-012/FR-013): puramente client-side — el recorrido ya
-  // queda `finalizado` a nivel de datos apenas se completa el último punto
-  // (regla derivada de 001-chofer-recorrido); este estado solo controla si
-  // ya se mostró la confirmación explícita al chofer.
-  const [finalizarConfirmado, setFinalizarConfirmado] = useState(false);
-
+export function RouteView({ puntos, viajeEstado, puntoActivoId, estadoRecorrido, onIniciar, onIrPrimero, onLlegue, onDescargaCompleta, onFinalizar, procesando }) {
   const puntosOrdenados = [...puntos].sort((a, b) => a.orden - b.orden);
-  const recorridoFinalizado = puntosOrdenados.length > 0 && puntosOrdenados.every((p) => p.estado === "completado");
+  const todosCompletados = puntosOrdenados.length > 0 && puntosOrdenados.every((p) => p.estado === "completado");
 
-  if (recorridoFinalizado) {
-    if (finalizarConfirmado) {
+  if (todosCompletados) {
+    if (estadoRecorrido === "finalizado") {
       return (
         <p className="route-view__finalizado" role="status">
           Recorrido finalizado — todas las entregas fueron completadas.
@@ -29,7 +30,7 @@ export function RouteView({ puntos, viajeEstado, puntoActivoId, onIniciar, onIrP
       );
     }
     return (
-      <button type="button" className="route-view__finalizar" onClick={() => setFinalizarConfirmado(true)}>
+      <button type="button" className="route-view__finalizar" onClick={onFinalizar} disabled={procesando}>
         FINALIZAR
       </button>
     );

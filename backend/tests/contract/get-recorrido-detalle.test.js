@@ -66,6 +66,33 @@ test("GET /api/central/recorridos/:id — expone remitoIds por punto, dato inter
   }
 });
 
+test("GET /api/central/recorridos/:id — expone inicioEn por punto y cierreEn del recorrido (008), sin inicioLat/inicioLon/cierreLat/cierreLon", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "52",
+        estado: "finalizado",
+        fleteId: "9",
+        cierreEn: "2026-08-13T14:40:00-03:00",
+        puntos: [{ id: "p1", orden: 1, estado: "completado", inicioEn: "2026-08-13T14:02:00-03:00", descargaEn: "2026-08-13T14:25:00-03:00" }],
+      },
+    ],
+    fletes: [{ id: "9", nombre: "Chofer de Prueba" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/52`);
+    const body = await res.json();
+    assert.equal(body.recorrido.cierreEn, "2026-08-13T14:40:00-03:00");
+    assert.equal(body.puntos[0].inicioEn, "2026-08-13T14:02:00-03:00");
+    assert.equal(body.recorrido.cierreLat, undefined);
+    assert.equal(body.puntos[0].inicioLat, undefined);
+  } finally {
+    await server.cerrar();
+  }
+});
+
 test("GET /api/central/recorridos/:id — 404 si no existe", async () => {
   const repository = createInMemoryCentralRepository({ recorridos: [], fletes: [] });
   const server = await iniciarServidorDePrueba(undefined, repository);

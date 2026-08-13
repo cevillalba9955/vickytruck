@@ -31,6 +31,36 @@ test("POST /viaje/iniciar — Detenido -> Manejando sobre el primer punto pendie
   }
 });
 
+test("POST /viaje/iniciar — acepta lat/lon/clienteEn opcionales y registra el evento de inicio (008, FR-001/FR-002)", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: -34.6, lon: -58.4, clienteEn: new Date().toISOString() }),
+    });
+    assert.equal(res.status, 200);
+
+    const recorrido = await (await fetch(`${server.baseUrl}/tok-1`)).json();
+    assert.ok(recorrido.puntos[0].inicioEn);
+    assert.equal(recorrido.puntos[0].inicioLat, undefined, "inicioLat no viaja al chofer (data-model.md)");
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/iniciar — sin body sigue devolviendo 200 (compatibilidad con 005)", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, { method: "POST" });
+    assert.equal(res.status, 200);
+    const recorrido = await (await fetch(`${server.baseUrl}/tok-1`)).json();
+    assert.ok(recorrido.puntos[0].inicioEn, "sin body igual registra la hora de servidor");
+  } finally {
+    await server.cerrar();
+  }
+});
+
 test("POST /viaje/iniciar — 409 si ya no está Detenido", async () => {
   const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
   try {
@@ -341,6 +371,80 @@ test("POST /viaje/cancelar — FR-018: solo revierte la última operación, no u
     // Ya no queda nada para cancelar de nuevo.
     const segundoCancelar = await fetch(`${server.baseUrl}/tok-1/viaje/cancelar`, { method: "POST" });
     assert.equal(segundoCancelar.status, 409);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+// 008-registro-inicio-fin-recorrido: FINALIZAR — única vía para pasar
+// `recorrido.estado` a "finalizado" (FR-004 a FR-007).
+
+test("POST /viaje/finalizar — 200 con estado finalizado y cierreEn cuando todos los puntos están completados", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-1/viaje/llegue`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-1/viaje/descarga-completa`, { method: "POST" });
+
+    // Antes de FINALIZAR, el recorrido sigue "activo" (FR-004).
+    let recorrido = await (await fetch(`${server.baseUrl}/tok-1`)).json();
+    assert.equal(recorrido.recorrido.estado, "activo");
+
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/finalizar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: -34.6, lon: -58.4 }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.estado, "finalizado");
+    assert.ok(body.cierreEn);
+
+    recorrido = await (await fetch(`${server.baseUrl}/tok-1`)).json();
+    assert.equal(recorrido.recorrido.estado, "finalizado");
+    assert.equal(recorrido.recorrido.cierreEn, body.cierreEn);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/finalizar — 409 recorrido_no_completado si quedan puntos pendientes/arribados", async () => {
+  const { server } = await servidorConRecorrido([
+    { id: "p1", orden: 1, estado: "pendiente" },
+    { id: "p2", orden: 2, estado: "pendiente" },
+  ]);
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-1/viaje/finalizar`, { method: "POST" });
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).error, "recorrido_no_completado");
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/finalizar — 404 con token inexistente", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    const res = await fetch(`${server.baseUrl}/no-existe/viaje/finalizar`, { method: "POST" });
+    assert.equal(res.status, 404);
+    assert.equal((await res.json()).error, "enlace_invalido");
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("POST /viaje/finalizar — reintento sobre un recorrido ya finalizado es idempotente (200, mismo cierreEn)", async () => {
+  const { server } = await servidorConRecorrido([{ id: "p1", orden: 1, estado: "pendiente" }]);
+  try {
+    await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-1/viaje/llegue`, { method: "POST" });
+    await fetch(`${server.baseUrl}/tok-1/viaje/descarga-completa`, { method: "POST" });
+
+    const primero = await (await fetch(`${server.baseUrl}/tok-1/viaje/finalizar`, { method: "POST" })).json();
+    const segundo = await fetch(`${server.baseUrl}/tok-1/viaje/finalizar`, { method: "POST" });
+    assert.equal(segundo.status, 200);
+    const segundoBody = await segundo.json();
+    assert.equal(segundoBody.cierreEn, primero.cierreEn);
   } finally {
     await server.cerrar();
   }

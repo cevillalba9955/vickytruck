@@ -56,6 +56,28 @@ describe("MonitorView", () => {
     expect(screen.getByText("Diego Ríos").closest("tr")).not.toHaveTextContent("punto");
   });
 
+  it("muestra 'Regresando a base' cuando esperandoFinalizar es true (008-registro-inicio-fin-recorrido)", () => {
+    render(
+      <MonitorView
+        recorridos={[
+          {
+            id: "62",
+            flete: { id: "13", nombre: "Marta Sosa" },
+            progreso: { pendientes: 0, arribados: 0, completados: 2 },
+            ultimaUbicacion: null,
+            viajeEstado: "detenido",
+            puntoActivoId: null,
+            esperandoFinalizar: true,
+          },
+        ]}
+      />,
+    );
+
+    const fila = screen.getByText("Marta Sosa").closest("tr");
+    expect(fila).toHaveTextContent("Regresando a base");
+    expect(fila).not.toHaveTextContent("Detenido");
+  });
+
   it("muestra la hora HH:MM:SS local del último reporte de ubicación junto con reciente/no reciente (006-normalizar-formato-horario, US2)", () => {
     render(
       <MonitorView
