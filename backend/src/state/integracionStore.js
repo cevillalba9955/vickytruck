@@ -511,7 +511,16 @@ export function createIntegracionStore() {
       for (const r of recorridos.values()) {
         if (r.estado !== "finalizado") continue;
         resultado.push({
-          recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, cierreEn: r.cierreEn },
+          recorrido: {
+            id: r.id,
+            estado: r.estado,
+            fleteId: r.fleteId,
+            // flete/chofer (009-central-mejora-visual): mismo criterio que
+            // listarActivos — Historial necesita mostrar nombres, no solo ids.
+            flete: { id: r.fleteId, nombre: r.fleteNombre },
+            chofer: r.choferId ? { id: r.choferId, nombre: r.choferNombre } : null,
+            cierreEn: r.cierreEn,
+          },
           puntos: serializarPuntosCentral(r.puntos),
         });
       }

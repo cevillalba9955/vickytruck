@@ -114,3 +114,22 @@ test("listarHistorial — solo incluye recorridos finalizados", async () => {
   assert.equal(historial[0].recorrido.id, "R-9");
   assert.equal(historial[0].puntos[0].descargaEn, "2026-08-05T10:00:00Z");
 });
+
+test("listarHistorial — expone flete/chofer del recorrido finalizado (009-central-mejora-visual)", async () => {
+  const store = createIntegracionStore();
+  store.upsertRecorridos([
+    {
+      id: "R-10",
+      fleteId: "F-10",
+      fleteNombre: "Camión 10",
+      choferId: "CH-10",
+      choferNombre: "Nora Vidal",
+      estado: "finalizado",
+      puntos: [{ id: "p1", orden: 1, estado: "completado" }],
+    },
+  ]);
+
+  const [h] = await store.listarHistorial();
+  assert.deepEqual(h.recorrido.flete, { id: "F-10", nombre: "Camión 10" });
+  assert.deepEqual(h.recorrido.chofer, { id: "CH-10", nombre: "Nora Vidal" });
+});

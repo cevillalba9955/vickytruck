@@ -33,6 +33,34 @@ export function formatearHoraLocal(iso) {
   return formateadorHora.format(new Date(iso));
 }
 
+const formateadorFecha = new Intl.DateTimeFormat("es-AR", {
+  timeZone: "America/Argentina/Buenos_Aires",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+/**
+ * Formatea cualquier timestamp ISO 8601 como fecha `DD/MM/AAAA` de Buenos
+ * Aires (009-central-mejora-visual, columna "Fecha" de Historial) — mismo
+ * criterio de reconversión que `formatearHoraLocal`.
+ */
+export function formatearFechaLocal(iso) {
+  return formateadorFecha.format(new Date(iso));
+}
+
+/**
+ * Duración en minutos enteros, formateada como `"Xh Ym"` (o `"Y min"` si
+ * dura menos de una hora) — 009-central-mejora-visual, columna "Tiempo
+ * total" de Historial. `null`/negativo da "—".
+ */
+export function formatearDuracionMin(minutos) {
+  if (minutos == null || minutos < 0) return "—";
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  return horas > 0 ? `${horas}h ${resto}min` : `${resto} min`;
+}
+
 /**
  * Minutos enteros transcurridos desde `iso` hasta `ahora` (009-central-
  * mejora-visual): usado en Monitoreo para mostrar "hace cuánto" fue la
