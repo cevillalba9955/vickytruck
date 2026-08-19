@@ -60,16 +60,26 @@ function App() {
   // recarga manual de la página. Cadencia dinámica: respaldo lento mientras
   // MQTT esté conectado (FR-005), vuelve a la cadencia rápida si no.
   const intervaloPolling = mqttEstado === "connected" ? INTERVALO_POLLING_MQTT_CONECTADO_MS : INTERVALO_POLLING_RESPALDO_MS;
+  const idDetalleAbierto = vista === "detalle" ? detalle?.recorrido?.id : null;
   useEffect(() => {
     return pollEvery(intervaloPolling, async () => {
       try {
-        setActivos(await listarActivos());
+        const [nuevosActivos, nuevoDetalle] = await Promise.all([
+          listarActivos(),
+          // 009-central-mejora-visual: mientras se está viendo el Detalle de
+          // un recorrido activo (abierto desde Monitoreo/Mapa), se refresca
+          // con la misma cadencia que Monitoreo — antes quedaba congelado en
+          // la foto del momento en que se abrió "Ver detalle".
+          idDetalleAbierto ? obtenerDetalle(idDetalleAbierto) : Promise.resolve(null),
+        ]);
+        setActivos(nuevosActivos);
+        if (nuevoDetalle) setDetalle(nuevoDetalle);
         setError(null);
       } catch {
         setError("error_desconocido");
       }
     });
-  }, [intervaloPolling]);
+  }, [intervaloPolling, idDetalleAbierto]);
 
   useEffect(() => {
     return conectarUbicacionEnTiempoReal({
@@ -107,17 +117,17 @@ function App() {
         </Card>
       )}
       {vista === "detalle" && (
-        <>
-          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setVista(origenDetalle)}>
-            Volver al monitoreo
-          </Button>
-          <RecorridoDetalle
-            detalle={detalle}
-            marcadorFlete={construirMarcadoresFlete(activos).find(
-              (m) => String(m.recorridoId) === String(detalle?.recorrido?.id),
-            )}
-          />
-        </>
+        <RecorridoDetalle
+          detalle={detalle}
+          marcadorFlete={construirMarcadoresFlete(activos).find(
+            (m) => String(m.recorridoId) === String(detalle?.recorrido?.id),
+          )}
+          accionVolver={
+            <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setVista(origenDetalle)}>
+              Volver al monitoreo
+            </Button>
+          }
+        />
       )}
       {vista === "historial" && <HistorialView />}
     </AppShell>

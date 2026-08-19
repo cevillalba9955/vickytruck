@@ -57,12 +57,14 @@ export function HistorialView() {
 
   if (seleccionado) {
     return (
-      <div className="historial-view">
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setSeleccionado(null)}>
-          Volver al historial
-        </Button>
-        <RecorridoDetalle detalle={seleccionado} />
-      </div>
+      <RecorridoDetalle
+        detalle={seleccionado}
+        accionVolver={
+          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setSeleccionado(null)}>
+            Volver al historial
+          </Button>
+        }
+      />
     );
   }
 

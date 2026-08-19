@@ -84,8 +84,13 @@ const COLUMNAS_PUNTOS = [
  *
  * 009-central-mejora-visual: encabezado y grilla rediseñados — ver
  * research.md de esa feature.
+ *
+ * `accionVolver` (009-central-mejora-visual): nodo opcional (botón "Volver
+ * al monitoreo"/"Volver al historial", según quién abrió el detalle) que se
+ * ubica a la derecha del título del Card en vez de ocupar su propia fila
+ * arriba — maximiza el área vertical disponible para el contenido.
  */
-export function RecorridoDetalle({ detalle, marcadorFlete }) {
+export function RecorridoDetalle({ detalle, marcadorFlete, accionVolver }) {
   if (!detalle) return null;
   const { recorrido, puntos } = detalle;
   const inicioIso = primerEventoIso(puntos);
@@ -97,6 +102,7 @@ export function RecorridoDetalle({ detalle, marcadorFlete }) {
       className="detalle-view"
       aria-label={`Detalle del recorrido ${recorrido.id}`}
       title={`Recorrido ${recorrido.id}`}
+      extra={accionVolver}
     >
       <Descriptions bordered size="small" column={3} style={{ marginBottom: 16 }}>
         <Descriptions.Item label="Fecha">{fechaIso ? formatearFechaLocal(fechaIso) : "—"}</Descriptions.Item>
