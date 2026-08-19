@@ -1,4 +1,5 @@
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import { Empty } from "antd";
 
 const CENTRO_DEFAULT = [-34.6037, -58.3816]; // Buenos Aires, si no hay ningún dato de posición todavía
 const ZOOM_DEFAULT = 12;
@@ -38,7 +39,11 @@ function agruparPorCoordenada(items) {
  */
 export function MapaSeguimiento({ marcadoresFlete = [], puntos = [], hayDatos = true, onSeleccionarFlete }) {
   if (!hayDatos) {
-    return <p role="status">No hay recorridos activos en este momento.</p>;
+    return (
+      <div role="status">
+        <Empty description="No hay recorridos activos en este momento." />
+      </div>
+    );
   }
 
   const centro = marcadoresFlete[0]

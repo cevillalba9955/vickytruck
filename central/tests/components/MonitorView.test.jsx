@@ -23,11 +23,15 @@ describe("MonitorView", () => {
       />,
     );
 
-    expect(screen.getByText("Juan Pérez").closest("tr")).toHaveTextContent("Ubicación reciente");
-    expect(screen.getByText("Ana Gómez").closest("tr")).toHaveTextContent("Ubicación no reciente");
+    const filaReciente = screen.getByText("Juan Pérez").closest("tr");
+    const filaNoReciente = screen.getByText("Ana Gómez").closest("tr");
+    expect(filaReciente).toHaveAttribute("data-ubicacion-reciente", "true");
+    expect(filaNoReciente).toHaveAttribute("data-ubicacion-reciente", "false");
+    expect(filaNoReciente.querySelector(".ant-badge-status-warning")).toBeInTheDocument();
+    expect(filaReciente.querySelector(".ant-badge-status-success")).toBeInTheDocument();
   });
 
-  it("muestra el estado de viaje y el punto activo del chofer (005-chofer-estados-viaje, FR-021)", () => {
+  it("muestra el estado de viaje sin el id del punto, y el cliente del punto activo en su propia columna (009-central-mejora-visual)", () => {
     render(
       <MonitorView
         recorridos={[
@@ -38,6 +42,7 @@ describe("MonitorView", () => {
             ultimaUbicacion: null,
             viajeEstado: "manejando",
             puntoActivoId: "p3",
+            puntoActivo: { id: "p3", orden: 3, cliente: "Supermercado Sur" },
           },
           {
             id: "61",
@@ -46,14 +51,40 @@ describe("MonitorView", () => {
             ultimaUbicacion: null,
             viajeEstado: "detenido",
             puntoActivoId: null,
+            puntoActivo: null,
           },
         ]}
       />,
     );
 
-    expect(screen.getByText("Lucía Paz").closest("tr")).toHaveTextContent("Manejando (punto p3)");
-    expect(screen.getByText("Diego Ríos").closest("tr")).toHaveTextContent("Detenido");
-    expect(screen.getByText("Diego Ríos").closest("tr")).not.toHaveTextContent("punto");
+    const filaLucia = screen.getByText("Lucía Paz").closest("tr");
+    expect(filaLucia).toHaveTextContent("Manejando");
+    expect(filaLucia).not.toHaveTextContent("punto p3");
+    expect(filaLucia).toHaveTextContent("Supermercado Sur");
+
+    const filaDiego = screen.getByText("Diego Ríos").closest("tr");
+    expect(filaDiego).toHaveTextContent("Detenido");
+    expect(filaDiego).not.toHaveTextContent("punto");
+  });
+
+  it("cuando el punto activo todavía no tiene cliente informado, muestra 'Punto {orden}' en vez de dejarlo vacío", () => {
+    render(
+      <MonitorView
+        recorridos={[
+          {
+            id: "62",
+            flete: { id: "14", nombre: "Nora Vidal" },
+            progreso: { pendientes: 1, arribados: 0, completados: 0 },
+            ultimaUbicacion: null,
+            viajeEstado: "manejando",
+            puntoActivoId: "p5",
+            puntoActivo: { id: "p5", orden: 5, cliente: null },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Nora Vidal").closest("tr")).toHaveTextContent("Punto 5");
   });
 
   it("muestra 'Regresando a base' cuando esperandoFinalizar es true (008-registro-inicio-fin-recorrido)", () => {
@@ -61,7 +92,7 @@ describe("MonitorView", () => {
       <MonitorView
         recorridos={[
           {
-            id: "62",
+            id: "63",
             flete: { id: "13", nombre: "Marta Sosa" },
             progreso: { pendientes: 0, arribados: 0, completados: 2 },
             ultimaUbicacion: null,
@@ -74,11 +105,12 @@ describe("MonitorView", () => {
     );
 
     const fila = screen.getByText("Marta Sosa").closest("tr");
-    expect(fila).toHaveTextContent("Regresando a base");
+    expect(fila).toHaveTextContent("Regresando");
     expect(fila).not.toHaveTextContent("Detenido");
   });
 
-  it("muestra la hora HH:MM:SS local del último reporte de ubicación junto con reciente/no reciente (006-normalizar-formato-horario, US2)", () => {
+  it("muestra los minutos transcurridos desde la última lectura de ubicación, no la hora absoluta (009-central-mejora-visual)", () => {
+    const haceCincoMinutos = new Date(Date.now() - 5 * 60000).toISOString();
     render(
       <MonitorView
         recorridos={[
@@ -86,25 +118,24 @@ describe("MonitorView", () => {
             id: "50",
             flete: { id: "7", nombre: "Juan Pérez" },
             progreso: { pendientes: 1, arribados: 1, completados: 1 },
-            ultimaUbicacion: { lat: -34.6, lon: -58.4, en: "2026-08-11T10:35:20.123-03:00", reciente: true },
+            ultimaUbicacion: { lat: -34.6, lon: -58.4, en: haceCincoMinutos, reciente: true },
           },
         ]}
       />,
     );
 
     const fila = screen.getByText("Juan Pérez").closest("tr");
-    expect(fila).toHaveTextContent("Ubicación reciente");
-    expect(fila).toHaveTextContent("10:35:20");
+    expect(fila).toHaveTextContent("5 min");
+    expect(fila).not.toHaveTextContent(/\d{2}:\d{2}:\d{2}/);
   });
 
-  it("muestra updatedAt del recorrido formateado en HH24:MM:SS local", () => {
+  it("muestra un guion cuando no hay ubicación reportada", () => {
     render(
       <MonitorView
         recorridos={[
           {
             id: "50",
             flete: { id: "7", nombre: "Juan Pérez" },
-            updatedAt: "2026-08-11T10:35:20.123-03:00",
             progreso: { pendientes: 1, arribados: 1, completados: 1 },
             ultimaUbicacion: { lat: null, lon: null, en: null, reciente: false },
           },
@@ -112,7 +143,7 @@ describe("MonitorView", () => {
       />,
     );
 
-    expect(screen.getByText("Juan Pérez").closest("tr")).toHaveTextContent("10:35:20");
+    expect(screen.getByText("Juan Pérez").closest("tr")).toHaveTextContent("—");
   });
 
   it("muestra un mensaje cuando no hay recorridos activos", () => {

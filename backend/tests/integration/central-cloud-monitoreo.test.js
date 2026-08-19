@@ -36,10 +36,12 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
               token: "tok-central-e2e",
               fleteId: "F-77",
               fleteNombre: "Roberto Gómez",
+              choferId: "CH-9",
+              choferNombre: "Diego Fernández",
               estado: "activo",
               puntos: [
-                { id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41 },
-                { id: "p2", orden: 2, estado: "pendiente", lat: -34.62, lon: -58.42 },
+                { id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41, cliente: "Almacén Centro" },
+                { id: "p2", orden: 2, estado: "pendiente", lat: -34.62, lon: -58.42, cliente: "Supermercado Sur" },
               ],
             },
           ],
@@ -52,9 +54,15 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
     const activos = await (await fetch(`${server.centralBaseUrl}/recorridos/activos`)).json();
     assert.equal(activos.recorridos.length, 1);
     assert.deepEqual(activos.recorridos[0].flete, { id: "F-77", nombre: "Roberto Gómez" });
+    // 009-central-mejora-visual: Central ve el chofer, distinto del flete.
+    assert.deepEqual(activos.recorridos[0].chofer, { id: "CH-9", nombre: "Diego Fernández" });
 
-    // 3. El chofer marca arribo.
-    const arribo = await fetch(`${server.baseUrl}/tok-central-e2e/puntos/p1/arribo`, { method: "POST" });
+    // 3. El chofer marca arribo, con su posición GPS del momento.
+    const arribo = await fetch(`${server.baseUrl}/tok-central-e2e/puntos/p1/arribo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: -34.6101, lon: -58.4101 }),
+    });
     assert.equal(arribo.status, 200);
 
     // 4. Central ve el progreso actualizado sin haber tocado Oracle.
@@ -66,6 +74,14 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
     assert.equal(detalle.puntos[0].lat, -34.61);
     assert.equal(detalle.puntos[0].lon, -58.41);
 
+    // 5b. También incluye el GPS de auditoría capturado al marcar arribo
+    // (009-central-mejora-visual) y el flete/chofer del recorrido, para el
+    // encabezado y la grilla de RecorridoDetalle.
+    assert.equal(detalle.puntos[0].arriboLat, -34.6101);
+    assert.equal(detalle.puntos[0].arriboLon, -58.4101);
+    assert.deepEqual(detalle.recorrido.flete, { id: "F-77", nombre: "Roberto Gómez" });
+    assert.deepEqual(detalle.recorrido.chofer, { id: "CH-9", nombre: "Diego Fernández" });
+
     // 6. Central ve el estado de viaje del chofer en (casi) tiempo real, vía
     // el mismo polling (005-chofer-estados-viaje, FR-021). p1 ya está
     // "arribado" (paso 3), así que INICIAR activa p2, el único pendiente.
@@ -73,6 +89,9 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
     const activosTrasIniciar = await (await fetch(`${server.centralBaseUrl}/recorridos/activos`)).json();
     assert.equal(activosTrasIniciar.recorridos[0].viajeEstado, "manejando");
     assert.equal(activosTrasIniciar.recorridos[0].puntoActivoId, "p2");
+    // 009-central-mejora-visual: Central ve el cliente del punto activo, no
+    // solo su id, para poder mostrarlo en la columna "Punto" de Monitoreo.
+    assert.deepEqual(activosTrasIniciar.recorridos[0].puntoActivo, { id: "p2", orden: 2, cliente: "Supermercado Sur" });
   } finally {
     process.env.INTEGRACION_API_KEY = prev;
     await server.cerrar();

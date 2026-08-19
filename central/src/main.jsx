@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { ConfigProvider, Card, Button, Alert } from "antd";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import "leaflet/dist/leaflet.css";
 import "./styles.css";
+import { themeConfig } from "./theme/tokens.js";
+import { AppShell } from "./components/AppShell.jsx";
 import { MonitorView } from "./components/MonitorView.jsx";
 import { RecorridoDetalle } from "./components/RecorridoDetalle.jsx";
 import { HistorialView } from "./components/HistorialView.jsx";
@@ -23,6 +27,10 @@ const INTERVALO_POLLING_RESPALDO_MS = 5000;
 
 function App() {
   const [vista, setVista] = useState("monitor");
+  // Sección de navegación desde la que se abrió el Detalle (Monitoreo o
+  // Mapa): permite que el menú lateral siga mostrando esa sección resaltada
+  // mientras se está viendo el Detalle (009-central-mejora-visual, US2).
+  const [origenDetalle, setOrigenDetalle] = useState("monitor");
   const [activos, setActivos] = useState([]);
   const [error, setError] = useState(null);
   const [detalle, setDetalle] = useState(null);
@@ -43,6 +51,7 @@ function App() {
     });
 
   const abrirDetalle = async (id) => {
+    setOrigenDetalle(vista);
     setDetalle(await obtenerDetalle(id));
     setVista("detalle");
   };
@@ -51,16 +60,26 @@ function App() {
   // recarga manual de la página. Cadencia dinámica: respaldo lento mientras
   // MQTT esté conectado (FR-005), vuelve a la cadencia rápida si no.
   const intervaloPolling = mqttEstado === "connected" ? INTERVALO_POLLING_MQTT_CONECTADO_MS : INTERVALO_POLLING_RESPALDO_MS;
+  const idDetalleAbierto = vista === "detalle" ? detalle?.recorrido?.id : null;
   useEffect(() => {
     return pollEvery(intervaloPolling, async () => {
       try {
-        setActivos(await listarActivos());
+        const [nuevosActivos, nuevoDetalle] = await Promise.all([
+          listarActivos(),
+          // 009-central-mejora-visual: mientras se está viendo el Detalle de
+          // un recorrido activo (abierto desde Monitoreo/Mapa), se refresca
+          // con la misma cadencia que Monitoreo — antes quedaba congelado en
+          // la foto del momento en que se abrió "Ver detalle".
+          idDetalleAbierto ? obtenerDetalle(idDetalleAbierto) : Promise.resolve(null),
+        ]);
+        setActivos(nuevosActivos);
+        if (nuevoDetalle) setDetalle(nuevoDetalle);
         setError(null);
       } catch {
         setError("error_desconocido");
       }
     });
-  }, [intervaloPolling]);
+  }, [intervaloPolling, idDetalleAbierto]);
 
   useEffect(() => {
     return conectarUbicacionEnTiempoReal({
@@ -72,46 +91,46 @@ function App() {
   }, []);
 
   return (
-    <main className="app">
-      <h1>Central — Panel de control</h1>
-      <nav className="app__nav">
-        <button type="button" aria-pressed={vista === "monitor"} onClick={() => setVista("monitor")}>
-          Monitoreo
-        </button>
-        <button type="button" aria-pressed={vista === "mapa"} onClick={() => setVista("mapa")}>
-          Mapa
-        </button>
-        <button type="button" aria-pressed={vista === "historial"} onClick={() => setVista("historial")}>
-          Historial
-        </button>
-      </nav>
-
-      {error && <p role="alert">No se pudo actualizar el panel; reintentando…</p>}
-      {mqttEstado !== "disabled" && <p role="status">Canal tiempo real MQTT: {mqttEstado}</p>}
+    <AppShell
+      seccion={vista === "detalle" ? origenDetalle : vista}
+      onCambiarSeccion={setVista}
+      mqttEstado={mqttEstado}
+    >
+      {error && (
+        <Alert
+          role="alert"
+          type="error"
+          showIcon
+          title="No se pudo actualizar el panel; reintentando…"
+          style={{ marginBottom: 12 }}
+        />
+      )}
 
       {vista === "monitor" && <MonitorView recorridos={activos} onSeleccionar={abrirDetalle} />}
       {vista === "mapa" && (
-        <MapaSeguimiento
-          marcadoresFlete={construirMarcadoresFlete(activos)}
-          hayDatos={activos.length > 0}
-          onSeleccionarFlete={abrirDetalle}
-        />
+        <Card>
+          <MapaSeguimiento
+            marcadoresFlete={construirMarcadoresFlete(activos)}
+            hayDatos={activos.length > 0}
+            onSeleccionarFlete={abrirDetalle}
+          />
+        </Card>
       )}
       {vista === "detalle" && (
-        <>
-          <button type="button" onClick={() => setVista("monitor")}>
-            ← Volver al monitoreo
-          </button>
-          <RecorridoDetalle
-            detalle={detalle}
-            marcadorFlete={construirMarcadoresFlete(activos).find(
-              (m) => String(m.recorridoId) === String(detalle?.recorrido?.id),
-            )}
-          />
-        </>
+        <RecorridoDetalle
+          detalle={detalle}
+          marcadorFlete={construirMarcadoresFlete(activos).find(
+            (m) => String(m.recorridoId) === String(detalle?.recorrido?.id),
+          )}
+          accionVolver={
+            <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setVista(origenDetalle)}>
+              Volver al monitoreo
+            </Button>
+          }
+        />
       )}
       {vista === "historial" && <HistorialView />}
-    </main>
+    </AppShell>
   );
 }
 
@@ -120,6 +139,8 @@ function App() {
 // bloquea ni degrada la funcionalidad.
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <ConfigProvider theme={themeConfig}>
+      <App />
+    </ConfigProvider>
   </React.StrictMode>,
 );

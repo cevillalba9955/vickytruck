@@ -19,6 +19,24 @@ export function construirMarcadoresFlete(recorridosActivos = []) {
     }));
 }
 
+// Radio de la Tierra en metros, para la fórmula de Haversine.
+const RADIO_TIERRA_M = 6371000;
+
+/**
+ * Distancia en metros entre dos coordenadas (fórmula de Haversine),
+ * 009-central-mejora-visual: usada para marcar si la posición GPS
+ * registrada al arribar/descargar cayó cerca del destino del punto.
+ */
+export function distanciaMetros(lat1, lon1, lat2, lon2) {
+  const radianes = (grados) => (grados * Math.PI) / 180;
+  const dLat = radianes(lat2 - lat1);
+  const dLon = radianes(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(radianes(lat1)) * Math.cos(radianes(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return RADIO_TIERRA_M * c;
+}
+
 // Historia 2: puntos de entrega de un recorrido, con su estado, para
 // dibujarlos en el mapa de detalle (FR-006). Se omiten los puntos sin
 // coordenadas (no debería ocurrir, Principio II exige lat/lon válidos, pero

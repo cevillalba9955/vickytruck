@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { construirMarcadoresFlete, construirPuntosEnMapa } from "../../src/services/marcadores.js";
+import { construirMarcadoresFlete, construirPuntosEnMapa, distanciaMetros } from "../../src/services/marcadores.js";
 
 describe("construirMarcadoresFlete", () => {
   it("genera un marcador por recorrido con ubicación conocida (FR-001)", () => {
@@ -57,5 +57,23 @@ describe("construirPuntosEnMapa", () => {
   it("omite puntos sin coordenadas en vez de romper el mapa", () => {
     const puntos = construirPuntosEnMapa([{ id: "P-2", orden: 2, lat: null, lon: null, estado: "pendiente" }]);
     expect(puntos).toEqual([]);
+  });
+});
+
+describe("distanciaMetros (009-central-mejora-visual)", () => {
+  it("da 0 para el mismo punto", () => {
+    expect(distanciaMetros(-34.6, -58.4, -34.6, -58.4)).toBeCloseTo(0, 3);
+  });
+
+  it("calcula ~11 m para una diferencia de 0.0001° (radio de proximidad, dentro de 500 m)", () => {
+    const d = distanciaMetros(-34.6, -58.4, -34.6001, -58.4001);
+    expect(d).toBeGreaterThan(5);
+    expect(d).toBeLessThan(20);
+  });
+
+  it("calcula ~1.1 km para una diferencia de 0.01° de latitud (fuera de 500 m)", () => {
+    const d = distanciaMetros(-34.6, -58.4, -34.61, -58.4);
+    expect(d).toBeGreaterThan(1000);
+    expect(d).toBeLessThan(1200);
   });
 });

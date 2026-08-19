@@ -38,6 +38,22 @@ test("listarActivos — expone flete.nombre desde fleteNombre y progreso calcula
   assert.deepEqual(r.progreso, { pendientes: 2, arribados: 0, completados: 0 });
 });
 
+test("listarActivos — expone chofer.nombre desde choferId/choferNombre, distinto del flete (009-central-mejora-visual)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, { choferId: "CH-1", choferNombre: "Marta Sosa" });
+
+  const [r] = await store.listarActivos();
+  assert.deepEqual(r.chofer, { id: "CH-1", nombre: "Marta Sosa" });
+});
+
+test("listarActivos — chofer es null si Oracle todavía no lo informó", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store);
+
+  const [r] = await store.listarActivos();
+  assert.equal(r.chofer, null);
+});
+
 test("listarActivos — ultimaUbicacion refleja lo que reportó el bridge MQTT y respeta el umbral de 'reciente'", async () => {
   const prev = process.env.UBICACION_STALE_MS;
   process.env.UBICACION_STALE_MS = String(5 * 60 * 1000);
@@ -81,6 +97,42 @@ test("obtenerDetalle — devuelve puntos ordenados con estado/arriboEn/descargaE
   );
 });
 
+test("obtenerDetalle — expone flete/chofer del recorrido (009-central-mejora-visual)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, { choferId: "CH-2", choferNombre: "Diego Fernández" });
+
+  const detalle = await store.obtenerDetalle("R-1");
+  assert.deepEqual(detalle.recorrido.flete, { id: "F-1", nombre: "Juan Pérez" });
+  assert.deepEqual(detalle.recorrido.chofer, { id: "CH-2", nombre: "Diego Fernández" });
+});
+
+test("obtenerDetalle — expone cliente por punto, y arriboLat/descargaLat en null si todavía no se marcaron (009-central-mejora-visual)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, {
+    puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4, cliente: "Almacén Centro" }],
+  });
+
+  const { puntos } = await store.obtenerDetalle("R-1");
+  const [p] = puntos;
+  assert.equal(p.cliente, "Almacén Centro");
+  assert.equal(p.arriboLat, null);
+  assert.equal(p.descargaLon, null);
+  // inicioLat/cierreLat siguen fuera de alcance (research.md, Decisión 4) —
+  // no deben aparecer ni como clave con valor null.
+  assert.equal(p.inicioLat, undefined);
+});
+
+test("obtenerDetalle — arriboLat/arriboLon reflejan el GPS capturado al marcar arribo (009-central-mejora-visual)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, { token: "tok-gps", puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4 }] });
+
+  await store.marcarArribo("tok-gps", "p1", { lat: -34.6001, lon: -58.4001 }, null);
+
+  const { puntos } = await store.obtenerDetalle("R-1");
+  assert.equal(puntos[0].arriboLat, -34.6001);
+  assert.equal(puntos[0].arriboLon, -58.4001);
+});
+
 test("listarHistorial — solo incluye recorridos finalizados", async () => {
   const store = createIntegracionStore();
   seedActivo(store);
@@ -97,4 +149,23 @@ test("listarHistorial — solo incluye recorridos finalizados", async () => {
   assert.equal(historial.length, 1);
   assert.equal(historial[0].recorrido.id, "R-9");
   assert.equal(historial[0].puntos[0].descargaEn, "2026-08-05T10:00:00Z");
+});
+
+test("listarHistorial — expone flete/chofer del recorrido finalizado (009-central-mejora-visual)", async () => {
+  const store = createIntegracionStore();
+  store.upsertRecorridos([
+    {
+      id: "R-10",
+      fleteId: "F-10",
+      fleteNombre: "Camión 10",
+      choferId: "CH-10",
+      choferNombre: "Nora Vidal",
+      estado: "finalizado",
+      puntos: [{ id: "p1", orden: 1, estado: "completado" }],
+    },
+  ]);
+
+  const [h] = await store.listarHistorial();
+  assert.deepEqual(h.recorrido.flete, { id: "F-10", nombre: "Camión 10" });
+  assert.deepEqual(h.recorrido.chofer, { id: "CH-10", nombre: "Nora Vidal" });
 });
