@@ -3,23 +3,7 @@ import { Table, Button, Empty, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { listarHistorial } from "../services/api.js";
 import { RecorridoDetalle } from "./RecorridoDetalle.jsx";
-import { formatearFechaLocal, formatearHoraLocal, formatearDuracionMin } from "../services/tiempo.js";
-
-// Duración total del recorrido (009-central-mejora-visual): desde el primer
-// evento registrado (inicioEn del primer punto trabajado; si ese dato no
-// está, cae al primer arriboEn) hasta el cierre explícito del recorrido
-// (FINALIZAR) — mismo criterio de "primer evento disponible" que ya usa
-// RecorridoDetalle.jsx para el tiempo de regreso a base.
-function calcularTiempoTotalMin(puntos, cierreEn) {
-  if (!cierreEn) return null;
-  const inicios = puntos.map((p) => p.inicioEn).filter(Boolean);
-  const eventos = inicios.length > 0 ? inicios : puntos.map((p) => p.arriboEn).filter(Boolean);
-  if (eventos.length === 0) return null;
-  const primerEventoMs = Math.min(...eventos.map((e) => new Date(e).getTime()));
-  const diffMs = new Date(cierreEn).getTime() - primerEventoMs;
-  if (!Number.isFinite(diffMs) || diffMs < 0) return null;
-  return Math.round(diffMs / 60000);
-}
+import { formatearFechaLocal, formatearHoraLocal, formatearDuracionMin, calcularTiempoTotalMin } from "../services/tiempo.js";
 
 const COLUMNAS = (onVerLineaDeTiempo) => [
   { title: "Recorrido", dataIndex: "id", key: "id" },
@@ -94,7 +78,9 @@ export function HistorialView() {
     setSeleccionado({
       // cierreEn (008-registro-inicio-fin-recorrido): viene del mapeo de
       // GET /api/central/recorridos/historial en backend/src/routes/central.js.
-      recorrido: { id: h.id, estado: "finalizado", fleteId: h.fleteId, cierreEn: h.cierreEn },
+      // flete/chofer (009-central-mejora-visual): se llevan al detalle para
+      // que su encabezado no tenga que volver a pedirlos.
+      recorrido: { id: h.id, estado: "finalizado", fleteId: h.fleteId, flete: h.flete, chofer: h.chofer, cierreEn: h.cierreEn },
       puntos: h.puntos,
     });
 

@@ -62,6 +62,35 @@ export function formatearDuracionMin(minutos) {
 }
 
 /**
+ * Primer evento registrado de un recorrido (009-central-mejora-visual,
+ * "Hora inicio" del encabezado de RecorridoDetalle y "Tiempo total" de
+ * Historial): el `inicioEn` más temprano entre los puntos; si ningún punto
+ * tiene `inicioEn` (dato nuevo de 008, puede faltar en recorridos viejos),
+ * cae al `arriboEn` más temprano. `null` si no hay ningún evento.
+ */
+export function primerEventoIso(puntos) {
+  const inicios = puntos.map((p) => p.inicioEn).filter(Boolean);
+  const eventos = inicios.length > 0 ? inicios : puntos.map((p) => p.arriboEn).filter(Boolean);
+  if (eventos.length === 0) return null;
+  return eventos.reduce((min, e) => (new Date(e) < new Date(min) ? e : min));
+}
+
+/**
+ * Duración total del recorrido en minutos, desde `primerEventoIso(puntos)`
+ * hasta `cierreEn` (o hasta `ahora` si todavía no se finalizó — un recorrido
+ * activo muestra el tiempo transcurrido hasta el momento). `null` si no hay
+ * ningún evento de inicio registrado.
+ */
+export function calcularTiempoTotalMin(puntos, cierreEn, ahora = new Date()) {
+  const inicioIso = primerEventoIso(puntos);
+  if (!inicioIso) return null;
+  const finMs = cierreEn ? new Date(cierreEn).getTime() : ahora.getTime();
+  const diffMs = finMs - new Date(inicioIso).getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return null;
+  return Math.round(diffMs / 60000);
+}
+
+/**
  * Minutos enteros transcurridos desde `iso` hasta `ahora` (009-central-
  * mejora-visual): usado en Monitoreo para mostrar "hace cuánto" fue la
  * última lectura de ubicación, en vez de la hora absoluta. `null` si `iso`

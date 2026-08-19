@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ahoraLocalIso, formatearHoraLocal, formatearFechaLocal, formatearDuracionMin } from "../../src/services/tiempo.js";
+import {
+  ahoraLocalIso,
+  formatearHoraLocal,
+  formatearFechaLocal,
+  formatearDuracionMin,
+  primerEventoIso,
+  calcularTiempoTotalMin,
+} from "../../src/services/tiempo.js";
 
 describe("tiempo — ahoraLocalIso (006-normalizar-formato-horario, FR-002/FR-007)", () => {
   it("siempre termina en -03:00, nunca en Z", () => {
@@ -50,5 +57,42 @@ describe("tiempo — formatearDuracionMin (009-central-mejora-visual)", () => {
   it("null o negativo da '—'", () => {
     expect(formatearDuracionMin(null)).toBe("—");
     expect(formatearDuracionMin(-5)).toBe("—");
+  });
+});
+
+describe("tiempo — primerEventoIso (009-central-mejora-visual)", () => {
+  it("elige el inicioEn más temprano entre los puntos", () => {
+    const puntos = [
+      { inicioEn: "2026-08-13T09:00:00-03:00" },
+      { inicioEn: "2026-08-13T08:00:00-03:00" },
+      { inicioEn: "2026-08-13T10:00:00-03:00" },
+    ];
+    expect(primerEventoIso(puntos)).toBe("2026-08-13T08:00:00-03:00");
+  });
+
+  it("si ningún punto tiene inicioEn, cae al arriboEn más temprano", () => {
+    const puntos = [{ arriboEn: "2026-08-13T09:00:00-03:00" }, { arriboEn: "2026-08-13T08:30:00-03:00" }];
+    expect(primerEventoIso(puntos)).toBe("2026-08-13T08:30:00-03:00");
+  });
+
+  it("sin ningún evento registrado, da null", () => {
+    expect(primerEventoIso([{ estado: "pendiente" }])).toBe(null);
+  });
+});
+
+describe("tiempo — calcularTiempoTotalMin (009-central-mejora-visual)", () => {
+  it("calcula la duración desde el primer evento hasta el cierre", () => {
+    const puntos = [{ inicioEn: "2026-08-13T08:00:00-03:00" }];
+    expect(calcularTiempoTotalMin(puntos, "2026-08-13T14:40:00-03:00")).toBe(400);
+  });
+
+  it("sin cierre, calcula lo transcurrido hasta 'ahora'", () => {
+    const puntos = [{ inicioEn: "2026-08-13T08:00:00-03:00" }];
+    const ahora = new Date("2026-08-13T10:00:00-03:00");
+    expect(calcularTiempoTotalMin(puntos, null, ahora)).toBe(120);
+  });
+
+  it("sin ningún evento de inicio, da null", () => {
+    expect(calcularTiempoTotalMin([{ estado: "pendiente" }], "2026-08-13T14:40:00-03:00")).toBe(null);
   });
 });

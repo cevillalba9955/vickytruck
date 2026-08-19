@@ -97,6 +97,42 @@ test("obtenerDetalle — devuelve puntos ordenados con estado/arriboEn/descargaE
   );
 });
 
+test("obtenerDetalle — expone flete/chofer del recorrido (009-central-mejora-visual)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, { choferId: "CH-2", choferNombre: "Diego Fernández" });
+
+  const detalle = await store.obtenerDetalle("R-1");
+  assert.deepEqual(detalle.recorrido.flete, { id: "F-1", nombre: "Juan Pérez" });
+  assert.deepEqual(detalle.recorrido.chofer, { id: "CH-2", nombre: "Diego Fernández" });
+});
+
+test("obtenerDetalle — expone cliente por punto, y arriboLat/descargaLat en null si todavía no se marcaron (009-central-mejora-visual)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, {
+    puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4, cliente: "Almacén Centro" }],
+  });
+
+  const { puntos } = await store.obtenerDetalle("R-1");
+  const [p] = puntos;
+  assert.equal(p.cliente, "Almacén Centro");
+  assert.equal(p.arriboLat, null);
+  assert.equal(p.descargaLon, null);
+  // inicioLat/cierreLat siguen fuera de alcance (research.md, Decisión 4) —
+  // no deben aparecer ni como clave con valor null.
+  assert.equal(p.inicioLat, undefined);
+});
+
+test("obtenerDetalle — arriboLat/arriboLon reflejan el GPS capturado al marcar arribo (009-central-mejora-visual)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, { token: "tok-gps", puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4 }] });
+
+  await store.marcarArribo("tok-gps", "p1", { lat: -34.6001, lon: -58.4001 }, null);
+
+  const { puntos } = await store.obtenerDetalle("R-1");
+  assert.equal(puntos[0].arriboLat, -34.6001);
+  assert.equal(puntos[0].arriboLon, -58.4001);
+});
+
 test("listarHistorial — solo incluye recorridos finalizados", async () => {
   const store = createIntegracionStore();
   seedActivo(store);

@@ -531,16 +531,32 @@ export function createIntegracionStore() {
       const r = recorridos.get(String(id));
       if (!r) return null;
       return {
-        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, updatedAt: r.updatedAt, cierreEn: r.cierreEn },
+        recorrido: {
+          id: r.id,
+          estado: r.estado,
+          fleteId: r.fleteId,
+          // flete/chofer (009-central-mejora-visual): mismo criterio que
+          // listarActivos/listarHistorial — el encabezado del detalle
+          // necesita mostrar nombres, no solo ids.
+          flete: { id: r.fleteId, nombre: r.fleteNombre },
+          chofer: r.choferId ? { id: r.choferId, nombre: r.choferNombre } : null,
+          updatedAt: r.updatedAt,
+          cierreEn: r.cierreEn,
+        },
         puntos: serializarPuntosCentral(r.puntos),
       };
     },
   };
 }
 
-// `lat`/`lon` (004-mapa-seguimiento-central, FR-006): topología fija del
-// punto (destino de entrega), no el GPS de auditoría de arribo/descarga
-// (arriboLat/arriboLon), que sigue sin exponerse a Central.
+// `lat`/`lon`: topología fija del punto (destino de entrega, 004-mapa-
+// seguimiento-central FR-006). `arriboLat`/`arriboLon`/`descargaLat`/
+// `descargaLon` (009-central-mejora-visual): GPS de auditoría capturado por
+// el chofer al marcar arribo/descarga — antes no se exponía a Central (ver
+// comentario histórico), ahora se usa para marcar si esa posición cayó
+// dentro del radio esperado del punto. `inicioLat`/`inicioLon`/`cierreLat`/
+// `cierreLon` siguen sin exponerse (research.md, Decisión 4 — fuera de
+// alcance de esta feature).
 function serializarPuntosCentral(puntos) {
   return puntos
     .map((p) => ({
@@ -549,12 +565,17 @@ function serializarPuntosCentral(puntos) {
       lat: p.lat,
       lon: p.lon,
       estado: p.estado,
+      cliente: p.cliente ?? null,
       // inicioEn (008-registro-inicio-fin-recorrido): mismo nivel que
       // arriboEn/descargaEn ya expuestos acá — sin inicioLat/inicioLon
       // (research.md, Decisión 4).
       inicioEn: p.inicioEn,
       arriboEn: p.arriboEn,
+      arriboLat: p.arriboLat ?? null,
+      arriboLon: p.arriboLon ?? null,
       descargaEn: p.descargaEn,
+      descargaLat: p.descargaLat ?? null,
+      descargaLon: p.descargaLon ?? null,
       // remitoIds SÍ es visible para Central (005-chofer-estados-viaje,
       // FR-003 — "control interno"), a diferencia de serializePunto en
       // routes/recorrido.js (chofer), que lo omite a propósito.

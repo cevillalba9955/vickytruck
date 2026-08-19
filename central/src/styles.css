@@ -31,14 +31,6 @@ body {
   border-radius: 0.5rem;
 }
 
-/* Línea de tiempo de puntos dentro del Card de RecorridoDetalle. */
-.detalle-view__lista {
-  padding-left: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
 /* Accesibilidad: etiqueta solo para lectores de pantalla — el indicador de
    estado MQTT del header es visualmente solo un punto de color (US3), pero
    mantiene su texto disponible para lectores de pantalla. */
