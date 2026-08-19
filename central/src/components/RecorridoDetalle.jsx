@@ -1,3 +1,4 @@
+import { Card, Tag, Typography } from "antd";
 import { MapaSeguimiento } from "./MapaSeguimiento.jsx";
 import { construirPuntosEnMapa } from "../services/marcadores.js";
 import { formatearHoraLocal } from "../services/tiempo.js";
@@ -6,6 +7,12 @@ const ETIQUETAS_ESTADO = {
   pendiente: "Pendiente",
   arribado: "Arribado",
   completado: "Completado",
+};
+
+const COLOR_ESTADO_PUNTO = {
+  pendiente: "default",
+  arribado: "blue",
+  completado: "green",
 };
 
 // Tiempo de regreso a base (008-registro-inicio-fin-recorrido, SC-003): desde
@@ -33,6 +40,10 @@ function calcularTiempoRegresoMin(puntos, cierreEn) {
  * ya calculada desde `activos` (el mismo estado que alimenta el mapa
  * general) para no requerir otro pedido de red; `null`/`undefined` si el
  * flete todavía no reportó ubicación o el recorrido ya no está activo.
+ *
+ * 009-central-mejora-visual (US1, FR-003): panel con jerarquía visual clara
+ * (Card con encabezado/metadatos, línea de tiempo de puntos, mapa) en vez
+ * del bloque de texto plano que tenía antes.
  */
 export function RecorridoDetalle({ detalle, marcadorFlete }) {
   if (!detalle) return null;
@@ -40,8 +51,11 @@ export function RecorridoDetalle({ detalle, marcadorFlete }) {
   const tiempoRegresoMin = calcularTiempoRegresoMin(puntos, recorrido.cierreEn);
 
   return (
-    <section className="detalle-view" aria-label={`Detalle del recorrido ${recorrido.id}`}>
-      <h2>Recorrido {recorrido.id}</h2>
+    <Card
+      className="detalle-view"
+      aria-label={`Detalle del recorrido ${recorrido.id}`}
+      title={`Recorrido ${recorrido.id}`}
+    >
       <p>
         Estado: <strong>{recorrido.estado}</strong>
         {recorrido.fleteId && <> — Flete asignado: {recorrido.fleteId}</>}
@@ -58,10 +72,10 @@ export function RecorridoDetalle({ detalle, marcadorFlete }) {
       <ol className="detalle-view__lista">
         {puntos.map((p) => (
           <li key={p.id}>
-            <strong>
+            <Typography.Text strong>
               {p.orden} de {puntos.length}
-            </strong>{" "}
-            — {ETIQUETAS_ESTADO[p.estado] ?? p.estado}
+            </Typography.Text>{" "}
+            <Tag color={COLOR_ESTADO_PUNTO[p.estado]}>{ETIQUETAS_ESTADO[p.estado] ?? p.estado}</Tag>
             {/* 006-normalizar-formato-horario, US2: HH24:MM:SS local — funciona
                 igual para timestamps nuevos (-03:00) e históricos (Z, FR-006). */}
             {p.inicioEn && <div>Inicio: {formatearHoraLocal(p.inicioEn)}</div>}
@@ -72,6 +86,6 @@ export function RecorridoDetalle({ detalle, marcadorFlete }) {
       </ol>
 
       <MapaSeguimiento marcadoresFlete={marcadorFlete ? [marcadorFlete] : []} puntos={construirPuntosEnMapa(puntos)} />
-    </section>
+    </Card>
   );
 }

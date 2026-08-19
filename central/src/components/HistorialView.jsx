@@ -1,6 +1,23 @@
 import { useEffect, useState } from "react";
+import { Table, Button, Empty } from "antd";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { listarHistorial } from "../services/api.js";
 import { RecorridoDetalle } from "./RecorridoDetalle.jsx";
+
+const COLUMNAS = (onVerLineaDeTiempo) => [
+  { title: "Recorrido", dataIndex: "id", key: "id" },
+  { title: "Flete", dataIndex: "fleteId", key: "fleteId" },
+  { title: "Puntos", key: "puntos", render: (_, h) => h.puntos.length },
+  {
+    title: "",
+    key: "acciones",
+    render: (_, h) => (
+      <Button type="link" onClick={() => onVerLineaDeTiempo(h)}>
+        Ver línea de tiempo
+      </Button>
+    ),
+  },
+];
 
 /** Historial de recorridos finalizados (Historia 5, FR-010). */
 export function HistorialView() {
@@ -14,53 +31,40 @@ export function HistorialView() {
   if (seleccionado) {
     return (
       <div className="historial-view">
-        <button type="button" onClick={() => setSeleccionado(null)}>
-          ← Volver al historial
-        </button>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setSeleccionado(null)}>
+          Volver al historial
+        </Button>
         <RecorridoDetalle detalle={seleccionado} />
       </div>
     );
   }
 
   if (historial.length === 0) {
-    return <p role="status">Todavía no hay recorridos finalizados.</p>;
+    return (
+      <div role="status">
+        <Empty description="Todavía no hay recorridos finalizados." />
+      </div>
+    );
   }
 
+  const abrirLineaDeTiempo = (h) =>
+    setSeleccionado({
+      // cierreEn (008-registro-inicio-fin-recorrido): viene del mapeo de
+      // GET /api/central/recorridos/historial en backend/src/routes/central.js.
+      recorrido: { id: h.id, estado: "finalizado", fleteId: h.fleteId, cierreEn: h.cierreEn },
+      puntos: h.puntos,
+    });
+
   return (
-    <table className="historial-view">
-      <thead>
-        <tr>
-          <th>Recorrido</th>
-          <th>Flete</th>
-          <th>Puntos</th>
-          <th aria-hidden="true" />
-        </tr>
-      </thead>
-      <tbody>
-        {historial.map((h) => (
-          <tr key={h.id}>
-            <td>{h.id}</td>
-            <td>{h.fleteId}</td>
-            <td>{h.puntos.length}</td>
-            <td>
-              <button
-                type="button"
-                onClick={() =>
-                  setSeleccionado({
-                    // cierreEn (008-registro-inicio-fin-recorrido): viene del
-                    // mapeo de GET /api/central/recorridos/historial en
-                    // backend/src/routes/central.js.
-                    recorrido: { id: h.id, estado: "finalizado", fleteId: h.fleteId, cierreEn: h.cierreEn },
-                    puntos: h.puntos,
-                  })
-                }
-              >
-                Ver línea de tiempo
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <Table
+      className="historial-view"
+      rowKey="id"
+      pagination={false}
+      columns={COLUMNAS(abrirLineaDeTiempo)}
+      dataSource={historial}
+      // 009-central-mejora-visual: mismo contenimiento de scroll horizontal
+      // que MonitorView, para no romper la navegación en un iframe angosto.
+      scroll={{ x: "max-content" }}
+    />
   );
 }

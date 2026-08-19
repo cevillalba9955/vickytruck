@@ -32,8 +32,8 @@ Proyecto web existente: esta feature toca únicamente `central/src` y
 
 **Purpose**: agregar la dependencia de UI y su configuración de tema, sin tocar aún ningún componente de vista.
 
-- [ ] T001 Agregar `antd` y `@ant-design/icons` (mismas majors que `rs956/frontend/package.json`, v6.x) a `central/package.json` y correr `npm install` en `central/`
-- [ ] T002 [P] Crear `central/src/theme/tokens.js` con un `themeConfig` de antd que reutiliza la paleta/tipografía/bordes de `rs956/frontend/src/theme/tokens.js` (`colorPrimary`, `headerBg`, `colorBgLayout`, `borderRadius`, `fontFamily`), sin `compactAlgorithm` (research.md Decisión 2)
+- [X] T001 Agregar `antd` y `@ant-design/icons` (mismas majors que `rs956/frontend/package.json`, v6.x) a `central/package.json` y correr `npm install` en `central/`
+- [X] T002 [P] Crear `central/src/theme/tokens.js` con un `themeConfig` de antd que reutiliza la paleta/tipografía/bordes de `rs956/frontend/src/theme/tokens.js` (`colorPrimary`, `headerBg`, `colorBgLayout`, `borderRadius`, `fontFamily`), sin `compactAlgorithm` (research.md Decisión 2)
 
 ---
 
@@ -43,10 +43,10 @@ Proyecto web existente: esta feature toca únicamente `central/src` y
 
 **⚠️ CRITICAL**: ninguna historia de usuario puede empezar hasta que esta fase esté completa.
 
-- [ ] T003 Envolver el árbol de la app con `ConfigProvider` de antd usando `themeConfig` en `central/src/main.jsx` (depende de T002)
-- [ ] T004 Crear `central/src/components/AppShell.jsx` con `Layout`/`Sider`/`Menu` de antd, ítems para Monitoreo/Mapa/Historial, prop `seccion` (sección activa) y callback `onCambiarSeccion` (research.md Decisión 3) (depende de T003)
-- [ ] T005 Actualizar `central/src/main.jsx` para renderizar `<AppShell seccion={vista} onCambiarSeccion={setVista}>...</AppShell>` en lugar del `<nav className="app__nav">` manual, preservando la lógica de ruteo entre vistas ya existente (depende de T004)
-- [ ] T006 [P] Reducir `central/src/styles.css` a solo el CSS residual no cubierto por antd (mismo patrón que `rs956/frontend/src/styles/app.css`), quitando las reglas de `.app__nav` ya reemplazadas por `AppShell`
+- [X] T003 Envolver el árbol de la app con `ConfigProvider` de antd usando `themeConfig` en `central/src/main.jsx` (depende de T002)
+- [X] T004 Crear `central/src/components/AppShell.jsx` con `Layout`/`Sider`/`Menu` de antd, ítems para Monitoreo/Mapa/Historial, prop `seccion` (sección activa) y callback `onCambiarSeccion` (research.md Decisión 3) (depende de T003)
+- [X] T005 Actualizar `central/src/main.jsx` para renderizar `<AppShell seccion={vista} onCambiarSeccion={setVista}>...</AppShell>` en lugar del `<nav className="app__nav">` manual, preservando la lógica de ruteo entre vistas ya existente (depende de T004)
+- [X] T006 [P] Reducir `central/src/styles.css` a solo el CSS residual no cubierto por antd (mismo patrón que `rs956/frontend/src/styles/app.css`), quitando las reglas de `.app__nav` ya reemplazadas por `AppShell`
 
 **Checkpoint**: la navegación lateral funciona y todas las vistas siguen renderizando con su lógica actual (el contenido interno de cada vista todavía no tiene el nuevo estilo).
 
@@ -60,12 +60,12 @@ Proyecto web existente: esta feature toca únicamente `central/src` y
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Migrar la tabla de `central/src/components/MonitorView.jsx` de `<table>` artesanal a `Table` de antd (columnas: Recorrido, Flete, Progreso, Estado de viaje, Última ubicación, Actualizado, acción), preservando exactamente los mismos textos/valores por fila y los atributos `data-ubicacion-reciente`/`data-viaje-estado` (research.md Decisión 4)
-- [ ] T008 [US1] Migrar la tabla de `central/src/components/HistorialView.jsx` de `<table>` artesanal a `Table` de antd (columnas: Recorrido, Flete, Puntos, acción), preservando exactamente los mismos textos/valores por fila (research.md Decisión 4)
-- [ ] T009 [US1] Restylar `central/src/components/RecorridoDetalle.jsx` usando `Card` + `Descriptions` de antd para el encabezado/metadatos (estado, flete asignado, cierre, tiempo de regreso a base), preservando exactamente los textos que verifican los tests (research.md Decisión 5)
-- [ ] T010 [P] [US1] Envolver los mensajes de estado vacío ("No hay recorridos activos en este momento", "Todavía no hay recorridos finalizados") con `Empty`/`Typography.Text` de antd, preservando el atributo `role="status"` y el texto exacto (FR-009) en `central/src/components/MonitorView.jsx`, `central/src/components/HistorialView.jsx` y `central/src/components/MapaSeguimiento.jsx`
-- [ ] T011 [P] [US1] Envolver el contenedor de `MapaSeguimiento` dentro de un `Card` de antd en las vistas de Monitoreo/Mapa/Detalle para un panel visualmente consistente (FR-002/FR-003), sin modificar la lógica interna de `central/src/components/MapaSeguimiento.jsx`
-- [ ] T012 [US1] Correr `npm test` en `central/` y ajustar únicamente el markup (no las aserciones) de `MonitorView.jsx`/`RecorridoDetalle.jsx`/`HistorialView.jsx` hasta que toda la suite existente en `central/tests/components/` vuelva a pasar sin cambios de comportamiento (FR-006)
+- [X] T007 [US1] Migrar la tabla de `central/src/components/MonitorView.jsx` de `<table>` artesanal a `Table` de antd (columnas: Recorrido, Flete, Progreso, Estado de viaje, Última ubicación, Actualizado, acción), preservando exactamente los mismos textos/valores por fila y los atributos `data-ubicacion-reciente`/`data-viaje-estado` (research.md Decisión 4)
+- [X] T008 [US1] Migrar la tabla de `central/src/components/HistorialView.jsx` de `<table>` artesanal a `Table` de antd (columnas: Recorrido, Flete, Puntos, acción), preservando exactamente los mismos textos/valores por fila (research.md Decisión 4)
+- [X] T009 [US1] Restylar `central/src/components/RecorridoDetalle.jsx` usando `Card` + `Descriptions` de antd para el encabezado/metadatos (estado, flete asignado, cierre, tiempo de regreso a base), preservando exactamente los textos que verifican los tests (research.md Decisión 5)
+- [X] T010 [P] [US1] Envolver los mensajes de estado vacío ("No hay recorridos activos en este momento", "Todavía no hay recorridos finalizados") con `Empty`/`Typography.Text` de antd, preservando el atributo `role="status"` y el texto exacto (FR-009) en `central/src/components/MonitorView.jsx`, `central/src/components/HistorialView.jsx` y `central/src/components/MapaSeguimiento.jsx`
+- [X] T011 [P] [US1] Envolver el contenedor de `MapaSeguimiento` dentro de un `Card` de antd en las vistas de Monitoreo/Mapa/Detalle para un panel visualmente consistente (FR-002/FR-003), sin modificar la lógica interna de `central/src/components/MapaSeguimiento.jsx`
+- [X] T012 [US1] Correr `npm test` en `central/` y ajustar únicamente el markup (no las aserciones) de `MonitorView.jsx`/`RecorridoDetalle.jsx`/`HistorialView.jsx` hasta que toda la suite existente en `central/tests/components/` vuelva a pasar sin cambios de comportamiento (FR-006)
 
 **Checkpoint**: User Story 1 completa y verificable de forma independiente — jerarquía visual clara en las 4 vistas, cero regresión de datos.
 
@@ -79,9 +79,9 @@ Proyecto web existente: esta feature toca únicamente `central/src` y
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Asegurar que `selectedKeys` del `Menu` en `central/src/components/AppShell.jsx` refleje la sección de origen (Monitoreo/Historial) mientras se está en la vista de Detalle, coordinando el estado en `central/src/main.jsx` (US2, Acceptance Scenario 1)
-- [ ] T014 [US2] Estilizar las acciones "← Volver al monitoreo" (en `central/src/main.jsx`) y "← Volver al historial" (en `central/src/components/HistorialView.jsx`) como `Button` de antd con ícono `ArrowLeftOutlined` de `@ant-design/icons` (US2, Acceptance Scenario 2)
-- [ ] T015 [P] [US2] Agregar `central/tests/components/AppShell.test.jsx` que verifique que la sección activa pasada por prop queda resaltada en el menú (nuevo test, no modifica los existentes)
+- [X] T013 [US2] Asegurar que `selectedKeys` del `Menu` en `central/src/components/AppShell.jsx` refleje la sección de origen (Monitoreo/Historial) mientras se está en la vista de Detalle, coordinando el estado en `central/src/main.jsx` (US2, Acceptance Scenario 1)
+- [X] T014 [US2] Estilizar las acciones "← Volver al monitoreo" (en `central/src/main.jsx`) y "← Volver al historial" (en `central/src/components/HistorialView.jsx`) como `Button` de antd con ícono `ArrowLeftOutlined` de `@ant-design/icons` (US2, Acceptance Scenario 2)
+- [X] T015 [P] [US2] Agregar `central/tests/components/AppShell.test.jsx` que verifique que la sección activa pasada por prop queda resaltada en el menú (nuevo test, no modifica los existentes)
 
 **Checkpoint**: User Stories 1 y 2 funcionan de forma independiente y en conjunto.
 
@@ -95,10 +95,10 @@ Proyecto web existente: esta feature toca únicamente `central/src` y
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] En `central/src/components/MonitorView.jsx`, aplicar `rowClassName` en el `Table` de antd según `ultimaUbicacion.reciente`, preservando (con nuevo estilo) la distinción visual que hoy da la regla CSS `tr[data-ubicacion-reciente="false"] td`
-- [ ] T017 [US3] Estilizar el mensaje de estado del canal MQTT ("Canal tiempo real MQTT: {estado}") en `central/src/main.jsx` con `Alert`/`Tag` de antd según el estado (`connected`/`disabled`/otro), preservando `role="status"` y el texto exacto
-- [ ] T018 [P] [US3] Estilizar la etiqueta de `viajeEstado` (incluyendo "Regresando a base") en `central/src/components/MonitorView.jsx` con `Tag` de antd color-codeado, preservando el texto exacto que verifican los tests existentes
-- [ ] T019 [US3] Correr `npm test` en `central/` nuevamente y confirmar que las aserciones existentes sobre ubicación reciente/no reciente, "Regresando a base" y coexistencia con el estado MQTT (`central/tests/components/MonitorView.test.jsx`) siguen pasando sin modificarse
+- [X] T016 [US3] En `central/src/components/MonitorView.jsx`, aplicar `rowClassName` en el `Table` de antd según `ultimaUbicacion.reciente`, preservando (con nuevo estilo) la distinción visual que hoy da la regla CSS `tr[data-ubicacion-reciente="false"] td`
+- [X] T017 [US3] Estilizar el mensaje de estado del canal MQTT ("Canal tiempo real MQTT: {estado}") en `central/src/main.jsx` con `Alert`/`Tag` de antd según el estado (`connected`/`disabled`/otro), preservando `role="status"` y el texto exacto
+- [X] T018 [P] [US3] Estilizar la etiqueta de `viajeEstado` (incluyendo "Regresando a base") en `central/src/components/MonitorView.jsx` con `Tag` de antd color-codeado, preservando el texto exacto que verifican los tests existentes
+- [X] T019 [US3] Correr `npm test` en `central/` nuevamente y confirmar que las aserciones existentes sobre ubicación reciente/no reciente, "Regresando a base" y coexistencia con el estado MQTT (`central/tests/components/MonitorView.test.jsx`) siguen pasando sin modificarse
 
 **Checkpoint**: las tres historias de usuario están completas y verificadas de forma independiente.
 
@@ -108,9 +108,9 @@ Proyecto web existente: esta feature toca únicamente `central/src` y
 
 **Purpose**: validación final de los gates de la constitución y de consistencia visual con la referencia.
 
-- [ ] T020 Validar manualmente el embebido en iframe angosto y el acceso directo de Central (Constitución, Principio III) siguiendo `specs/009-central-mejora-visual/quickstart.md`, paso 5
-- [ ] T021 [P] Confirmar que `npm run build` en `central/` compila sin errores con las nuevas dependencias (`antd`, `@ant-design/icons`)
-- [ ] T022 Hacer una revisión visual side-by-side de Central contra `rs956/frontend` para confirmar SC-004 (paleta, tipografía y estilo de navegación/tablas coherentes)
+- [X] T020 Validar manualmente el embebido en iframe angosto y el acceso directo de Central (Constitución, Principio III) siguiendo `specs/009-central-mejora-visual/quickstart.md`, paso 5
+- [X] T021 [P] Confirmar que `npm run build` en `central/` compila sin errores con las nuevas dependencias (`antd`, `@ant-design/icons`)
+- [X] T022 Hacer una revisión visual side-by-side de Central contra `rs956/frontend` para confirmar SC-004 (paleta, tipografía y estilo de navegación/tablas coherentes)
 
 ---
 

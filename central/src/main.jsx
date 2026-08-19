@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { ConfigProvider, Card, Button, Alert } from "antd";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import "leaflet/dist/leaflet.css";
 import "./styles.css";
+import { themeConfig } from "./theme/tokens.js";
+import { AppShell } from "./components/AppShell.jsx";
 import { MonitorView } from "./components/MonitorView.jsx";
 import { RecorridoDetalle } from "./components/RecorridoDetalle.jsx";
 import { HistorialView } from "./components/HistorialView.jsx";
@@ -21,8 +25,22 @@ import { construirMarcadoresFlete } from "./services/marcadores.js";
 const INTERVALO_POLLING_MQTT_CONECTADO_MS = 30000;
 const INTERVALO_POLLING_RESPALDO_MS = 5000;
 
+// 009-central-mejora-visual (US3): color por estado del canal MQTT, para que
+// el aviso siga siendo distinguible de un vistazo con el nuevo estilo.
+const TIPO_ALERTA_MQTT = {
+  connected: "success",
+  reconnecting: "warning",
+  disconnected: "error",
+  error: "error",
+  payload_error: "warning",
+};
+
 function App() {
   const [vista, setVista] = useState("monitor");
+  // Sección de navegación desde la que se abrió el Detalle (Monitoreo o
+  // Mapa): permite que el menú lateral siga mostrando esa sección resaltada
+  // mientras se está viendo el Detalle (009-central-mejora-visual, US2).
+  const [origenDetalle, setOrigenDetalle] = useState("monitor");
   const [activos, setActivos] = useState([]);
   const [error, setError] = useState(null);
   const [detalle, setDetalle] = useState(null);
@@ -43,6 +61,7 @@ function App() {
     });
 
   const abrirDetalle = async (id) => {
+    setOrigenDetalle(vista);
     setDetalle(await obtenerDetalle(id));
     setVista("detalle");
   };
@@ -72,36 +91,41 @@ function App() {
   }, []);
 
   return (
-    <main className="app">
-      <h1>Central — Panel de control</h1>
-      <nav className="app__nav">
-        <button type="button" aria-pressed={vista === "monitor"} onClick={() => setVista("monitor")}>
-          Monitoreo
-        </button>
-        <button type="button" aria-pressed={vista === "mapa"} onClick={() => setVista("mapa")}>
-          Mapa
-        </button>
-        <button type="button" aria-pressed={vista === "historial"} onClick={() => setVista("historial")}>
-          Historial
-        </button>
-      </nav>
-
-      {error && <p role="alert">No se pudo actualizar el panel; reintentando…</p>}
-      {mqttEstado !== "disabled" && <p role="status">Canal tiempo real MQTT: {mqttEstado}</p>}
+    <AppShell seccion={vista === "detalle" ? origenDetalle : vista} onCambiarSeccion={setVista}>
+      {error && (
+        <Alert
+          role="alert"
+          type="error"
+          showIcon
+          message="No se pudo actualizar el panel; reintentando…"
+          style={{ marginBottom: 12 }}
+        />
+      )}
+      {mqttEstado !== "disabled" && (
+        <Alert
+          role="status"
+          type={TIPO_ALERTA_MQTT[mqttEstado] ?? "info"}
+          showIcon
+          message={`Canal tiempo real MQTT: ${mqttEstado}`}
+          style={{ marginBottom: 12 }}
+        />
+      )}
 
       {vista === "monitor" && <MonitorView recorridos={activos} onSeleccionar={abrirDetalle} />}
       {vista === "mapa" && (
-        <MapaSeguimiento
-          marcadoresFlete={construirMarcadoresFlete(activos)}
-          hayDatos={activos.length > 0}
-          onSeleccionarFlete={abrirDetalle}
-        />
+        <Card>
+          <MapaSeguimiento
+            marcadoresFlete={construirMarcadoresFlete(activos)}
+            hayDatos={activos.length > 0}
+            onSeleccionarFlete={abrirDetalle}
+          />
+        </Card>
       )}
       {vista === "detalle" && (
         <>
-          <button type="button" onClick={() => setVista("monitor")}>
-            ← Volver al monitoreo
-          </button>
+          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setVista(origenDetalle)}>
+            Volver al monitoreo
+          </Button>
           <RecorridoDetalle
             detalle={detalle}
             marcadorFlete={construirMarcadoresFlete(activos).find(
@@ -111,7 +135,7 @@ function App() {
         </>
       )}
       {vista === "historial" && <HistorialView />}
-    </main>
+    </AppShell>
   );
 }
 
@@ -120,6 +144,8 @@ function App() {
 // bloquea ni degrada la funcionalidad.
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <ConfigProvider theme={themeConfig}>
+      <App />
+    </ConfigProvider>
   </React.StrictMode>,
 );
