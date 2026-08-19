@@ -478,6 +478,19 @@ export function createIntegracionStore() {
           // Decisión 6: sin tópico MQTT nuevo).
           viajeEstado: r.viajeEstado,
           puntoActivoId: r.puntoActivoId,
+          // puntoActivo (009-central-mejora-visual): datos mínimos del punto
+          // que el chofer está trabajando ahora mismo, para que Monitoreo
+          // pueda mostrar el cliente en vez de solo el id del punto. `cliente`
+          // ya llega desde Oracle (V_PUNTOS_ENTREGA.CLIENTE) y se guarda en el
+          // punto vía camposInformativos, pero hasta ahora no se exponía a
+          // Central (specs/005-chofer-estados-viaje/data-model.md lo marcaba
+          // explícitamente "fuera de alcance para Central" en esa feature).
+          puntoActivo: r.puntoActivoId
+            ? (() => {
+                const p = r.puntos.find((punto) => punto.id === r.puntoActivoId);
+                return p ? { id: p.id, orden: p.orden, cliente: p.cliente ?? null } : null;
+              })()
+            : null,
           // esperandoFinalizar (008-registro-inicio-fin-recorrido, research.md
           // Decisión 5): todos los puntos completado pero el chofer todavía no
           // tocó FINALIZAR — sin esta señal Central no puede distinguir este

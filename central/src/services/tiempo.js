@@ -32,3 +32,16 @@ const formateadorHora = new Intl.DateTimeFormat("es-AR", {
 export function formatearHoraLocal(iso) {
   return formateadorHora.format(new Date(iso));
 }
+
+/**
+ * Minutos enteros transcurridos desde `iso` hasta `ahora` (009-central-
+ * mejora-visual): usado en Monitoreo para mostrar "hace cuánto" fue la
+ * última lectura de ubicación, en vez de la hora absoluta. `null` si `iso`
+ * es nulo/indefinido. Nunca negativo (un reloj de cliente ligeramente
+ * adelantado no debe mostrar minutos negativos).
+ */
+export function minutosTranscurridos(iso, ahora = new Date()) {
+  if (!iso) return null;
+  const ms = ahora.getTime() - new Date(iso).getTime();
+  return Math.max(0, Math.floor(ms / 60000));
+}

@@ -38,8 +38,8 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
               fleteNombre: "Roberto Gómez",
               estado: "activo",
               puntos: [
-                { id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41 },
-                { id: "p2", orden: 2, estado: "pendiente", lat: -34.62, lon: -58.42 },
+                { id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41, cliente: "Almacén Centro" },
+                { id: "p2", orden: 2, estado: "pendiente", lat: -34.62, lon: -58.42, cliente: "Supermercado Sur" },
               ],
             },
           ],
@@ -73,6 +73,9 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
     const activosTrasIniciar = await (await fetch(`${server.centralBaseUrl}/recorridos/activos`)).json();
     assert.equal(activosTrasIniciar.recorridos[0].viajeEstado, "manejando");
     assert.equal(activosTrasIniciar.recorridos[0].puntoActivoId, "p2");
+    // 009-central-mejora-visual: Central ve el cliente del punto activo, no
+    // solo su id, para poder mostrarlo en la columna "Punto" de Monitoreo.
+    assert.deepEqual(activosTrasIniciar.recorridos[0].puntoActivo, { id: "p2", orden: 2, cliente: "Supermercado Sur" });
   } finally {
     process.env.INTEGRACION_API_KEY = prev;
     await server.cerrar();

@@ -25,16 +25,6 @@ import { construirMarcadoresFlete } from "./services/marcadores.js";
 const INTERVALO_POLLING_MQTT_CONECTADO_MS = 30000;
 const INTERVALO_POLLING_RESPALDO_MS = 5000;
 
-// 009-central-mejora-visual (US3): color por estado del canal MQTT, para que
-// el aviso siga siendo distinguible de un vistazo con el nuevo estilo.
-const TIPO_ALERTA_MQTT = {
-  connected: "success",
-  reconnecting: "warning",
-  disconnected: "error",
-  error: "error",
-  payload_error: "warning",
-};
-
 function App() {
   const [vista, setVista] = useState("monitor");
   // Sección de navegación desde la que se abrió el Detalle (Monitoreo o
@@ -91,22 +81,17 @@ function App() {
   }, []);
 
   return (
-    <AppShell seccion={vista === "detalle" ? origenDetalle : vista} onCambiarSeccion={setVista}>
+    <AppShell
+      seccion={vista === "detalle" ? origenDetalle : vista}
+      onCambiarSeccion={setVista}
+      mqttEstado={mqttEstado}
+    >
       {error && (
         <Alert
           role="alert"
           type="error"
           showIcon
-          message="No se pudo actualizar el panel; reintentando…"
-          style={{ marginBottom: 12 }}
-        />
-      )}
-      {mqttEstado !== "disabled" && (
-        <Alert
-          role="status"
-          type={TIPO_ALERTA_MQTT[mqttEstado] ?? "info"}
-          showIcon
-          message={`Canal tiempo real MQTT: ${mqttEstado}`}
+          title="No se pudo actualizar el panel; reintentando…"
           style={{ marginBottom: 12 }}
         />
       )}

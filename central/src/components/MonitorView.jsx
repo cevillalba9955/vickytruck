@@ -1,16 +1,30 @@
-import { Table, Button, Empty, Tag } from "antd";
-import { formatearHoraLocal } from "../services/tiempo.js";
+import { Table, Button, Empty, Tag, Badge, Tooltip, Progress } from "antd";
+import { minutosTranscurridos } from "../services/tiempo.js";
 
-// 006-normalizar-formato-horario, US2: se agrega la hora HH24:MM:SS local
-// del último reporte, además del texto reciente/no reciente que ya existía.
-function formatearUbicacion(ultimaUbicacion) {
-  if (!ultimaUbicacion || ultimaUbicacion.en == null) return "Sin ubicación reportada";
-  const estado = ultimaUbicacion.reciente ? "Ubicación reciente" : "Ubicación no reciente";
-  return `${estado} (${formatearHoraLocal(ultimaUbicacion.en)})`;
-}
+// 009-central-mejora-visual: colores de la barra de progreso — el mismo
+// verde que ya usa el mapa para "reciente/completado" (MapaSeguimiento.jsx)
+// cuando el recorrido está 100% completado, y el azul primario del theme
+// (theme/tokens.js) mientras sigue en curso.
+const COLOR_PROGRESO_COMPLETO = "#1a7f37";
+const COLOR_PROGRESO_EN_CURSO = "#2c5f8a";
 
-function formatearActualizado(updatedAt) {
-  return updatedAt ? formatearHoraLocal(updatedAt) : "—";
+// Barra de progreso "Completados / Total" (009-central-mejora-visual):
+// reemplaza el texto "X completados / Y en curso / Z pendientes" — ese
+// detalle sigue disponible en el tooltip, sin ocupar espacio en la tabla.
+function BarraProgreso({ progreso }) {
+  const total = progreso.completados + progreso.arribados + progreso.pendientes;
+  const porcentaje = total > 0 ? Math.round((progreso.completados / total) * 100) : 0;
+  return (
+    <Tooltip title={`${progreso.completados} completados / ${progreso.arribados} en curso / ${progreso.pendientes} pendientes`}>
+      <Progress
+        percent={porcentaje}
+        format={() => `${progreso.completados} / ${total}`}
+        strokeColor={porcentaje >= 100 ? COLOR_PROGRESO_COMPLETO : COLOR_PROGRESO_EN_CURSO}
+        size="small"
+        style={{ minWidth: 120 }}
+      />
+    </Tooltip>
+  );
 }
 
 const ETIQUETAS_VIAJE_ESTADO = {
@@ -29,19 +43,52 @@ const COLOR_VIAJE_ESTADO = {
 
 // Estado de viaje del chofer (005-chofer-estados-viaje, FR-021), visible en
 // (casi) tiempo real vía el mismo polling que ya trae `progreso`/`ultimaUbicacion`.
+// 009-central-mejora-visual: ya no incluye el id del punto activo — ese dato
+// pasa a su propia columna "Punto" (con el nombre de cliente).
 function textoViajeEstado(r) {
   // esperandoFinalizar (008-registro-inicio-fin-recorrido, research.md
   // Decisión 5): todos los puntos completado pero el chofer todavía no tocó
   // FINALIZAR — distinto de cualquier otro "Detenido" intermedio entre puntos.
   if (r.esperandoFinalizar) return "Regresando a base";
-  const etiqueta = ETIQUETAS_VIAJE_ESTADO[r.viajeEstado] ?? "—";
-  if (r.puntoActivoId == null) return etiqueta;
-  return `${etiqueta} (punto ${r.puntoActivoId})`;
+  return ETIQUETAS_VIAJE_ESTADO[r.viajeEstado] ?? "—";
 }
 
 function colorViajeEstado(r) {
   if (r.esperandoFinalizar) return "purple";
   return COLOR_VIAJE_ESTADO[r.viajeEstado] ?? "default";
+}
+
+// 009-central-mejora-visual: el punto activo se muestra por el nombre de su
+// cliente (más útil para el operador que un id interno como "p3"); si el
+// backend todavía no tiene el cliente de ese punto, cae a "Punto {orden}"
+// en vez de dejar la celda vacía.
+function textoPunto(r) {
+  if (!r.puntoActivo) return "—";
+  return r.puntoActivo.cliente || `Punto ${r.puntoActivo.orden ?? r.puntoActivo.id}`;
+}
+
+// 009-central-mejora-visual: "Última ubicación" y "Actualizado" se unifican
+// en una sola columna — un punto de color por estado (reciente/no
+// reciente/sin datos) más los minutos transcurridos desde la última lectura
+// de ubicación (no la hora absoluta ni el updatedAt del recorrido, que es la
+// fecha de asignación, no una lectura de GPS).
+function IndicadorUbicacion({ ultimaUbicacion }) {
+  if (!ultimaUbicacion || ultimaUbicacion.en == null) {
+    return (
+      <Tooltip title="Sin ubicación reportada">
+        <Badge status="default" text="—" />
+      </Tooltip>
+    );
+  }
+  const minutos = minutosTranscurridos(ultimaUbicacion.en);
+  const status = ultimaUbicacion.reciente ? "success" : "warning";
+  const etiqueta = ultimaUbicacion.reciente ? "Ubicación reciente" : "Ubicación no reciente";
+  const texto = minutos < 1 ? "<1 min" : `${minutos} min`;
+  return (
+    <Tooltip title={`${etiqueta} — hace ${texto}`}>
+      <Badge status={status} text={texto} />
+    </Tooltip>
+  );
 }
 
 const COLUMNAS = (onSeleccionar) => [
@@ -50,15 +97,15 @@ const COLUMNAS = (onSeleccionar) => [
   {
     title: "Progreso",
     key: "progreso",
-    render: (_, r) => `${r.progreso.completados} completados / ${r.progreso.arribados} en curso / ${r.progreso.pendientes} pendientes`,
+    render: (_, r) => <BarraProgreso progreso={r.progreso} />,
   },
   {
     title: "Estado de viaje",
     key: "viajeEstado",
     render: (_, r) => <Tag color={colorViajeEstado(r)}>{textoViajeEstado(r)}</Tag>,
   },
-  { title: "Última ubicación", key: "ultimaUbicacion", render: (_, r) => formatearUbicacion(r.ultimaUbicacion) },
-  { title: "Actualizado", key: "actualizado", render: (_, r) => formatearActualizado(r.updatedAt) },
+  { title: "Punto", key: "punto", render: (_, r) => textoPunto(r) },
+  { title: "Ubicación", key: "ubicacion", render: (_, r) => <IndicadorUbicacion ultimaUbicacion={r.ultimaUbicacion} /> },
   ...(onSeleccionar
     ? [
         {
@@ -76,8 +123,8 @@ const COLUMNAS = (onSeleccionar) => [
 
 /**
  * Vista de monitoreo en vivo (Historia 1, FR-001, FR-002): un renglón por
- * recorrido activo, con su flete, progreso, estado de viaje y última
- * ubicación conocida.
+ * recorrido activo, con su flete, progreso, estado de viaje, punto que está
+ * trabajando y última ubicación conocida.
  */
 export function MonitorView({ recorridos, onSeleccionar }) {
   if (!recorridos || recorridos.length === 0) {

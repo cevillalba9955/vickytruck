@@ -1,4 +1,4 @@
-import { Layout, Menu } from "antd";
+import { Layout, Menu, Badge, Tooltip } from "antd";
 import { UnorderedListOutlined, EnvironmentOutlined, HistoryOutlined } from "@ant-design/icons";
 
 const { Header, Sider, Content } = Layout;
@@ -15,11 +15,37 @@ const SECCIONES = [
   { key: "historial", icon: <HistoryOutlined />, label: "Historial" },
 ];
 
-export function AppShell({ seccion, onCambiarSeccion, children }) {
+// Indicador del canal MQTT en el header (solo ícono, sin texto visible): un
+// punto de color que refleja el estado, con el texto disponible en el
+// tooltip y para lectores de pantalla (aria-live).
+const ESTADO_MQTT_BADGE = {
+  connected: { status: "success", label: "Canal tiempo real MQTT: conectado" },
+  reconnecting: { status: "processing", label: "Canal tiempo real MQTT: reconectando" },
+  disconnected: { status: "error", label: "Canal tiempo real MQTT: desconectado" },
+  error: { status: "error", label: "Canal tiempo real MQTT: error" },
+  payload_error: { status: "warning", label: "Canal tiempo real MQTT: error de datos" },
+};
+
+export function AppShell({ seccion, onCambiarSeccion, mqttEstado, children }) {
+  const badge =
+    mqttEstado && mqttEstado !== "disabled"
+      ? (ESTADO_MQTT_BADGE[mqttEstado] ?? { status: "default", label: `Canal tiempo real MQTT: ${mqttEstado}` })
+      : null;
+
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Header style={{ display: "flex", alignItems: "center" }}>
+      <Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ color: "#fff", fontSize: 18, fontWeight: 600 }}>Central — Panel de control</span>
+        {badge && (
+          <Tooltip title={badge.label}>
+            <span>
+              <span className="sr-only" role="status">
+                {badge.label}
+              </span>
+              <Badge status={badge.status} />
+            </span>
+          </Tooltip>
+        )}
       </Header>
       <Layout>
         <Sider width={220} style={{ borderRight: "1px solid #d9dee3" }}>
