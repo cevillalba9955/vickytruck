@@ -15,7 +15,7 @@ function BarraProgreso({ progreso }) {
   const total = progreso.completados + progreso.arribados + progreso.pendientes;
   const porcentaje = total > 0 ? Math.round((progreso.completados / total) * 100) : 0;
   return (
-    <Tooltip title={`${progreso.completados} completados / ${progreso.arribados} en curso / ${progreso.pendientes} pendientes`}>
+    <Tooltip title={`${progreso.completados} completados\n${progreso.arribados} en curso\n${progreso.pendientes} pendientes`}>
       <Progress
         percent={porcentaje}
         format={() => `${progreso.completados} / ${total}`}
@@ -49,7 +49,7 @@ function textoViajeEstado(r) {
   // esperandoFinalizar (008-registro-inicio-fin-recorrido, research.md
   // Decisión 5): todos los puntos completado pero el chofer todavía no tocó
   // FINALIZAR — distinto de cualquier otro "Detenido" intermedio entre puntos.
-  if (r.esperandoFinalizar) return "Regresando a base";
+  if (r.esperandoFinalizar) return "Regresando";
   return ETIQUETAS_VIAJE_ESTADO[r.viajeEstado] ?? "—";
 }
 
@@ -92,19 +92,20 @@ function IndicadorUbicacion({ ultimaUbicacion }) {
 }
 
 const COLUMNAS = (onSeleccionar) => [
-  { title: "Recorrido", dataIndex: "id", key: "id" },
+  { title: "Viaje ID", dataIndex: "id", key: "id" },
   { title: "Flete", key: "flete", render: (_, r) => r.flete?.nombre ?? "—" },
+  { title: "Chofer", key: "chofer", render: (_, r) => r.chofer?.nombre ?? "—" },
   {
     title: "Progreso",
     key: "progreso",
     render: (_, r) => <BarraProgreso progreso={r.progreso} />,
   },
   {
-    title: "Estado de viaje",
+    title: "Estado",
     key: "viajeEstado",
     render: (_, r) => <Tag color={colorViajeEstado(r)}>{textoViajeEstado(r)}</Tag>,
   },
-  { title: "Punto", key: "punto", render: (_, r) => textoPunto(r) },
+  { title: "Próximo Cliente", key: "punto", render: (_, r) => textoPunto(r) },
   { title: "Ubicación", key: "ubicacion", render: (_, r) => <IndicadorUbicacion ultimaUbicacion={r.ultimaUbicacion} /> },
   ...(onSeleccionar
     ? [
@@ -123,8 +124,8 @@ const COLUMNAS = (onSeleccionar) => [
 
 /**
  * Vista de monitoreo en vivo (Historia 1, FR-001, FR-002): un renglón por
- * recorrido activo, con su flete, progreso, estado de viaje, punto que está
- * trabajando y última ubicación conocida.
+ * recorrido activo, con su flete, chofer, progreso, estado de viaje, punto
+ * que está trabajando y última ubicación conocida.
  */
 export function MonitorView({ recorridos, onSeleccionar }) {
   if (!recorridos || recorridos.length === 0) {

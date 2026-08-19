@@ -470,6 +470,11 @@ export function createIntegracionStore() {
         resultado.push({
           id: r.id,
           flete: { id: r.fleteId, nombre: r.fleteNombre },
+          // chofer (009-central-mejora-visual): flete y chofer son entidades
+          // distintas (choferId/choferNombre, FR-013) — hasta ahora Central
+          // solo veía el flete. `null` si Oracle todavía no informó chofer
+          // para este recorrido.
+          chofer: r.choferId ? { id: r.choferId, nombre: r.choferNombre } : null,
           updatedAt: r.updatedAt,
           progreso: calcularProgreso(r.puntos),
           ultimaUbicacion: resolverUbicacion({ enMemoria: r.ultimaUbicacion, respaldoOracle: null, staleMs, ahora }),

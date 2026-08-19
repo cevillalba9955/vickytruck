@@ -105,7 +105,7 @@ describe("MonitorView", () => {
     );
 
     const fila = screen.getByText("Marta Sosa").closest("tr");
-    expect(fila).toHaveTextContent("Regresando a base");
+    expect(fila).toHaveTextContent("Regresando");
     expect(fila).not.toHaveTextContent("Detenido");
   });
 

@@ -36,6 +36,8 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
               token: "tok-central-e2e",
               fleteId: "F-77",
               fleteNombre: "Roberto Gómez",
+              choferId: "CH-9",
+              choferNombre: "Diego Fernández",
               estado: "activo",
               puntos: [
                 { id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41, cliente: "Almacén Centro" },
@@ -52,6 +54,8 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
     const activos = await (await fetch(`${server.centralBaseUrl}/recorridos/activos`)).json();
     assert.equal(activos.recorridos.length, 1);
     assert.deepEqual(activos.recorridos[0].flete, { id: "F-77", nombre: "Roberto Gómez" });
+    // 009-central-mejora-visual: Central ve el chofer, distinto del flete.
+    assert.deepEqual(activos.recorridos[0].chofer, { id: "CH-9", nombre: "Diego Fernández" });
 
     // 3. El chofer marca arribo.
     const arribo = await fetch(`${server.baseUrl}/tok-central-e2e/puntos/p1/arribo`, { method: "POST" });
