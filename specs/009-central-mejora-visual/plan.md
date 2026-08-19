@@ -32,11 +32,11 @@ de antd, igual que ya hace la referencia.
 
 **Target Platform**: Navegador de escritorio; embebido como iframe en una página Oracle APEX o accedido directamente por su propia URL (Constitución, Principio III) — no mobile-first
 
-**Project Type**: Web frontend — SPA existente en `central/` dentro del monorepo `vickytruck`; no requiere cambios en `central/backend` ni en `backend/`
+**Project Type**: Web frontend — SPA existente en `central/` dentro del monorepo `vickytruck`. MVP original (Historias 1-3): no requería cambios en `central/backend` ni en `backend/`. **Ampliado por Historias 4-6** (ver enmienda post-implementación abajo): sí toca `backend/src/state/integracionStore.js` y `backend/src/routes/central.js` (campos aditivos de solo lectura); `central/backend` sigue sin usarse.
 
 **Performance Goals**: Sin regresión sobre la cadencia de actualización actual (`INTERVALO_POLLING_RESPALDO_MS` = 5000ms, `INTERVALO_POLLING_MQTT_CONECTADO_MS` = 30000ms en `central/src/main.jsx`) ni sobre la reconexión MQTT; no hay SLA de carga inicial definido por el spec más allá de "uso interno de escritorio aceptable"
 
-**Constraints**: No romper el embebido en iframe (sin cambios de CSP/`X-Frame-Options`, sin asumir ventana de nivel superior — Principio III); layout de escritorio, no mobile-first; cero cambios de comportamiento funcional, forma de datos o llamadas a la API existente (FR-006)
+**Constraints**: No romper el embebido en iframe (sin cambios de CSP/`X-Frame-Options`, sin asumir ventana de nivel superior — Principio III); layout de escritorio, no mobile-first; FR-006 (MVP: cero cambios de comportamiento/forma de datos; **ampliado** por Historias 4-6 para permitir campos aditivos de solo lectura sobre los endpoints existentes, ver spec.md)
 
 **Scale/Scope**: 4 vistas existentes restyladas (Monitoreo, Mapa, Historial, Detalle) + navegación nueva (`AppShell`) + theme config nuevo; ~7 archivos de `central/src` tocados, sin nuevos endpoints ni entidades de datos
 
@@ -76,10 +76,13 @@ presentación sobre datos ya existentes.
 ### Source Code (repository root)
 
 Proyecto existente de tipo "web application" ya presente en el repo
-(`central/` = frontend de escritorio, `central/backend` = su API propia,
-sin relación con este cambio). Esta feature solo toca `central/src` (y sus
-tests en `central/tests`) — no requiere cambios en `central/backend`,
-`backend/` (API del Chofer) ni `frontend/` (app del Chofer).
+(`central/` = frontend de escritorio, `central/backend` = su API propia, sin
+relación con este cambio). MVP original (Historias 1-3): solo toca
+`central/src` (y sus tests en `central/tests`). **Ampliado por Historias
+4-6**: también toca `backend/src/state/integracionStore.js`,
+`backend/src/routes/central.js` y sus tests en `backend/tests/` (campos
+aditivos de solo lectura, ver data-model.md) — `central/backend` y
+`frontend/` (app del Chofer) siguen sin cambios.
 
 ```text
 central/
@@ -127,3 +130,28 @@ y del acceso directo (Principio III) y de que los tests existentes —guardia
 de la Trazabilidad de estado del Principio V— siguen pasando sin
 modificarse. La única entrada de Complexity Tracking (adopción de `antd`)
 se mantiene igual que en el check inicial. **Resultado: PASA.**
+
+## Enmienda post-implementación (Historias 4-6, 2026-08-19)
+
+Tras cerrar el MVP, se agregaron tres historias de usuario más (ver spec.md)
+pedidas directamente por el usuario, que amplían el Summary original ("sin
+tocar ningún dato... existente") para permitir exponer a Central datos
+adicionales de solo lectura ya trackeados en el backend (chofer, cliente por
+punto, GPS de auditoría de arribo/descarga — ver data-model.md y research.md
+Decisiones 6-12). Re-evaluando el Constitution Check con ese alcance
+ampliado:
+
+- **Principio IV** (Fuentes de verdad por dominio): sigue sin aplicar
+  cambios — los campos nuevos ya estaban en el store operacional cloud
+  (recibidos de Oracle en features previas), no se agrega ninguna
+  sincronización nueva ni se toca el contrato de push.
+- **Principio V** (Trazabilidad en tiempo casi real): se refuerza — el
+  Detalle de un recorrido activo ahora también se refresca por polling
+  (Decisión 11), corrigiendo un gap donde quedaba desactualizado mientras
+  Monitoreo sí se refrescaba.
+- **Principio VII** (Simplicidad): los campos nuevos son aditivos sobre
+  datos ya en memoria (sin nueva infraestructura ni almacenamiento); el
+  cálculo de proximidad GPS y de tiempo total vive en el frontend, sin
+  duplicar lógica en el backend (Decisiones 9-10).
+
+**Resultado**: PASA sin nuevas entradas de Complexity Tracking.

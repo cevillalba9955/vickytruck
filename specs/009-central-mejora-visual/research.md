@@ -110,3 +110,148 @@ min`, etc.).
 **Alternativas consideradas**: mantener el layout de texto plano y solo
 aplicar CSS — se descartó porque no resuelve la falta de jerarquía visual
 que señala US1 (Acceptance Scenario 3).
+
+---
+
+## Decisiones post-implementación (Historias 4-6, 2026-08-19)
+
+Tras cerrar el MVP (Decisiones 1-5, PR #17), el usuario pidió una serie de
+refinamientos concretos en la misma conversación. Se documentan acá porque
+varios requirieron ampliar el alcance original de "cero cambios de datos"
+(ver spec.md, nota de alcance y FR-006 ampliado).
+
+## Decisión 6 — Indicador de MQTT: ícono de color en el header, no texto en el contenido
+
+**Decisión**: el aviso "Canal tiempo real MQTT: {estado}" pasa de un
+`Alert` de antd en el contenido a un `Badge` tipo "status dot" en el header
+de `AppShell` (a la derecha del título), color-codeado por estado
+(`success`/`processing`/`error`/`warning`), con el texto disponible en un
+`Tooltip` y en un `<span className="sr-only" role="status">` para lectores
+de pantalla.
+
+**Rationale**: pedido explícito del usuario ("solo el icono... sin texto").
+Mantener el texto accesible (tooltip + sr-only) evita perder la información
+para quien no puede ver el color, sin ocupar espacio en el contenido.
+
+**Alternativas consideradas**: dejar el `Alert` pero más chico — se
+descartó porque seguía ocupando una fila completa del contenido, que es
+justo lo que el pedido buscaba evitar.
+
+## Decisión 7 — Progreso como barra Completados/Total
+
+**Decisión**: la columna "Progreso" de Monitoreo pasa de texto
+("X completados / Y en curso / Z pendientes") a `Progress` de antd con
+`format` custom mostrando "Completados / Total", `strokeColor` verde al
+100% y azul primario mientras está en curso; el desglose completo queda en
+un `Tooltip`.
+
+**Rationale**: pedido explícito del usuario ("barra porcentual... hacela
+linda"). Verde/azul reutiliza colores ya establecidos en el resto de la app
+(verde = "completado"/"reciente", azul primario = tema).
+
+**Alternativas consideradas**: ninguna relevante — el pedido especificaba
+el formato exacto.
+
+## Decisión 8 — Exponer chofer y cliente por punto a Central
+
+**Decisión**: `GET /api/central/recorridos/activos` expone `chofer:
+{id, nombre}|null` (además del `flete` ya existente) y `puntoActivo:
+{id, orden, cliente}|null` — datos que `integracionStore.js` ya trackeaba
+(`choferId`/`choferNombre` desde la feature 005; `cliente` por punto desde
+la feature 005/Oracle) pero no servía a Central. Cambio aditivo en
+`backend/src/state/integracionStore.js`, sin tocar el contrato de push de
+Oracle/APEX.
+
+**Rationale**: Monitoreo necesitaba mostrar "quién maneja" (distinto del
+flete) y "a qué cliente" corresponde el punto activo (Historia 4); ese dato
+ya existía en memoria, solo faltaba serializarlo.
+
+**Alternativas consideradas**: pedirle a Oracle un nuevo campo — descartado,
+el dato ya estaba disponible en el backend cloud sin tocar Oracle.
+
+## Decisión 9 — Historial expone flete/chofer con nombre; tiempo total se calcula en el frontend
+
+**Decisión**: `GET /api/central/recorridos/historial` agrega `flete:
+{id, nombre}` y `chofer: {id, nombre}|null` al objeto de cada recorrido
+(antes solo `fleteId` crudo). El "tiempo total" (Historia 5) se calcula
+100% en el frontend, sin tocar el backend: desde el `inicioEn` más
+temprano entre los puntos (fallback a `arriboEn` si falta) hasta el
+`cierreEn` del recorrido — mismo dato que ya viajaba en `puntos[]`.
+
+**Rationale**: igual que Decisión 8, el nombre ya estaba en memoria. El
+cálculo de tiempo total no requiere nuevo dato del backend porque
+`inicioEn`/`cierreEn` ya se exponían desde la feature 008; centralizarlo en
+`central/src/services/tiempo.js` (`primerEventoIso`,
+`calcularTiempoTotalMin`) evita otro roundtrip y se reutiliza también en
+RecorridoDetalle (Decisión 10).
+
+**Alternativas consideradas**: calcular el tiempo total en el backend y
+exponerlo ya formateado — descartado por innecesario (Principio VII): el
+dato fuente ya viaja, no hace falta duplicar el cálculo ni el mantenimiento
+en dos lenguajes.
+
+## Decisión 10 — Grilla de puntos con verificación de proximidad GPS (radio de 500 m)
+
+**Decisión**: `RecorridoDetalle` reemplaza la lista de texto por una
+`Table` de antd (Cliente, Estado, Hora de llegada, Hora de descarga). Cada
+hora se acompaña de un `Badge` de color: verde si la distancia Haversine
+entre la posición GPS capturada al marcar (`arriboLat/arriboLon` o
+`descargaLat/descargaLon`) y el destino del punto (`lat`/`lon`) es ≤ 500 m,
+rojo si es mayor, sin color si no hay GPS para ese evento. Requirió exponer
+`arriboLat/arriboLon/descargaLat/descargaLon` y `cliente` por punto en
+`serializarPuntosCentral` (antes explícitamente excluidos, ver comentario
+histórico en `integracionStore.js`) — `inicioLat/inicioLon/cierreLat/cierreLon`
+se mantienen fuera de alcance (contrato verificado por
+`backend/tests/contract/get-recorrido-detalle.test.js`).
+
+El cálculo de distancia (`distanciaMetros`, fórmula de Haversine) se agrega
+a `central/src/services/marcadores.js` (utilidad geográfica pura, mismo
+archivo que ya tenía lógica de coordenadas).
+
+**Rationale**: pedido explícito del usuario. El radio de 500 m es una señal
+visual de revisión manual, no una regla de negocio — el sistema nunca tuvo
+geocerca (specs/008-registro-inicio-fin-recorrido/spec.md lo aclara
+explícitamente), así que no se bloquea ninguna acción del chofer ni se
+agrega validación server-side.
+
+**Alternativas consideradas**: bloquear o advertir al chofer en el momento
+de marcar si está lejos del punto — fuera de alcance (cambiaría la app del
+Chofer, Principio I, y agregaría una regla de negocio no pedida); acá es
+puramente informativo para Central.
+
+## Decisión 11 — RecorridoDetalle se refresca con el mismo polling que Monitoreo
+
+**Decisión**: el `useEffect` de polling en `central/src/main.jsx` que ya
+refrescaba `activos` ahora también refresca `detalle` (vía
+`Promise.all`) cuando la vista de Detalle está abierta y proviene de
+Monitoreo/Mapa (no de Historial, que muestra recorridos ya finalizados sin
+razón para refrescarse). Se usa `detalle?.recorrido?.id` como dependencia
+del efecto (no el objeto `detalle` completo) para no reiniciar el intervalo
+en cada tick.
+
+**Rationale**: gap detectado por el usuario — antes `detalle` se cargaba
+una sola vez al abrir "Ver detalle" y quedaba congelado, mientras que
+`activos` sí se actualizaba en vivo. Reusar el mismo `pollEvery` (en vez de
+un segundo intervalo independiente) mantiene una sola fuente de cadencia
+(Principio V).
+
+**Alternativas consideradas**: un `useEffect`/intervalo separado solo para
+`detalle` — descartado por duplicar la lógica de cadencia dinámica
+(MQTT conectado vs. respaldo) que ya existe para `activos`.
+
+## Decisión 12 — Botón "Volver" como `extra` del Card, no en fila propia
+
+**Decisión**: `RecorridoDetalle` recibe un prop `accionVolver` (nodo React)
+que se pasa al `extra` del `Card` de antd, quedando a la derecha del título
+"Recorrido {id}". `main.jsx` y `HistorialView.jsx` arman ahí su propio
+botón ("Volver al monitoreo"/"Volver al historial" respectivamente) en vez
+de renderizarlo en una fila separada arriba del `Card`.
+
+**Rationale**: pedido explícito del usuario ("maximizar el área de
+visión"). `accionVolver` como prop opcional mantiene `RecorridoDetalle`
+desacoplado de quién lo abre (Monitoreo vs. Historial tienen textos/
+handlers de vuelta distintos).
+
+**Alternativas consideradas**: ícono solo (sin texto) para ahorrar más
+espacio horizontal — no se aplicó porque el pedido especificaba "botón con
+icono", no ícono solo; se interpretó como mantener el texto.
