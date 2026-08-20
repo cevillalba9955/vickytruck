@@ -8,6 +8,13 @@
 
 **Input**: User description: "Mapa Central, dado que la cantidad de recorridos es limitada (menos de 10 simultaneos y geograficamente cercanos) es posible mostrar en el mismo mapa toda los puntos y posiciones de fletes al mismo tiempo. para eso en necesario distinguir con colores los puntos correspondientes a cada recorrido, y con mouseover indicar nombre cliente, y al chofer con un icono distinto, Tambien agregar punto de salida (de momento siempre el mismo, pero a futuro podria ser particular de cada recorrido, seria conveniente enviarlo desde Oracle junto con los puntos de entrega)"
 
+## Clarifications
+
+### Session 2026-08-20
+
+- Q: ¿Cómo se determina el punto de salida cuando un recorrido no indica uno propio, y debe verse en el mapa incluso sin recorridos activos? → A: El backend tiene predeterminado un único punto de salida (lat=-34.8097527, lon=-58.4574414). Ese punto se muestra siempre en el mapa, aun sin recorridos activos. No se agrega un marcador de salida nuevo por recorrido salvo que ese recorrido tenga indicado uno distinto al predeterminado.
+- Q: ¿Con qué color/estilo se muestra el marcador de salida por defecto, dado que ya no pertenece a un único recorrido? → A: Sin color propio ni relación con la paleta de colores de recorrido — se identifica solo por un ícono distintivo (p. ej. bandera/base).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Vista consolidada de todos los recorridos activos, por color (Priority: P1)
@@ -39,7 +46,8 @@ se repite con el de otro recorrido activo.
 2. **Given** dos recorridos activos distintos, **When** el operador compara
    sus marcadores en el mapa, **Then** cada recorrido usa un color propio,
    aplicado de forma consistente a la posición de su flete y a todos sus
-   puntos (entrega y salida).
+   puntos de entrega (el punto de salida por defecto, si lo comparten, no
+   se colorea por recorrido — ver Historia 4).
 3. **Given** un recorrido activo sin ubicación de flete reportada todavía,
    **When** el operador ve el mapa, **Then** los puntos de ese recorrido se
    muestran igual (con su color), sin inventar una posición de flete.
@@ -112,37 +120,42 @@ del Detalle de recorrido.
 
 ---
 
-### User Story 4 - Punto de salida visible por recorrido (Priority: P3)
+### User Story 4 - Punto de salida siempre visible (Priority: P3)
 
-Como operador, quiero ver en el mapa el punto de salida de cada recorrido
-activo (además de sus puntos de entrega), para tener el panorama completo
-del recorrido de punta a punta, incluso sabiendo que hoy todos los
-recorridos parten del mismo lugar.
+Como operador, quiero ver siempre en el mapa el punto de salida por defecto
+(el mismo para todos los recorridos hoy), incluso cuando no hay ningún
+recorrido activo, y que si algún recorrido en particular parte de un lugar
+distinto al de siempre, eso también se vea, para tener el panorama completo
+del recorrido de punta a punta sin depender de que haya recorridos en curso.
 
 **Why this priority**: es un agregado de información sobre la vista ya
 funcional de las Historias 1-3; no bloquea el valor principal (ver
 recorridos activos distinguidos por color) y hoy tiene un impacto visual
 menor porque el punto de partida es el mismo para todos los recorridos.
 
-**Independent Test**: con varios recorridos activos, verificar que el mapa
-muestra un marcador de punto de salida por cada uno (con el color de su
-recorrido), distinguible de sus puntos de entrega, y que al pasar el mouse
-se identifica como el punto de salida.
+**Independent Test**: sin ningún recorrido activo, verificar que el mapa
+igual muestra el punto de salida por defecto. Luego, con varios recorridos
+activos que parten de ese mismo lugar, verificar que no aparece un marcador
+de salida adicional por cada uno (solo el compartido); y con un recorrido
+que indique un punto de salida distinto al predeterminado, verificar que
+aparece un marcador propio para ese origen, con el color de ese recorrido.
 
 **Acceptance Scenarios**:
 
-1. **Given** un recorrido activo, **When** el operador ve el mapa, **Then**
-   además de sus puntos de entrega, ve un marcador de punto de salida con el
-   color de ese recorrido.
-2. **Given** varios recorridos activos que parten del mismo lugar, **When**
-   el operador ve el mapa, **Then** cada uno tiene su propio marcador de
-   punto de salida superpuesto en esa ubicación (agrupados de forma
-   distinguible, igual que ya ocurre hoy cuando varios marcadores coinciden
-   en coordenadas), no un único marcador compartido sin identificar a qué
-   recorrido pertenece cada uno.
-3. **Given** el operador pasa el mouse sobre un marcador de punto de salida,
-   **When** el mensaje aparece, **Then** se identifica como el punto de
-   salida de ese recorrido (no como un punto de entrega más).
+1. **Given** no hay ningún recorrido activo, **When** el operador abre la
+   vista de Mapa, **Then** igual ve el punto de salida por defecto en el
+   mapa (no la ausencia total de mapa).
+2. **Given** uno o más recorridos activos parten del punto de salida por
+   defecto (caso hoy habitual), **When** el operador ve el mapa, **Then** ve
+   un único marcador de salida compartido — no un marcador adicional por
+   cada recorrido que parte de ese mismo lugar.
+3. **Given** un recorrido activo indica un punto de salida distinto al
+   predeterminado, **When** el operador ve el mapa, **Then** ve, además del
+   marcador de salida por defecto, un marcador propio para el origen de ese
+   recorrido, con el color de ese recorrido.
+4. **Given** el operador pasa el mouse sobre el marcador de salida por
+   defecto, **When** el mensaje aparece, **Then** se identifica como el
+   punto de salida (base), distinguible de un punto de entrega.
 
 ---
 
@@ -167,9 +180,14 @@ se identifica como el punto de salida.
   el próximo ciclo de actualización automática (mismo comportamiento de
   refresco ya vigente en Monitoreo/Detalle), sin que el operador tenga que
   recargar la página.
-- ¿Qué pasa si no hay ningún recorrido activo? Se mantiene el estado vacío
-  ya existente ("No hay recorridos activos en este momento"), sin mostrar
-  un mapa vacío sin explicación.
+- ¿Qué pasa si no hay ningún recorrido activo? A diferencia del estado
+  vacío que ya existe hoy (sin mapa, solo el mensaje "No hay recorridos
+  activos en este momento"), la vista de Mapa DEBE seguir mostrando el
+  mapa con el punto de salida por defecto, ya que ese punto no depende de
+  que haya recorridos en curso.
+- ¿Qué pasa si dos o más recorridos activos parten del mismo punto de
+  salida por defecto? No se agrega un marcador de salida por cada uno; se
+  muestra un único marcador compartido (ver Historia 4).
 
 ## Requirements *(mandatory)*
 
@@ -180,10 +198,13 @@ se identifica como el punto de salida.
   recorridos activos (no solo del recorrido seleccionado).
 - **FR-002**: El sistema DEBE asignar a cada recorrido activo un color
   distintivo, aplicado de forma consistente a la posición de su flete y a
-  todos sus puntos (entrega y salida).
+  todos sus puntos de entrega, y a su punto de salida únicamente cuando ese
+  recorrido indica uno distinto al predeterminado (ver FR-006). El punto de
+  salida por defecto/compartido no usa el color de ningún recorrido.
 - **FR-003**: El sistema DEBE distinguir visualmente, mediante una forma o
   ícono propio (independiente del color), el marcador de posición de un
-  flete/chofer de los marcadores de punto de entrega y de punto de salida.
+  flete/chofer, los marcadores de punto de entrega y el marcador de punto de
+  salida entre sí.
 - **FR-004**: El sistema DEBE mostrar el nombre del cliente de un punto de
   entrega al pasar el mouse sobre su marcador, sin requerir un click; si el
   punto no tiene cliente informado, DEBE mostrar "Punto {orden}" en su
@@ -191,26 +212,39 @@ se identifica como el punto de salida.
 - **FR-005**: El sistema DEBE mostrar, al pasar el mouse sobre la posición
   de un flete, información suficiente para identificar a qué
   flete/recorrido corresponde esa posición.
-- **FR-006**: El sistema DEBE mostrar un marcador de punto de salida por
-  cada recorrido activo, con el color de ese recorrido, distinguible de sus
-  puntos de entrega e identificable como "punto de salida" al pasar el
-  mouse.
+- **FR-006**: El sistema DEBE tener un punto de salida predeterminado (por
+  defecto, único, sin ícono/color de recorrido) que se muestra siempre en
+  la vista de Mapa, incluso sin recorridos activos. Un recorrido activo que
+  no indique un punto de salida propio usa ese predeterminado y NO genera
+  un marcador de salida adicional. Un recorrido activo que sí indique un
+  punto de salida distinto al predeterminado DEBE mostrar, además del
+  predeterminado, un marcador propio para ese origen, con el color de ese
+  recorrido.
 - **FR-007**: El sistema NO DEBE romper ni degradar el comportamiento ya
-  existente de la vista de Mapa (estado vacío sin recorridos activos, click
-  sobre un flete para abrir su Detalle, agrupamiento de marcadores
-  coincidentes, ausencia de marcador cuando falta una coordenada).
-- **FR-008**: El origen de las coordenadas del punto de salida DEBE poder
-  variar por recorrido sin requerir cambios en la vista de Mapa, aun cuando
-  hoy todos los recorridos activos compartan la misma ubicación de salida.
+  existente de la vista de Mapa (click sobre un flete para abrir su
+  Detalle, agrupamiento de marcadores coincidentes, ausencia de marcador
+  cuando falta una coordenada), salvo el estado vacío sin recorridos
+  activos, que esta feature modifica según FR-006 (el mapa con el punto de
+  salida por defecto reemplaza al mensaje de "sin recorridos activos" sin
+  mapa).
+- **FR-008**: El origen de las coordenadas del punto de salida de un
+  recorrido en particular DEBE poder variar por recorrido sin requerir
+  cambios en la vista de Mapa, aun cuando hoy todos los recorridos activos
+  usen el punto de salida predeterminado.
 
 ### Key Entities
 
 - **Recorrido activo (en el mapa)**: agrupa, para efectos de esta vista, la
-  posición de flete, el punto de salida y los puntos de entrega de un mismo
-  recorrido bajo un color común.
+  posición de flete y los puntos de entrega de un mismo recorrido bajo un
+  color común; incluye también su propio punto de salida bajo ese mismo
+  color solo si ese recorrido indica uno distinto al predeterminado.
 - **Punto de salida**: ubicación (coordenadas) desde la que parte un
-  recorrido; hoy es la misma para todos los recorridos activos, pero se
-  modela por recorrido para permitir que varíe en el futuro.
+  recorrido. Existe un punto de salida predeterminado, único y
+  preconfigurado en el backend (lat=-34.8097527, lon=-58.4574414), que se
+  muestra siempre en el mapa. Un recorrido puede, opcionalmente, indicar su
+  propio punto de salida distinto al predeterminado; se modela por
+  recorrido para permitir que eso varíe en el futuro sin cambios en la
+  vista de Mapa.
 - **Punto de entrega**: entidad ya existente (Historia 2 de
   004-mapa-seguimiento-central) — cliente, coordenadas y estado
   (pendiente/arribado/completado).
@@ -234,8 +268,10 @@ se identifica como el punto de salida.
 - **SC-004**: El operador distingue la posición de un flete de un punto de
   entrega por su forma, sin necesidad de leer ningún texto, en el 100% de
   los casos.
-- **SC-005**: El punto de salida de cada recorrido activo es visible en el
-  mapa sin necesidad de abrir el Detalle de ese recorrido.
+- **SC-005**: El punto de salida por defecto es visible en el mapa en el
+  100% de los casos, incluso sin ningún recorrido activo; el punto de
+  salida propio de un recorrido (cuando difiere del predeterminado) es
+  visible sin necesidad de abrir el Detalle de ese recorrido.
 
 ## Assumptions
 
@@ -250,11 +286,15 @@ se identifica como el punto de salida.
   recorridos activos superara la paleta (caso hoy fuera del rango esperado
   de "menos de 10 simultáneos").
 - Por ahora, el punto de salida de todos los recorridos es el mismo lugar
-  (un depósito/base única); el requisito de modelarlo por recorrido (FR-008)
-  es para no bloquear que a futuro cada recorrido tenga su propio punto de
-  salida particular, enviado junto con los puntos de entrega desde la misma
-  fuente de datos que ya provee esos puntos (Oracle), sin requerir otro
-  cambio en esta vista cuando eso ocurra.
+  (un depósito/base única, predeterminado en el backend); el requisito de
+  modelarlo por recorrido (FR-008) es para no bloquear que a futuro cada
+  recorrido tenga su propio punto de salida particular, enviado junto con
+  los puntos de entrega desde la misma fuente de datos que ya provee esos
+  puntos (Oracle), sin requerir otro cambio en esta vista cuando eso ocurra.
+- El marcador de punto de salida por defecto no es clickeable para abrir un
+  Detalle de recorrido (no pertenece a uno en particular); esa interacción
+  quedaría reservada, si en el futuro se necesitara, a un marcador de
+  origen propio de un recorrido específico.
 - Seleccionar/filtrar para ver un único recorrido a la vez dentro de esta
   vista consolidada (por ejemplo, ocultar temporalmente los demás) queda
   fuera de alcance de esta feature; el operador que necesita foco total en
