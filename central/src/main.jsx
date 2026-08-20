@@ -27,9 +27,11 @@ const INTERVALO_POLLING_RESPALDO_MS = 5000;
 
 function App() {
   const [vista, setVista] = useState("monitor");
-  // Sección de navegación desde la que se abrió el Detalle (Monitoreo o
-  // Mapa): permite que el menú lateral siga mostrando esa sección resaltada
-  // mientras se está viendo el Detalle (009-central-mejora-visual, US2).
+  // Sección desde la que se abrió el Detalle: permite que el botón de
+  // alternar sección del header, y el texto "Volver a…" del propio Detalle,
+  // sigan reflejando de dónde vino el operador (009-central-mejora-visual,
+  // US2). Monitoreo y Mapa se unificaron en una sola sección
+  // (011-unificar-monitoreo-mapa), así que hoy siempre vale "monitor".
   const [origenDetalle, setOrigenDetalle] = useState("monitor");
   const [activos, setActivos] = useState([]);
   // puntoSalidaDefault (010-mapa-central-unificado, US4): constante del
@@ -110,15 +112,21 @@ function App() {
         />
       )}
 
-      {vista === "monitor" && <MonitorView recorridos={activos} onSeleccionar={abrirDetalle} />}
-      {vista === "mapa" && (
-        <Card>
-          <MapaSeguimiento
-            marcadoresUnificados={construirMarcadoresMapaUnificado(activos, puntoSalidaDefault)}
-            hayDatos={activos.length > 0}
-            onSeleccionarFlete={abrirDetalle}
-          />
-        </Card>
+      {vista === "monitor" && (
+        <>
+          <MonitorView recorridos={activos} onSeleccionar={abrirDetalle} />
+          {/* 011-unificar-monitoreo-mapa: el mapa pasa a vivir debajo de la
+              grilla de Monitoreo en la misma sección, en vez de una pestaña
+              separada — maximiza el área de visualización disponible ahora
+              que no hay menú lateral. */}
+          <Card style={{ marginTop: 16 }}>
+            <MapaSeguimiento
+              marcadoresUnificados={construirMarcadoresMapaUnificado(activos, puntoSalidaDefault)}
+              hayDatos={activos.length > 0}
+              onSeleccionarFlete={abrirDetalle}
+            />
+          </Card>
+        </>
       )}
       {vista === "detalle" && (
         <RecorridoDetalle
