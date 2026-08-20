@@ -11,9 +11,16 @@ export function createCentralRouter(repository) {
   const router = Router();
 
   // GET /api/central/recorridos/activos — Historia 1, FR-001, FR-002
+  // puntoSalidaDefault (010-mapa-central-unificado, FR-006): siempre
+  // presente en la respuesta, incluso con `recorridos: []` — el mapa
+  // consolidado lo muestra aunque no haya ningún recorrido activo.
   router.get("/recorridos/activos", async (req, res, next) => {
     try {
-      res.json({ recorridos: await repository.listarActivos() });
+      const [recorridos, puntoSalidaDefault] = await Promise.all([
+        repository.listarActivos(),
+        repository.obtenerPuntoSalidaDefault(),
+      ]);
+      res.json({ recorridos, puntoSalidaDefault });
     } catch (err) {
       next(err);
     }

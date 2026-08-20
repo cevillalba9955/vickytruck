@@ -2,24 +2,31 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AppShell } from "../../src/components/AppShell.jsx";
 
-// 009-central-mejora-visual (US2, Acceptance Scenario 1): la sección activa
-// del menú lateral debe quedar visualmente distinguida del resto.
+// 011-unificar-monitoreo-mapa: el menú lateral se reemplaza por un único
+// botón en el header que alterna entre Monitoreo (con el mapa debajo,
+// unificados) e Historial.
 describe("AppShell", () => {
-  it("resalta como activa la sección indicada por la prop `seccion`", () => {
+  it("en Monitoreo, muestra un botón para ir a Historial", () => {
+    render(
+      <AppShell seccion="monitor" onCambiarSeccion={vi.fn()}>
+        <p>contenido</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole("button", { name: /ver historial/i })).toBeInTheDocument();
+  });
+
+  it("en Historial, muestra un botón para volver a Monitoreo", () => {
     render(
       <AppShell seccion="historial" onCambiarSeccion={vi.fn()}>
         <p>contenido</p>
       </AppShell>,
     );
 
-    const itemHistorial = screen.getByText("Historial").closest('[role="menuitem"]');
-    const itemMonitoreo = screen.getByText("Monitoreo").closest('[role="menuitem"]');
-
-    expect(itemHistorial).toHaveClass("ant-menu-item-selected");
-    expect(itemMonitoreo).not.toHaveClass("ant-menu-item-selected");
+    expect(screen.getByRole("button", { name: /ver monitoreo/i })).toBeInTheDocument();
   });
 
-  it("notifica el cambio de sección al hacer clic en un ítem del menú", async () => {
+  it("notifica el cambio de sección al hacer clic en el botón de alternar", () => {
     const onCambiarSeccion = vi.fn();
     render(
       <AppShell seccion="monitor" onCambiarSeccion={onCambiarSeccion}>
@@ -27,8 +34,18 @@ describe("AppShell", () => {
       </AppShell>,
     );
 
-    screen.getByText("Mapa").click();
+    screen.getByRole("button", { name: /ver historial/i }).click();
 
-    expect(onCambiarSeccion).toHaveBeenCalledWith("mapa");
+    expect(onCambiarSeccion).toHaveBeenCalledWith("historial");
+  });
+
+  it("no muestra ningún menú lateral (solo el botón de alternar en el header)", () => {
+    render(
+      <AppShell seccion="monitor" onCambiarSeccion={vi.fn()}>
+        <p>contenido</p>
+      </AppShell>,
+    );
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });

@@ -19,6 +19,12 @@ function serializarPuntos(puntos) {
     .map((p) => ({
       id: p.id,
       orden: p.orden,
+      // lat/lon/cliente (010-mapa-central-unificado): mismos campos que
+      // serializarPuntosCentral del store real — necesarios para que el mapa
+      // consolidado pinte los puntos de entrega de la respuesta de activos.
+      lat: p.lat ?? null,
+      lon: p.lon ?? null,
+      cliente: p.cliente ?? null,
       estado: p.estado,
       // inicioEn (008-registro-inicio-fin-recorrido): mismo nivel que
       // arriboEn/descargaEn ya expuestos acá.
@@ -31,6 +37,10 @@ function serializarPuntos(puntos) {
     }))
     .sort((a, b) => a.orden - b.orden);
 }
+
+// Mismo valor que PUNTO_SALIDA_DEFAULT del store real
+// (backend/src/state/integracionStore.js, 010-mapa-central-unificado).
+const PUNTO_SALIDA_DEFAULT = { lat: -34.8097527, lon: -58.4574414 };
 
 export function createInMemoryCentralRepository(seed = {}, opts = {}) {
   const staleMs = opts.staleMs ?? 300000;
@@ -49,6 +59,10 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
         // solo lo escribiría finalizarRecorrido() en el store real — acá se
         // toma del seed de test tal cual.
         cierreEn: r.cierreEn ?? null,
+        // puntoSalida/color (010-mapa-central-unificado): opcionales, tal
+        // cual vendrían del seed de test.
+        puntoSalida: r.puntoSalida ?? null,
+        color: r.color ?? null,
       },
     ]),
   );
@@ -87,9 +101,18 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
           // esperandoFinalizar (008-registro-inicio-fin-recorrido, research.md
           // Decisión 5): mismo cálculo derivado que el store real.
           esperandoFinalizar: r.puntos.length > 0 && r.puntos.every((p) => p.estado === "completado"),
+          // puntos/puntoSalida/color (010-mapa-central-unificado): mismo
+          // criterio que listarActivos() del store real.
+          puntos: serializarPuntos(r.puntos),
+          puntoSalida: r.puntoSalida ?? null,
+          color: r.color ?? null,
         });
       }
       return resultado;
+    },
+
+    async obtenerPuntoSalidaDefault() {
+      return PUNTO_SALIDA_DEFAULT;
     },
 
     async obtenerDetalle(recorridoId) {

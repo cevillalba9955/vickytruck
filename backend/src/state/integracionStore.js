@@ -5,6 +5,14 @@ function umbralUbicacionMs() {
   return Number(process.env.UBICACION_STALE_MS || 300000);
 }
 
+// Punto de salida por defecto (010-mapa-central-unificado, FR-006): constante
+// de configuración del backend cloud, no un dato de Oracle — se muestra
+// siempre en el mapa consolidado de Central, incluso sin recorridos activos.
+// Un recorrido puede indicar su propio punto de salida (`puntoSalida`,
+// opcional, enviado por Oracle junto con `puntos`) que reemplaza a este por
+// defecto solo para ese recorrido (ver research.md, Decisión 2).
+const PUNTO_SALIDA_DEFAULT = { lat: -34.8097527, lon: -58.4574414 };
+
 const PUNTO_ESTADO_TRANSICION = {
   arribo: {
     estadoOrigen: "pendiente",
@@ -128,6 +136,12 @@ export function createIntegracionStore() {
           // dato de despliegue para UI, no autoritativo.
           choferNombre: raw.choferNombre ?? previo?.choferNombre ?? null,
           fleteNombre: raw.fleteNombre ?? previo?.fleteNombre ?? null,
+          // puntoSalida/color (010-mapa-central-unificado, FR-006/FR-002a):
+          // opcionales, igual criterio que fleteNombre — topología/presentación
+          // fija que Oracle puede enviar junto con `puntos`, se re-sincroniza
+          // en cada push y no se resetea a null si un push posterior lo omite.
+          puntoSalida: raw.puntoSalida ?? previo?.puntoSalida ?? null,
+          color: raw.color ?? previo?.color ?? null,
           // Un recorrido ya finalizado localmente (todos los puntos
           // completado, ver transicionarPunto) no debe volver a "activo" por
           // un re-push de Oracle — mismo criterio protector que mergearPunto
@@ -501,9 +515,26 @@ export function createIntegracionStore() {
           // tocó FINALIZAR — sin esta señal Central no puede distinguir este
           // caso ("volviendo a base") de cualquier otro Detenido intermedio.
           esperandoFinalizar: r.viajeEstado === "detenido" && r.puntos.length > 0 && r.puntos.every((p) => p.estado === "completado"),
+          // puntos/puntoSalida/color (010-mapa-central-unificado, FR-001/FR-002a/
+          // FR-006): antes ausentes de listarActivos() — necesarios para que el
+          // mapa consolidado de Central pinte todos los puntos y el color de
+          // todos los recorridos activos a la vez, sin pedidos de red por
+          // recorrido. `puntos` reutiliza la misma serialización que ya usan
+          // Historial/Detalle.
+          puntos: serializarPuntosCentral(r.puntos),
+          puntoSalida: r.puntoSalida ?? null,
+          color: r.color ?? null,
         });
       }
       return resultado;
+    },
+
+    // puntoSalidaDefault (010-mapa-central-unificado, FR-006): constante de
+    // backend, no de Oracle — se expone como método async para mantener el
+    // mismo contrato que el resto de esta interfaz (y que
+    // inMemoryCentralRepository.js pueda implementarlo igual para tests).
+    async obtenerPuntoSalidaDefault() {
+      return PUNTO_SALIDA_DEFAULT;
     },
 
     async listarHistorial() {

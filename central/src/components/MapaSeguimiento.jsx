@@ -1,4 +1,5 @@
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Marker, Popup, Tooltip } from "react-leaflet";
+import L from "leaflet";
 import { Empty } from "antd";
 
 const CENTRO_DEFAULT = [-34.6037, -58.3816]; // Buenos Aires, si no hay ningún dato de posición todavía
@@ -22,6 +23,36 @@ function radioParaGrupo(cantidadEnMismaCoordenada) {
   return cantidadEnMismaCoordenada > 1 ? 10 : 8;
 }
 
+// Ícono de vehículo (010-mapa-central-unificado, US2): forma distinta a los
+// CircleMarker de punto de entrega/salida, independiente del color de
+// recorrido (que llega vía el color de fondo inline, no la paleta de
+// estado-de-punto). El color de identidad del flete reemplaza acá al color
+// de reciente/no-reciente que sigue usando `marcadoresFlete` en el mapa de
+// Detalle (research.md, Decisión 5) — esa información pasa al texto del
+// Popup en vez del color.
+function iconoFlete(color) {
+  return L.divIcon({
+    className: "marcador-flete",
+    html: `<div class="marcador-flete__cuerpo" style="background:${color}"></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+}
+
+// Ícono de punto de salida (010-mapa-central-unificado, US4): forma propia
+// (bandera/base), distinta tanto del rombo de flete como del círculo de
+// punto de entrega. El punto de salida por defecto/compartido no lleva
+// color (Clarifications de spec.md) — solo lo llevan los marcadores de
+// salida propios de un recorrido (`tipo: "salidaRecorrido"`).
+function iconoSalida(color) {
+  return L.divIcon({
+    className: "marcador-salida",
+    html: `<div class="marcador-salida__cuerpo"${color ? ` style="background:${color}"` : ""}></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 16],
+  });
+}
+
 function agruparPorCoordenada(items) {
   const grupos = new Map();
   for (const item of items) {
@@ -36,9 +67,21 @@ function agruparPorCoordenada(items) {
  * (Historia 1, en la vista de Monitoreo): un marcador por flete activo con
  * ubicación conocida. Modo detalle (Historia 2, dentro de RecorridoDetalle):
  * agrega los puntos de entrega del recorrido, cada uno con su estado.
+ *
+ * `marcadoresUnificados` (010-mapa-central-unificado, US1): vista
+ * consolidada de la sección Mapa general — reemplaza a `marcadoresFlete`/
+ * `puntos` cuando se pasa, dibujando TODOS los recorridos activos a la vez
+ * (flete + puntos), cada uno con el color de su flete
+ * (`construirMarcadoresMapaUnificado`). `marcadoresFlete`/`puntos` siguen
+ * sin cambios para el mapa embebido en Detalle (un solo recorrido, sin
+ * color por flete — spec.md, Assumptions).
  */
-export function MapaSeguimiento({ marcadoresFlete = [], puntos = [], hayDatos = true, onSeleccionarFlete }) {
-  if (!hayDatos) {
+export function MapaSeguimiento({ marcadoresFlete = [], puntos = [], marcadoresUnificados = [], hayDatos = true, onSeleccionarFlete }) {
+  // 010-mapa-central-unificado, US4: el punto de salida por defecto no
+  // depende de que haya recorridos activos (FR-006) — si `marcadoresUnificados`
+  // trae al menos ese marcador, el mapa se muestra igual aunque `hayDatos`
+  // sea `false` (0 recorridos activos).
+  if (!hayDatos && marcadoresUnificados.length === 0) {
     return (
       <div role="status">
         <Empty description="No hay recorridos activos en este momento." />
@@ -50,9 +93,12 @@ export function MapaSeguimiento({ marcadoresFlete = [], puntos = [], hayDatos = 
     ? [marcadoresFlete[0].lat, marcadoresFlete[0].lon]
     : puntos[0]
       ? [puntos[0].lat, puntos[0].lon]
-      : CENTRO_DEFAULT;
+      : marcadoresUnificados[0]
+        ? [marcadoresUnificados[0].lat, marcadoresUnificados[0].lon]
+        : CENTRO_DEFAULT;
 
   const grupos = agruparPorCoordenada(marcadoresFlete);
+  const gruposUnificados = agruparPorCoordenada(marcadoresUnificados);
 
   return (
     <MapContainer center={centro} zoom={ZOOM_DEFAULT} className="mapa-seguimiento" scrollWheelZoom>
@@ -94,6 +140,52 @@ export function MapaSeguimiento({ marcadoresFlete = [], puntos = [], hayDatos = 
           </Popup>
         </CircleMarker>
       ))}
+
+      {marcadoresUnificados.map((m) => {
+        if (m.tipo === "flete") {
+          return (
+            <Marker
+              key={`flete-${m.recorridoId}`}
+              position={[m.lat, m.lon]}
+              icon={iconoFlete(m.color)}
+              eventHandlers={onSeleccionarFlete ? { click: () => onSeleccionarFlete(m.recorridoId) } : undefined}
+            >
+              {/* Tooltip (hover, US3) en vez de Popup (click) — el color ya
+                  identifica al flete (FR-002), así que acá se agrega si su
+                  ubicación es reciente o no (FR-005, research.md Decisión 5). */}
+              <Tooltip>
+                {m.fleteNombre ?? "Flete sin nombre"} — ubicación {m.reciente ? "reciente" : "no reciente"}
+              </Tooltip>
+            </Marker>
+          );
+        }
+
+        if (m.tipo === "punto") {
+          return (
+            <CircleMarker
+              key={`punto-${m.recorridoId}-${m.id}`}
+              center={[m.lat, m.lon]}
+              radius={radioParaGrupo(gruposUnificados.get(`${m.lat},${m.lon}`))}
+              pathOptions={{ color: m.color, fillColor: m.color, fillOpacity: 0.7 }}
+            >
+              <Tooltip>{m.cliente || `Punto ${m.orden}`}</Tooltip>
+            </CircleMarker>
+          );
+        }
+
+        // salidaDefault / salidaRecorrido (010-mapa-central-unificado, US4):
+        // sin eventHandlers.click — no pertenece a un único recorrido que
+        // tenga sentido abrir (Assumptions de spec.md).
+        return (
+          <Marker
+            key={m.tipo === "salidaDefault" ? "salida-default" : `salida-${m.recorridoId}`}
+            position={[m.lat, m.lon]}
+            icon={iconoSalida(m.color)}
+          >
+            <Tooltip>{m.tipo === "salidaDefault" ? "Punto de salida" : "Punto de salida de este recorrido"}</Tooltip>
+          </Marker>
+        );
+      })}
     </MapContainer>
   );
 }

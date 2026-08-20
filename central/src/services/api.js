@@ -28,9 +28,15 @@ async function obtenerJson(url) {
   return res.json();
 }
 
-/** Historia 1 (FR-001, FR-002): recorridos activos con progreso y ubicación. */
+/**
+ * Historia 1 (FR-001, FR-002): recorridos activos con progreso y ubicación.
+ * `puntoSalidaDefault` (010-mapa-central-unificado, FR-006): siempre
+ * presente en la respuesta, incluso con `recorridos: []` — el mapa
+ * consolidado lo muestra aunque no haya ningún recorrido activo.
+ */
 export async function listarActivos() {
-  return (await obtenerJson(`${BASE_URL}/recorridos/activos`)).recorridos;
+  const { recorridos, puntoSalidaDefault } = await obtenerJson(`${BASE_URL}/recorridos/activos`);
+  return { recorridos, puntoSalidaDefault };
 }
 
 /** Historia 3 (FR-008): detalle completo de un recorrido. */
