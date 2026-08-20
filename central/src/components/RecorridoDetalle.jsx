@@ -134,19 +134,15 @@ export function RecorridoDetalle({ detalle, marcadorFlete, accionVolver }) {
       title={`Recorrido ${recorrido.id}`}
       extra={accionVolver}
     >
-      <Descriptions bordered size="small" column={3} style={{ marginBottom: 16 }}>
+      <Descriptions bordered size="small" column={4} style={{ marginBottom: 16 }}>
         <Descriptions.Item label="Fecha">{fechaIso ? formatearFechaLocal(fechaIso) : "—"}</Descriptions.Item>
         <Descriptions.Item label="Flete">{recorrido.flete?.nombre ?? "—"}</Descriptions.Item>
         <Descriptions.Item label="Chofer">{recorrido.chofer?.nombre ?? "—"}</Descriptions.Item>
         <Descriptions.Item label="Estado">{recorrido.estado}</Descriptions.Item>
         <Descriptions.Item label="Hora inicio">{inicioIso ? formatearHoraLocal(inicioIso) : "—"}</Descriptions.Item>
         <Descriptions.Item label="Final">{recorrido.cierreEn ? formatearHoraLocal(recorrido.cierreEn) : "—"}</Descriptions.Item>
-        <Descriptions.Item label="Última ubicación" span={3}>
-          <UltimaUbicacion marcadorFlete={marcadorFlete} />
-        </Descriptions.Item>
-        <Descriptions.Item label="Tiempo total" span={3}>
-          {formatearDuracionMin(tiempoTotalMin)}
-        </Descriptions.Item>
+        <Descriptions.Item label="Tiempo total">{formatearDuracionMin(tiempoTotalMin)}</Descriptions.Item>
+        <Descriptions.Item label="Última ubicación"><UltimaUbicacion marcadorFlete={marcadorFlete} /></Descriptions.Item>
       </Descriptions>
 
       <Table
