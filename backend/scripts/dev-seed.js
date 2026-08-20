@@ -1,14 +1,25 @@
 // Script de desarrollo: levanta el backend local (si no está corriendo ya),
-// le empuja un recorrido de prueba vía POST /api/integracion/recorridos
-// (mismo contrato que usa Oracle/APEX, ver
+// le empuja uno o varios recorridos de prueba vía POST
+// /api/integracion/recorridos (mismo contrato que usa Oracle/APEX, ver
 // specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md) y muestra
 // el link con el token para abrir en el frontend del chofer — no forma
 // parte de `npm test` (vive en scripts/, node --test no lo escanea).
 //
+// Por defecto seedea 3 recorridos de fletes distintos, geográficamente
+// cercanos entre sí (010-mapa-central-unificado: pensado para probar el
+// mapa consolidado de Central con varios recorridos a la vez) — el segundo
+// trae un `color` explícito (FR-002a) y el tercero un `puntoSalida` propio
+// (FR-006/FR-008), para poder ver ambos casos sin tocar Oracle. Nota: estos
+// recorridos no tienen posición de flete (`ultimaUbicacion`) porque esa
+// ubicación solo llega vía MQTT (ver backend/src/services/mqttBridge.js) o
+// desde el frontend del chofer con geolocalización real — este script no
+// simula ninguna de las dos.
+//
 // Uso:
-//   npm run dev:seed
-//   npm run dev:seed -- --token=mi-token --puntos=5
-//   npm run dev:seed -- --sin-backend   (solo seedea, asume que ya corre)
+//   npm run dev:seed                          (3 recorridos de prueba)
+//   npm run dev:seed -- --recorridos=5         (N recorridos de prueba)
+//   npm run dev:seed -- --token=mi-token --puntos=5   (1 solo recorrido, token fijo — para probar el link del chofer)
+//   npm run dev:seed -- --sin-backend          (solo seedea, asume que ya corre)
 
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,11 +30,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BACKEND_DIR = join(__dirname, "..");
 
 function parseArgs(argv) {
-  const args = { puntos: 3 };
+  const args = { puntos: 3, recorridos: 3 };
   for (const raw of argv) {
     const [clave, valor] = raw.replace(/^--/, "").split("=");
     if (clave === "token") args.token = valor;
     else if (clave === "puntos") args.puntos = Number(valor) || 3;
+    else if (clave === "recorridos") args.recorridos = Number(valor) || 3;
     else if (clave === "sin-backend") args.sinBackend = true;
   }
   return args;
@@ -65,7 +77,10 @@ function arrancarBackend() {
   return proceso.pid;
 }
 
-function generarPuntos(cantidad) {
+// `offset` (010-mapa-central-unificado): separa levemente los puntos de
+// recorridos distintos para que no queden apilados exactamente en las
+// mismas coordenadas al seedear varios a la vez.
+function generarPuntos(cantidad, offset = 0) {
   const base = [
     { cliente: "Distribuidora Sur SRL", direccion: "Av. Rivadavia 1234, CABA", rangoHorario: "09:00-12:00", notasEntrega: "Tocar timbre de depósito", remitoIds: ["R-1001", "R-1002"] },
     { cliente: "Kiosco El Águila", direccion: "Av. Siempreviva 742" },
@@ -80,15 +95,20 @@ function generarPuntos(cantidad) {
       id: `p${i + 1}`,
       orden: i + 1,
       estado: "pendiente",
-      lat: -34.6 - i * 0.01,
-      lon: -58.38 - i * 0.01,
+      lat: -34.6 - i * 0.01 - offset,
+      lon: -58.38 - i * 0.01 - offset,
       ...info,
     });
   }
   return puntos;
 }
 
-async function seedearRecorrido(token, cantidadPuntos) {
+// `indice` (010-mapa-central-unificado): agrega variedad entre los
+// recorridos seedeados en una misma corrida — el segundo (índice 1) trae un
+// `color` explícito (FR-002a) y el tercero (índice 2) un `puntoSalida`
+// propio (FR-006/FR-008), para poder probar ambos casos del mapa
+// consolidado sin necesidad de tocar Oracle.
+async function seedearRecorrido(token, cantidadPuntos, indice = 0) {
   const apiKey = process.env.INTEGRACION_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -97,27 +117,25 @@ async function seedearRecorrido(token, cantidadPuntos) {
   }
 
   const recorridoId = `R-DEV-${token}`;
-  const payload = {
-    source: "oracle-apex",
-    recorridos: [
-      {
-        id: recorridoId,
-        token,
-        fleteId: `F-DEV-${token}`,
-        fleteNombre: "Chofer de Prueba (dev-seed)",
-        estado: "activo",
-        puntos: generarPuntos(cantidadPuntos),
-        // 006-normalizar-formato-horario: simula el payload real de Oracle
-        // (integracion_cloud_api.pkb.sql), que ya manda hora local -03:00.
-        updatedAt: ahoraLocalIso(),
-      },
-    ],
+  const offset = indice * 0.03;
+  const recorrido = {
+    id: recorridoId,
+    token,
+    fleteId: `F-DEV-${token}`,
+    fleteNombre: `Chofer de Prueba ${indice + 1} (dev-seed)`,
+    estado: "activo",
+    puntos: generarPuntos(cantidadPuntos, offset),
+    // 006-normalizar-formato-horario: simula el payload real de Oracle
+    // (integracion_cloud_api.pkb.sql), que ya manda hora local -03:00.
+    updatedAt: ahoraLocalIso(),
   };
+  if (indice === 1) recorrido.color = "#c0392b";
+  if (indice === 2) recorrido.puntoSalida = { lat: -34.56 - offset, lon: -58.36 - offset };
 
   const res = await fetch(`${baseUrl()}/api/integracion/recorridos`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ source: "oracle-apex", recorridos: [recorrido] }),
   });
 
   if (!res.ok) {
@@ -135,7 +153,11 @@ function frontendUrl(token) {
 
 export async function run({ argv = process.argv.slice(2), print = console.log, error = console.error } = {}) {
   const args = parseArgs(argv);
-  const token = args.token || `dev-${Date.now()}`;
+  const tokenBase = args.token || `dev-${Date.now()}`;
+  // --token fija un único recorrido predecible (uso original: probar el
+  // link del chofer con una URL estable); sin --token se seedea la
+  // cantidad pedida (default 3) para poder probar el mapa consolidado.
+  const cantidadRecorridos = args.token ? 1 : Math.max(1, args.recorridos);
 
   if (!args.sinBackend) {
     if (await backendResponde()) {
@@ -152,10 +174,14 @@ export async function run({ argv = process.argv.slice(2), print = console.log, e
     }
   }
 
-  print(`[dev-seed] Sincronizando recorrido de prueba (token "${token}", ${args.puntos} puntos)...`);
+  const tokens = Array.from({ length: cantidadRecorridos }, (_, i) => (cantidadRecorridos === 1 ? tokenBase : `${tokenBase}-${i + 1}`));
+
+  print(`[dev-seed] Sincronizando ${cantidadRecorridos} recorrido(s) de prueba (${args.puntos} puntos cada uno)...`);
   try {
-    const recorridoId = await seedearRecorrido(token, args.puntos);
-    print(`[dev-seed] Recorrido "${recorridoId}" sincronizado.`);
+    for (let i = 0; i < tokens.length; i++) {
+      const recorridoId = await seedearRecorrido(tokens[i], args.puntos, i);
+      print(`[dev-seed] Recorrido "${recorridoId}" sincronizado (token "${tokens[i]}").`);
+    }
   } catch (err) {
     error(`[dev-seed] FALLO al sincronizar: ${err.message}`);
     return 1;
@@ -163,11 +189,19 @@ export async function run({ argv = process.argv.slice(2), print = console.log, e
 
   print("");
   print("========================================================");
-  print(`  Link del chofer:  ${frontendUrl(token)}`);
+  for (const token of tokens) {
+    print(`  Link del chofer (${token}):  ${frontendUrl(token)}`);
+  }
   print("========================================================");
   print("");
   print(`  Si el frontend todavía no está corriendo: cd frontend && npm run dev`);
   print(`  Consultar el estado en Central (si corre): cd central && npm run dev`);
+  if (cantidadRecorridos > 1) {
+    print("");
+    print(
+      "  Nota: estos recorridos no tienen posición de flete (ultimaUbicacion) — llega vía MQTT o geolocalización real del chofer, no se simula acá.",
+    );
+  }
 
   return 0;
 }
