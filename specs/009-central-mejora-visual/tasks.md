@@ -10,7 +10,7 @@ description: "Task list for: Rediseño visual de Central"
 
 **Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md), [data-model.md](./data-model.md), [quickstart.md](./quickstart.md)
 
-**Tests**: no se agregan tests contract/integration nuevos (la feature no crea endpoints ni entidades — ver data-model.md). Los tests unitarios existentes de `central/tests/components/` actúan como guardia de no-regresión funcional (FR-006) y se complementan con un test nuevo para la navegación (US2, research.md Decisión 4).
+**Tests**: MVP original (Fases 1-6): no se agregaron tests contract/integration nuevos (la feature no creaba endpoints ni entidades). Los tests unitarios existentes de `central/tests/components/` actúan como guardia de no-regresión funcional (FR-006) y se complementan con un test nuevo para la navegación (US2, research.md Decisión 4). **Fases 7-9** (Historias 4-6) sí agregan tests unitarios y de integración en `backend/tests/` para los campos aditivos nuevos (ver data-model.md → Contratos).
 
 **Organization**: las tareas están agrupadas por historia de usuario (spec.md) para permitir implementación y prueba independiente de cada una.
 
@@ -22,9 +22,10 @@ description: "Task list for: Rediseño visual de Central"
 
 ## Path Conventions
 
-Proyecto web existente: esta feature toca únicamente `central/src` y
-`central/tests` (ver plan.md → Project Structure). No se tocan `central/backend`,
-`backend/` (API del Chofer) ni `frontend/` (app del Chofer).
+Proyecto web existente (ver plan.md → Project Structure). MVP original
+(Fases 1-6): toca únicamente `central/src` y `central/tests`. **Fases 7-9**
+(Historias 4-6) también tocan `backend/src` y `backend/tests`. En ningún
+caso se tocan `central/backend` ni `frontend/` (app del Chofer).
 
 ---
 
@@ -114,6 +115,59 @@ Proyecto web existente: esta feature toca únicamente `central/src` y
 
 ---
 
+---
+
+## Phase 7: User Story 4 - Monitoreo con más contexto operativo (Priority: P2) [post-implementación]
+
+**Goal**: Monitoreo muestra chofer, cliente del punto activo, progreso como barra y estado MQTT como ícono de header, pedidos directamente por el usuario después del MVP (commit `7d35471`, `a58d7a2`).
+
+**Independent Test**: ver spec.md, US4, Acceptance Scenarios 1-4.
+
+- [X] T023 [US4] Agregar `chofer: {id,nombre}|null` y `puntoActivo: {id,orden,cliente}|null` a `listarActivos()` en `backend/src/state/integracionStore.js` (research.md Decisión 8), con tests unitarios en `backend/tests/unit/integracion-store-central.test.js` y cobertura e2e en `backend/tests/integration/central-cloud-monitoreo.test.js`
+- [X] T024 [US4] Mover el indicador de estado MQTT de un `Alert` en el contenido a un `Badge` de color en el header de `central/src/components/AppShell.jsx` (prop `mqttEstado`), con tooltip y texto `sr-only` para accesibilidad (research.md Decisión 6)
+- [X] T025 [US4] Reemplazar el texto de la columna "Progreso" de `central/src/components/MonitorView.jsx` por `Progress` de antd (formato "Completados / Total", color verde al 100%/azul en curso), con el desglose completo en tooltip (research.md Decisión 7)
+- [X] T026 [US4] Quitar el id del punto del texto de "Estado de viaje" y agregar columna "Punto" en `central/src/components/MonitorView.jsx` mostrando el cliente del punto activo (fallback "Punto {orden}" si no hay cliente)
+- [X] T027 [US4] Agregar columna "Chofer" en 3er lugar (después de Flete) en `central/src/components/MonitorView.jsx`
+- [X] T028 [US4] Corregir el desborde horizontal de la tabla en contenedores angostos (`scroll={{x:"max-content"}}` + `minWidth:0`/`overflowX:auto` en `AppShell.jsx`) — regresión encontrada al validar el edge case de iframe angosto con datos reales
+
+**Checkpoint**: Monitoreo con chofer, punto/cliente, barra de progreso e indicador MQTT en header, sin regresión de tests existentes.
+
+---
+
+## Phase 8: User Story 5 - Historial con información completa de cada viaje (Priority: P2) [post-implementación]
+
+**Goal**: Historial muestra fecha, flete, chofer, cantidad de clientes y tiempo total (commit `bc0c72f`).
+
+**Independent Test**: ver spec.md, US5, Acceptance Scenarios 1-2.
+
+- [X] T029 [US5] Agregar `flete: {id,nombre}` y `chofer: {id,nombre}|null` a `listarHistorial()` en `backend/src/state/integracionStore.js` y al mapeo de la ruta en `backend/src/routes/central.js` (research.md Decisión 9), con tests unitarios
+- [X] T030 [P] [US5] Agregar `formatearFechaLocal` y `formatearDuracionMin` a `central/src/services/tiempo.js`, con tests en `central/tests/services/tiempo.test.js`
+- [X] T031 [US5] Reemplazar las columnas Recorrido/Flete(id)/Puntos de `central/src/components/HistorialView.jsx` por Fecha, Flete, Chofer, Cantidad de clientes y Tiempo total (cálculo local desde `puntos[].inicioEn`/`cierreEn`)
+- [X] T032 [P] [US5] Agregar `central/tests/components/HistorialView.test.jsx` (no existía) cubriendo las columnas nuevas y los casos sin chofer/sin tiempo calculable
+
+**Checkpoint**: Historial con información completa por recorrido, cubierto por tests nuevos.
+
+---
+
+## Phase 9: User Story 6 - Detalle con proximidad GPS y actualización en vivo (Priority: P2) [post-implementación]
+
+**Goal**: RecorridoDetalle con encabezado ampliado, grilla de puntos con verificación de proximidad GPS, refresco en vivo y botón "Volver" reubicado (commits `cb2de08`, `a1d362d`).
+
+**Independent Test**: ver spec.md, US6, Acceptance Scenarios 1-4.
+
+- [X] T033 [US6] Agregar `flete`/`chofer` a `obtenerDetalle()` y `cliente`/`arriboLat`/`arriboLon`/`descargaLat`/`descargaLon` a `serializarPuntosCentral` (compartida con historial) en `backend/src/state/integracionStore.js` (research.md Decisión 10), preservando que `inicioLat`/`cierreLat` sigan sin exponerse (contrato verificado en `backend/tests/contract/get-recorrido-detalle.test.js`)
+- [X] T034 [P] [US6] Agregar `distanciaMetros` (Haversine) a `central/src/services/marcadores.js`, con tests en `central/tests/components/marcadores.test.js`
+- [X] T035 [P] [US6] Agregar `primerEventoIso` y `calcularTiempoTotalMin` (con parámetro `ahora` para recorridos activos) a `central/src/services/tiempo.js`, compartido con `HistorialView.jsx`
+- [X] T036 [US6] Reescribir `central/src/components/RecorridoDetalle.jsx`: encabezado con `Descriptions` (Fecha/Flete/Chofer/Estado/Hora inicio/Final/Tiempo total) y grilla de puntos con `Table` (Cliente/Estado/Hora de llegada/Hora de descarga), marcando cada hora con `Badge` de color según el radio de proximidad de 500 m (research.md Decisión 10)
+- [X] T037 [US6] Extender el `useEffect` de polling en `central/src/main.jsx` para refrescar también `detalle` mientras la vista está abierta (mismo intervalo que `activos`, dependiente de `detalle?.recorrido?.id`) (research.md Decisión 11)
+- [X] T038 [US6] Agregar prop `accionVolver` a `RecorridoDetalle` (pasado al `extra` del `Card`) y actualizar `main.jsx`/`HistorialView.jsx` para armar ahí su botón de retorno en vez de una fila separada (research.md Decisión 12)
+- [X] T039 [US6] Reescribir `central/tests/components/RecorridoDetalle.test.jsx` para el nuevo encabezado/grilla (encabezado, proximidad GPS dentro/fuera de radio, sin GPS, horarios en hora local, recorrido activo con `vi.useFakeTimers`)
+- [X] T040 [US6] Correr `npm test` en `backend/` y `central/` y confirmar 0 regresiones (157/157 y 55/55 al cierre de esta fase)
+
+**Checkpoint**: las tres historias post-implementación (4-6) completas y verificadas; PR #17 actualizado con los 5 commits de esta sección.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -181,7 +235,7 @@ Task: "Envolver MapaSeguimiento en Card de antd (T011)"
 
 - `[P]` = archivos distintos, sin dependencias pendientes entre sí
 - La etiqueta `[Story]` mapea cada tarea a su historia de usuario para trazabilidad
-- No se agregan tests de contrato/integración porque la feature no crea endpoints ni entidades (data-model.md); los tests existentes de `central/tests/components/` son la guardia de no-regresión (FR-006)
-- Correr `npm test` en `central/` al final de cada historia, no solo al final de todo el trabajo
+- MVP original (Fases 1-6): no se agregaron tests de contrato/integración porque no se creaban endpoints ni entidades; los tests existentes de `central/tests/components/` son la guardia de no-regresión (FR-006). Fases 7-9 sí agregan tests unitarios/integration en `backend/tests/` (data-model.md → Contratos)
+- Correr `npm test` en `central/` (y en `backend/` desde Fase 7) al final de cada historia, no solo al final de todo el trabajo
 - Detenerse en cada checkpoint para validar la historia de forma independiente antes de seguir
 - Evitar: cambiar aserciones de tests existentes solo para que "pasen" — si un test existente falla, el markup debe ajustarse para preservar el comportamiento observable (texto, roles ARIA), no al revés

@@ -74,3 +74,41 @@ roles ARIA concretos) deben seguir pasando sin modificaciones de
 comportamiento — solo se permiten los tests nuevos que cubran US2
 (sección activa en el menú), no cambios a las aserciones de datos
 existentes.
+
+## 7. Validar US4 — Monitoreo con más contexto operativo (post-implementación)
+
+1. Con un recorrido que tenga chofer asignado, confirmar que su nombre
+   aparece en la columna "Chofer" (3er lugar), distinto del flete.
+2. Con un recorrido cuyo punto activo tenga cliente informado, confirmar que
+   la columna "Punto" muestra el nombre del cliente, no el id del punto; sin
+   cliente, confirmar el fallback "Punto {orden}".
+3. Confirmar que "Progreso" es una barra con texto "Completados / Total", y
+   que el desglose completo aparece en un tooltip al pasar el mouse.
+4. Cambiar el estado del canal MQTT (o forzarlo en desarrollo) y confirmar
+   que el header muestra un punto de color sin texto visible, con el detalle
+   disponible en tooltip.
+
+## 8. Validar US5 — Historial con información completa (post-implementación)
+
+1. Abrir Historial con recorridos finalizados variados y confirmar que
+   aparecen las columnas Fecha, Flete, Chofer, Cantidad de clientes y Tiempo
+   total.
+2. Con un recorrido sin ningún evento de inicio registrado, confirmar que
+   "Tiempo total" muestra "—" en vez de un número inventado.
+
+## 9. Validar US6 — Detalle con proximidad GPS y refresco en vivo (post-implementación)
+
+1. Abrir el Detalle de un recorrido activo desde Monitoreo y confirmar el
+   encabezado (Fecha/Flete/Chofer/Estado/Hora inicio/Final/Tiempo total),
+   con Final en "—" y Tiempo total mostrando lo transcurrido hasta el
+   momento.
+2. En la grilla de puntos, confirmar que una hora de llegada/descarga con
+   GPS capturado cerca del destino del punto se marca en verde, lejos en
+   rojo, y sin GPS capturado se muestra sin color.
+3. Con el Detalle abierto, simular (o esperar) que el chofer marque un
+   evento y confirmar que la vista se actualiza sola en el siguiente ciclo
+   de polling, sin recargar la página ni volver a abrir el Detalle.
+4. Confirmar que el botón para volver está a la derecha del título del
+   panel, no en una fila separada arriba.
+5. Repetir 1-2 y 4 abriendo el Detalle desde Historial (recorrido
+   finalizado) — Final y Tiempo total deben quedar fijos, no en vivo.

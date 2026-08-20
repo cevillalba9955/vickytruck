@@ -1,7 +1,14 @@
 import { Card, Table, Tag, Descriptions, Badge, Tooltip } from "antd";
 import { MapaSeguimiento } from "./MapaSeguimiento.jsx";
 import { construirPuntosEnMapa, distanciaMetros } from "../services/marcadores.js";
-import { formatearHoraLocal, formatearFechaLocal, formatearDuracionMin, primerEventoIso, calcularTiempoTotalMin } from "../services/tiempo.js";
+import {
+  formatearHoraLocal,
+  formatearFechaLocal,
+  formatearDuracionMin,
+  primerEventoIso,
+  calcularTiempoTotalMin,
+  minutosTranscurridos,
+} from "../services/tiempo.js";
 
 const ETIQUETAS_ESTADO = {
   pendiente: "Pendiente",
@@ -40,6 +47,29 @@ function HoraConProximidad({ hora, lat, lon, puntoLat, puntoLon }) {
   return (
     <Tooltip title={`${Math.round(distancia)} m del punto${dentro ? "" : ` — fuera del radio esperado de ${RADIO_PROXIMIDAD_M} m`}`}>
       <Badge status={dentro ? "success" : "error"} text={formatearHoraLocal(hora)} />
+    </Tooltip>
+  );
+}
+
+// Minutos desde la última posición GPS reportada por el flete (mismo patrón
+// que IndicadorUbicacion en MonitorView.jsx): un punto de color por
+// reciente/no reciente/sin datos, más los minutos transcurridos desde esa
+// lectura — no la hora absoluta, que ya se ve en el mapa.
+function UltimaUbicacion({ marcadorFlete }) {
+  if (!marcadorFlete || marcadorFlete.en == null) {
+    return (
+      <Tooltip title="Sin ubicación reportada">
+        <Badge status="default" text="—" />
+      </Tooltip>
+    );
+  }
+  const minutos = minutosTranscurridos(marcadorFlete.en);
+  const status = marcadorFlete.reciente ? "success" : "warning";
+  const etiqueta = marcadorFlete.reciente ? "Ubicación reciente" : "Ubicación no reciente";
+  const texto = minutos < 1 ? "<1 min" : `${minutos} min`;
+  return (
+    <Tooltip title={`${etiqueta} — hace ${texto}`}>
+      <Badge status={status} text={texto} />
     </Tooltip>
   );
 }
@@ -111,6 +141,9 @@ export function RecorridoDetalle({ detalle, marcadorFlete, accionVolver }) {
         <Descriptions.Item label="Estado">{recorrido.estado}</Descriptions.Item>
         <Descriptions.Item label="Hora inicio">{inicioIso ? formatearHoraLocal(inicioIso) : "—"}</Descriptions.Item>
         <Descriptions.Item label="Final">{recorrido.cierreEn ? formatearHoraLocal(recorrido.cierreEn) : "—"}</Descriptions.Item>
+        <Descriptions.Item label="Última ubicación" span={3}>
+          <UltimaUbicacion marcadorFlete={marcadorFlete} />
+        </Descriptions.Item>
         <Descriptions.Item label="Tiempo total" span={3}>
           {formatearDuracionMin(tiempoTotalMin)}
         </Descriptions.Item>
