@@ -31,6 +31,31 @@ body {
   border-radius: 0.5rem;
 }
 
+/* Ícono de posición de flete/chofer (010-mapa-central-unificado, US2):
+   rombo, para distinguirse por forma de los CircleMarker (círculo) que usan
+   los puntos de entrega y de salida, independientemente del color. */
+.marcador-flete__cuerpo {
+  width: 16px;
+  height: 16px;
+  margin: 3px;
+  transform: rotate(45deg);
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+
+/* Ícono de punto de salida (010-mapa-central-unificado, US4): forma de
+   bandera/pin, distinta del rombo de flete y del círculo de punto de
+   entrega. Color gris neutro por defecto (el punto de salida compartido no
+   usa la paleta de recorrido); un `background` inline lo sobrescribe cuando
+   el marcador es el propio de un recorrido (`salidaRecorrido`). */
+.marcador-salida__cuerpo {
+  width: 14px;
+  height: 14px;
+  background: #4b5563;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.6));
+}
+
 /* Accesibilidad: etiqueta solo para lectores de pantalla — el indicador de
    estado MQTT del header es visualmente solo un punto de color (US3), pero
    mantiene su texto disponible para lectores de pantalla. */

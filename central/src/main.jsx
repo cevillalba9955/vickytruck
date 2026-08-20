@@ -13,7 +13,7 @@ import { MapaSeguimiento } from "./components/MapaSeguimiento.jsx";
 import { listarActivos, obtenerDetalle } from "./services/api.js";
 import { pollEvery } from "./services/polling.js";
 import { conectarUbicacionEnTiempoReal } from "./services/mqttClient.js";
-import { construirMarcadoresFlete } from "./services/marcadores.js";
+import { construirMarcadoresFlete, construirMarcadoresMapaUnificado } from "./services/marcadores.js";
 
 // 2026-08-10 (spec.md FR-005 activado, research.md Decisión 11): MQTT pasa
 // a ser la vía principal de ubicación en vivo. El polling REST no se
@@ -32,6 +32,9 @@ function App() {
   // mientras se está viendo el Detalle (009-central-mejora-visual, US2).
   const [origenDetalle, setOrigenDetalle] = useState("monitor");
   const [activos, setActivos] = useState([]);
+  // puntoSalidaDefault (010-mapa-central-unificado, US4): constante del
+  // backend, siempre presente aunque `activos` esté vacío.
+  const [puntoSalidaDefault, setPuntoSalidaDefault] = useState(null);
   const [error, setError] = useState(null);
   const [detalle, setDetalle] = useState(null);
   const [mqttEstado, setMqttEstado] = useState("disabled");
@@ -64,7 +67,7 @@ function App() {
   useEffect(() => {
     return pollEvery(intervaloPolling, async () => {
       try {
-        const [nuevosActivos, nuevoDetalle] = await Promise.all([
+        const [{ recorridos: nuevosActivos, puntoSalidaDefault: nuevoPuntoSalidaDefault }, nuevoDetalle] = await Promise.all([
           listarActivos(),
           // 009-central-mejora-visual: mientras se está viendo el Detalle de
           // un recorrido activo (abierto desde Monitoreo/Mapa), se refresca
@@ -73,6 +76,7 @@ function App() {
           idDetalleAbierto ? obtenerDetalle(idDetalleAbierto) : Promise.resolve(null),
         ]);
         setActivos(nuevosActivos);
+        setPuntoSalidaDefault(nuevoPuntoSalidaDefault);
         if (nuevoDetalle) setDetalle(nuevoDetalle);
         setError(null);
       } catch {
@@ -110,7 +114,7 @@ function App() {
       {vista === "mapa" && (
         <Card>
           <MapaSeguimiento
-            marcadoresFlete={construirMarcadoresFlete(activos)}
+            marcadoresUnificados={construirMarcadoresMapaUnificado(activos, puntoSalidaDefault)}
             hayDatos={activos.length > 0}
             onSeleccionarFlete={abrirDetalle}
           />

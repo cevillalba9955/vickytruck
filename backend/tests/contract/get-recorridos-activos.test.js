@@ -99,6 +99,73 @@ test("GET /api/central/recorridos/activos — esperandoFinalizar es false si tod
   }
 });
 
+test("GET /api/central/recorridos/activos — incluye puntos y puntoSalidaDefault siempre presente (010-mapa-central-unificado)", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "50",
+        estado: "activo",
+        fleteId: "7",
+        puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4, cliente: "Almacén Centro" }],
+      },
+    ],
+    fletes: [{ id: "7", nombre: "Juan Pérez" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/activos`);
+    const body = await res.json();
+    assert.deepEqual(body.puntoSalidaDefault, { lat: -34.8097527, lon: -58.4574414 });
+    const [r] = body.recorridos;
+    assert.deepEqual(r.puntos[0], { id: "p1", orden: 1, lat: -34.6, lon: -58.4, cliente: "Almacén Centro", estado: "pendiente", inicioEn: null, arriboEn: null, descargaEn: null, remitoIds: [] });
+    assert.equal(r.puntoSalida, null);
+    assert.equal(r.color, null);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("GET /api/central/recorridos/activos — puntoSalidaDefault sigue presente sin recorridos activos (US4)", async () => {
+  const repository = createInMemoryCentralRepository({ recorridos: [], fletes: [] });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/activos`);
+    const body = await res.json();
+    assert.deepEqual(body.recorridos, []);
+    assert.deepEqual(body.puntoSalidaDefault, { lat: -34.8097527, lon: -58.4574414 });
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("GET /api/central/recorridos/activos — expone puntoSalida y color de un recorrido cuando el seed los trae (FR-002a/FR-008)", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "50",
+        estado: "activo",
+        fleteId: "7",
+        puntos: [{ id: "p1", orden: 1, estado: "pendiente" }],
+        puntoSalida: { lat: -34.55, lon: -58.35 },
+        color: "#8e44ad",
+      },
+    ],
+    fletes: [{ id: "7", nombre: "Juan Pérez" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/activos`);
+    const body = await res.json();
+    assert.deepEqual(body.recorridos[0].puntoSalida, { lat: -34.55, lon: -58.35 });
+    assert.equal(body.recorridos[0].color, "#8e44ad");
+  } finally {
+    await server.cerrar();
+  }
+});
+
 test("GET /api/central/recorridos/activos — un recorrido sin flete asignado no aparece", async () => {
   const repository = createInMemoryCentralRepository({
     recorridos: [{ id: "51", fleteId: null, puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] }],

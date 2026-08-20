@@ -97,3 +97,49 @@ test("loop completo: Oracle/APEX -> Central (solo lectura), sin que el backend t
     await server.cerrar();
   }
 });
+
+test("Oracle/APEX puede enviar puntoSalida y color (010-mapa-central-unificado, FR-002a/FR-006/FR-008); puntoSalidaDefault siempre presente", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(store, store, undefined, store);
+
+  try {
+    // Sin ningún recorrido activo todavía, puntoSalidaDefault ya está presente.
+    const activosVacio = await (await fetch(`${server.centralBaseUrl}/recorridos/activos`)).json();
+    assert.deepEqual(activosVacio.recorridos, []);
+    assert.deepEqual(activosVacio.puntoSalidaDefault, { lat: -34.8097527, lon: -58.4574414 });
+
+    const push = await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({
+          source: "oracle-apex",
+          recorridos: [
+            {
+              id: "R-3002",
+              fleteId: "F-78",
+              fleteNombre: "Camión 78",
+              estado: "activo",
+              puntoSalida: { lat: -34.55, lon: -58.35 },
+              color: "#8e44ad",
+              puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.61, lon: -58.41 }],
+            },
+          ],
+        }),
+      }),
+    );
+    assert.equal(push.status, 200);
+
+    const activos = await (await fetch(`${server.centralBaseUrl}/recorridos/activos`)).json();
+    assert.deepEqual(activos.recorridos[0].puntoSalida, { lat: -34.55, lon: -58.35 });
+    assert.equal(activos.recorridos[0].color, "#8e44ad");
+    // puntoSalidaDefault no cambia por tener recorridos activos con origen propio.
+    assert.deepEqual(activos.puntoSalidaDefault, { lat: -34.8097527, lon: -58.4574414 });
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});

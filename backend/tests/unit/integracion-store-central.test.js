@@ -151,6 +151,62 @@ test("listarHistorial — solo incluye recorridos finalizados", async () => {
   assert.equal(historial[0].puntos[0].descargaEn, "2026-08-05T10:00:00Z");
 });
 
+test("listarActivos — expone puntos, puntoSalida y color (010-mapa-central-unificado)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, {
+    puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4, cliente: "Almacén Centro" }],
+    puntoSalida: { lat: -34.55, lon: -58.35 },
+    color: "#8e44ad",
+  });
+
+  const [r] = await store.listarActivos();
+  assert.deepEqual(r.puntos[0], {
+    id: "p1",
+    orden: 1,
+    lat: -34.6,
+    lon: -58.4,
+    estado: "pendiente",
+    cliente: "Almacén Centro",
+    inicioEn: null,
+    arriboEn: null,
+    arriboLat: null,
+    arriboLon: null,
+    descargaEn: null,
+    descargaLat: null,
+    descargaLon: null,
+    remitoIds: [],
+  });
+  assert.deepEqual(r.puntoSalida, { lat: -34.55, lon: -58.35 });
+  assert.equal(r.color, "#8e44ad");
+});
+
+test("listarActivos — puntoSalida y color son null si Oracle no los envió", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store);
+
+  const [r] = await store.listarActivos();
+  assert.equal(r.puntoSalida, null);
+  assert.equal(r.color, null);
+});
+
+test("upsertRecorridos — un re-push sin puntoSalida/color preserva el valor ya cargado (mismo criterio que fleteNombre)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, { puntoSalida: { lat: -34.55, lon: -58.35 }, color: "#8e44ad" });
+
+  // Re-push de topología sin puntoSalida/color (caso habitual de Oracle
+  // re-enviando solo puntos/orden).
+  store.upsertRecorridos([{ id: "R-1", fleteId: "F-1", estado: "activo", puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] }]);
+
+  const [r] = await store.listarActivos();
+  assert.deepEqual(r.puntoSalida, { lat: -34.55, lon: -58.35 });
+  assert.equal(r.color, "#8e44ad");
+});
+
+test("obtenerPuntoSalidaDefault — devuelve la constante fija del backend (010-mapa-central-unificado, FR-006)", async () => {
+  const store = createIntegracionStore();
+  assert.deepEqual(await store.obtenerPuntoSalidaDefault(), { lat: -34.8097527, lon: -58.4574414 });
+});
+
 test("listarHistorial — expone flete/chofer del recorrido finalizado (009-central-mejora-visual)", async () => {
   const store = createIntegracionStore();
   store.upsertRecorridos([
