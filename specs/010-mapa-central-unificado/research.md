@@ -65,34 +65,78 @@ todavía".
   común (recorrido sin origen particular), cuando hoy ningún recorrido lo
   necesita; el campo opcional cubre el caso futuro sin ese costo inmediato.
 
-## Decisión 3: Color por recorrido — paleta fija determinística en el frontend
+## Decisión 3: Color por flete — paleta fija por posición, con override opcional de Oracle
 
-**Decision**: Definir una paleta fija de colores distinguibles (10, uno por
-recorrido activo esperado como máximo — Principio II/escenario "menos de 10
-simultáneos") en `central/src/services/marcadores.js`, y asignar un color a
-cada recorrido activo de forma determinística por posición en la lista
-`recorridos` que ya devuelve `listarActivos()` (orden estable entre ciclos
-de polling mientras el conjunto de recorridos activos no cambie), reciclando
-la paleta con módulo si hubiera más recorridos que colores.
+**Decision** *(revisada tras `/speckit-clarify` del 2026-08-20, ver
+Clarifications de spec.md)*: la clave de asignación de color es el
+**`flete_id`**, no el `recorridoId` ni una posición arbitraria — aunque en la
+práctica, para una única respuesta de `listarActivos()`, ambas claves
+coinciden (un flete no tiene más de un recorrido activo a la vez, FR-002).
+Sin color explícito, se asigna de forma determinística por posición del
+flete dentro de la lista `recorridos` que devuelve `listarActivos()` en ese
+ciclo de polling (paleta fija de 10 colores en
+`central/src/services/marcadores.js`, reciclada con módulo si hubiera más
+fletes activos que colores) — **sin persistir ningún estado** para
+garantizar que un flete conserve su color entre un recorrido y el siguiente
+(decisión explícita del usuario: FR-002a). Cuando el backend expone un
+campo `color` para ese recorrido (porque Oracle lo envió, ver Decisión 3b),
+ese valor tiene prioridad absoluta y se usa tal cual, sin pasar por la
+paleta.
 
-**Rationale**: No hay ningún requisito de que el operador elija colores
-(spec.md, Assumptions), así que una asignación determinística y sin estado
-adicional (Principio VII) alcanza; construirla en el frontend evita tocar el
-backend solo para decidir un color de presentación. Derivar el color de la
-posición en la lista (no de un hash del `id`) es suficientemente estable
-para la duración de una sesión de Central — el caso "un recorrido cambia de
-color al refrescar" solo podría ocurrir si el conjunto de recorridos
-activos cambia (uno finaliza, otro arranca), lo cual ya es un cambio visual
-esperado (aparece/desaparece un recorrido del mapa).
+**Rationale**: usar `flete_id` en vez de `recorridoId` como clave documenta
+la intención real (el color identifica al camión, no al recorrido puntual)
+aunque no cambie el resultado observable sin el campo explícito, y deja la
+implementación lista para el día en que se necesite decidir el color de
+otro modo dentro de una misma respuesta. Explícitamente se decidió NO
+agregar un mapa de continuidad persistido (ni en frontend ni en backend)
+para el caso automático — el usuario, al elegir entre las tres opciones
+planteadas en clarify, prefirió la más simple (Principio VII): sin color
+explícito, es aceptable que el color cambie entre un recorrido de un flete
+y el siguiente; quien necesite continuidad garantizada la logra enviando el
+color desde Oracle.
 
 **Alternatives considered**:
-- **Hash determinístico del `recorridoId` sobre la paleta**: más estable
-  entre sesiones/reinicios, pero con < 10 recorridos y una paleta de 10
-  colores el riesgo de colisión visual (dos recorridos activos con el mismo
-  color por hash) es real y más difícil de razonar que la asignación
-  posicional; se descarta por complejidad innecesaria para el beneficio.
+- **Hash determinístico del `flete_id` sobre la paleta (sin estado, estable
+  entre sesiones)**: descartado — con < 10 fletes activos y una paleta de
+  10 colores, el riesgo de colisión visual (dos fletes activos con el mismo
+  color por hash) es real (problema del cumpleaños con `k≈n≈10`); no vale
+  la pena frente a la opción posicional, que dentro de una misma respuesta
+  nunca colisiona.
+- **Persistir flete_id→color en el store operacional o en memoria del
+  frontend** (para dar continuidad automática entre recorridos sucesivos
+  del mismo flete): era la opción recomendada en la primera ronda de
+  clarify, pero el usuario la descartó explícitamente a favor de la más
+  simple — sin esa persistencia, y dejando la continuidad real a cargo del
+  campo `color` opcional que puede enviar Oracle.
 - **Colores configurables por el operador**: fuera de alcance (spec.md,
   Assumptions) — no hay pedido de personalización.
+
+## Decisión 3b: Color explícito opcional desde Oracle
+
+**Decision**: agregar el campo opcional `color` (string, valor CSS/hex) al
+payload de upsert de Oracle (Endpoint 1, junto a `puntoSalida` — ver
+Decisión 2) y a la respuesta de `listarActivos()`. Cuando está presente para
+un recorrido, el frontend lo usa tal cual (sin pasar por la paleta) para la
+posición de ese flete, sus puntos de entrega y su punto de salida propio si
+lo tuviera.
+
+**Rationale**: es el único mecanismo que puede dar continuidad real de color
+entre recorridos sucesivos de un mismo flete (Decisión 3), ya que Oracle sí
+tiene visibilidad de la identidad del flete a través del tiempo (a
+diferencia del store operacional cloud, que solo conoce recorridos
+individuales). Igual que `fleteNombre` (ya opcional en el mismo contrato),
+un recorrido sin `color` sigue siendo válido y usa la asignación automática.
+
+**Alternatives considered**:
+- **No permitir override de Oracle, resolver todo en el frontend**:
+  descartado — es exactamente lo que pidió el usuario para poder controlar
+  el color desde el origen de datos que sí conoce la continuidad de un
+  flete en el tiempo.
+- **Validar/restringir el valor de `color` a una paleta cerrada**:
+  descartado por ahora (Principio VII) — no hay ningún requisito de
+  consistencia visual entre el color que Oracle decida enviar y la paleta
+  automática; si hiciera falta, es un cambio acotado a la validación del
+  endpoint de upsert, no a este diseño.
 
 ## Decisión 4: Tipos de marcador e íconos (flete, punto de entrega, punto de salida)
 
@@ -123,6 +167,45 @@ abrir Detalle) simultáneamente.
 - **Tooltip permanente (siempre visible, no solo hover)**: descartado —
   con hasta 10 recorridos × 10 puntos el mapa quedaría saturado de texto
   superpuesto; contradice la razón de ser de esta feature (panorama claro).
+
+## Decisión 5: Qué pasa con el color "reciente/no reciente" del marcador de flete en la vista unificada
+
+**Decision**: en la vista de Mapa unificada, el color del marcador de
+posición de flete pasa a representar la identidad del flete/recorrido
+(FR-002), no la recencia de la ubicación (`COLOR_RECIENTE`/`COLOR_NO_RECIENTE`
+de `MapaSeguimiento.jsx`, hoy verde/naranja). La información de "ubicación
+reciente/no reciente" no se pierde: se agrega al texto del `Tooltip` de
+hover de ese marcador (FR-005 ya exige mostrar "información suficiente para
+identificar a qué flete/recorrido corresponde esa posición" — se extiende
+con una palabra más, p. ej. "Camión 7 — ubicación reciente").
+
+**Rationale**: FR-002 es explícito en que el color identifica al flete de
+forma consistente en todos sus marcadores; no hay dos canales de color
+disponibles sobre el mismo `CircleMarker` para transmitir identidad y
+recencia a la vez sin volverlos ambiguos entre sí (¿es naranja porque es
+"ese" flete o porque su ubicación no es reciente?). Mover la recencia al
+texto del tooltip no pierde información (ya viaja en `ultimaUbicacion.reciente`),
+solo cambia el canal de "color" a "texto al pasar el mouse" — consistente
+con que esta feature ya mueve otra información similar (nombre de cliente)
+de un click (`Popup`) a un hover (`Tooltip`, Decisión 4). El mapa embebido
+en el Detalle de un recorrido (fuera de alcance de esta feature, ver
+Assumptions de spec.md) sigue mostrando un único flete a la vez, así que
+**no** tiene este conflicto y conserva sin cambios su color reciente/no
+reciente actual — el cambio de esta decisión aplica solo a la vista general
+de Mapa.
+
+**Alternatives considered**:
+- **Codificar recencia con el borde del marcador** (p. ej. borde sólido si
+  reciente, punteado si no) manteniendo el relleno como color de flete:
+  técnicamente posible con `pathOptions` de Leaflet, pero agrega una
+  distinción visual adicional no pedida por spec.md; se descarta para no
+  ampliar el alcance sin un pedido explícito (Principio VII) — queda como
+  mejora futura de bajo costo si se pidiera.
+- **Mantener el color por recencia y usar un segundo indicador (badge/ícono
+  superpuesto) para el flete**: descartado — invierte la prioridad que pide
+  FR-002 (el color debe identificar al flete, no la recencia) y complica el
+  marcador (dos capas visuales superpuestas) para un beneficio menor al de
+  simplemente mover el dato a texto.
 
 ## Resumen de NEEDS CLARIFICATION resueltos
 

@@ -40,6 +40,15 @@ Abrir la URL que imprime Vite y navegar a la sección **Mapa**.
 5. Hacer click sobre el marcador de posición de un flete y confirmar que
    abre el Detalle de ese recorrido (comportamiento ya existente,
    preservado).
+6. Cargar un recorrido con el campo opcional `color` (p. ej.
+   `"color": "#8e44ad"`) vía `POST /api/integracion/recorridos` y confirmar
+   que el mapa usa ese color exacto para la posición de ese flete y sus
+   puntos, en vez del asignado automáticamente.
+7. Finalizar ese recorrido y cargar un nuevo recorrido activo para el mismo
+   `fleteId`, esta vez **sin** `color`. Confirmar que el color puede cambiar
+   respecto del recorrido anterior (sin continuidad automática garantizada
+   — la continuidad solo se da si Oracle vuelve a enviar el mismo `color`
+   explícito).
 
 ## 3. Validar US2 — ícono distinto para el flete/chofer
 

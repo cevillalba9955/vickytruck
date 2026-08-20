@@ -14,6 +14,7 @@ Cada elemento de `recorridos` (ver `RecorridoCloud` en
 |---|---|---|---|
 | `puntos` | array de punto (mismo formato que `serializarPuntosCentral`, ya usado en `listarHistorial`/`obtenerDetalle`) | `recorrido.puntos` | Antes ausente en `listarActivos()`; necesario para pintar todos los puntos de todos los recorridos activos a la vez (US1). |
 | `puntoSalida` | `{ lat, lon }`, opcional | Campo opcional del payload de upsert de Oracle (Endpoint 1, `integracion-api.md`) | Presente solo si ese recorrido indica un origen distinto al predeterminado (FR-006/FR-008). Ausente en el caso hoy habitual. |
+| `color` | string (hex/CSS), opcional | Campo opcional del payload de upsert de Oracle (Endpoint 1, `integracion-api.md`) | Clave conceptual: el flete, no el recorrido (FR-002) — Oracle es quien puede dar continuidad real entre recorridos sucesivos de un mismo flete (FR-002a). Cuando está presente, tiene prioridad sobre el color asignado automáticamente. |
 
 La respuesta de nivel superior (junto a `recorridos`) agrega:
 
@@ -29,6 +30,7 @@ cada recorrido en `POST /api/integracion/recorridos`, agrega:
 | Campo | Tipo | Requerido | Notas |
 |---|---|---|---|
 | `puntoSalida` | `{ lat, lon }` | No | Si se omite, el recorrido usa `puntoSalidaDefault`. Igual que `puntos[].lat/.lon`, es topología fija (no un evento del chofer). |
+| `color` | string (hex/CSS) | No | Si se omite, el color se asigna automáticamente sin garantía de continuidad entre un recorrido de ese flete y el siguiente (research.md, Decisión 3/3b). Mismo criterio de campo opcional que `fleteNombre` ya vigente en este contrato. |
 
 ## MarcadorMapa (derivado, no persistido)
 
@@ -41,7 +43,7 @@ extendida de `GET /api/central/recorridos/activos`. Reemplaza/extiende al
 |---|---|---|
 | `recorridoId` | string | `recorrido.id` |
 | `tipo` | enum: `flete` \| `punto` \| `salidaDefault` \| `salidaRecorrido` | derivado según de qué campo sale el marcador |
-| `color` | string (hex) | asignado por posición del recorrido en la lista `recorridos`, sobre una paleta fija (research.md, Decisión 3); `null`/sin color para `tipo: "salidaDefault"` |
+| `color` | string (hex) | `recorrido.color` si Oracle lo envió (prioridad absoluta); si no, asignado por posición del **flete** en la lista `recorridos`, sobre una paleta fija, sin persistir continuidad entre recorridos sucesivos del mismo flete (research.md, Decisión 3/3b); `null`/sin color para `tipo: "salidaDefault"` |
 | `lat`, `lon` | decimal | `ultimaUbicacion.lat/.lon` (tipo `flete`), `punto.lat/.lon` (tipo `punto`), `puntoSalida.lat/.lon` (tipo `salidaRecorrido`) o `puntoSalidaDefault.lat/.lon` (tipo `salidaDefault`) |
 | `etiquetaHover` | string | nombre del flete/recorrido (`flete`), nombre de cliente o `"Punto {orden}"` (`punto`), o texto fijo identificando el punto de salida (`salidaDefault`/`salidaRecorrido`) |
 | `clienteId`/`orden`/`estado` | — | solo en `tipo: "punto"`, igual que `PuntoEnMapa` ya existente (004-mapa-seguimiento-central) |

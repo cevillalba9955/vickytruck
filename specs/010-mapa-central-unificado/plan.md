@@ -10,17 +10,20 @@ La vista de Mapa de Central hoy solo muestra la posición de flete de cada
 recorrido activo (sin sus puntos de entrega, y solo si hay al menos uno
 activo). Esta feature la convierte en una vista consolidada: todos los
 puntos de entrega y la posición de flete de **todos** los recorridos
-activos al mismo tiempo, cada recorrido con un color propio de una paleta
-fija; un ícono distinto para la posición de flete/chofer frente a los
-puntos de entrega; nombre del cliente al pasar el mouse; y un punto de
-salida — uno predeterminado en el backend (coordenadas fijas) que se
+activos al mismo tiempo, cada flete con un color propio de una paleta fija
+(asignado automáticamente, sin persistir continuidad entre recorridos
+sucesivos del mismo flete, o tomado tal cual si Oracle lo envía
+explícitamente); un ícono distinto para la posición de flete/chofer frente
+a los puntos de entrega; nombre del cliente al pasar el mouse; y un punto
+de salida — uno predeterminado en el backend (coordenadas fijas) que se
 muestra siempre, incluso sin recorridos activos, más un marcador propio por
 recorrido solo cuando ese recorrido indica un origen distinto al
 predeterminado. El enfoque técnico reutiliza el patrón ya existente
 (`GET /api/central/recorridos/activos` + polling + `MapaSeguimiento.jsx`
-con `react-leaflet`), sumando `puntos` (y opcionalmente `puntoSalida`) a esa
-respuesta — sin pedidos de red adicionales — y extendiendo el mapa con
-color por recorrido, tipos de marcador e ícono, y un marcador de origen que
+con `react-leaflet`), sumando `puntos` (y opcionalmente `puntoSalida` y
+`color`) a esa respuesta — sin pedidos de red adicionales — y extendiendo
+el mapa con color por flete, tipos de marcador e ícono, y un marcador de
+origen que
 no depende de `activos`.
 
 ## Technical Context

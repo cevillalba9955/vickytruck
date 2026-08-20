@@ -14,6 +14,8 @@
 
 - Q: ¿Cómo se determina el punto de salida cuando un recorrido no indica uno propio, y debe verse en el mapa incluso sin recorridos activos? → A: El backend tiene predeterminado un único punto de salida (lat=-34.8097527, lon=-58.4574414). Ese punto se muestra siempre en el mapa, aun sin recorridos activos. No se agrega un marcador de salida nuevo por recorrido salvo que ese recorrido tenga indicado uno distinto al predeterminado.
 - Q: ¿Con qué color/estilo se muestra el marcador de salida por defecto, dado que ya no pertenece a un único recorrido? → A: Sin color propio ni relación con la paleta de colores de recorrido — se identifica solo por un ícono distintivo (p. ej. bandera/base).
+- Q: ¿Con qué clave se asocia el color en el mapa — por recorrido o por flete —, y quién puede definirlo? → A: Por `flete_id`, no por recorrido ni por posición en la lista (un flete no tiene dos recorridos activos al mismo tiempo, pero sí puede tener recorridos activos sucesivos en el tiempo). Oracle puede enviar opcionalmente un color explícito junto con la información del recorrido; ese color, cuando está presente, tiene prioridad sobre cualquier asignación automática.
+- Q: Sin color explícito de Oracle, ¿la continuidad de color entre recorridos sucesivos del mismo flete debe persistir en algún estado nuevo (frontend o backend)? → A: No — sin color explícito, se resuelve con el mismo mecanismo automático (paleta fija, sin estado nuevo); la continuidad garantizada entre recorridos sucesivos de un mismo flete depende de que Oracle envíe ese color explícito.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -43,17 +45,24 @@ se repite con el de otro recorrido activo.
    **When** el operador abre la vista de Mapa, **Then** ve en un mismo mapa
    los puntos de entrega de los 3 recorridos y la posición de flete de cada
    uno (cuando la tiene), sin necesidad de seleccionar un recorrido primero.
-2. **Given** dos recorridos activos distintos, **When** el operador compara
-   sus marcadores en el mapa, **Then** cada recorrido usa un color propio,
-   aplicado de forma consistente a la posición de su flete y a todos sus
-   puntos de entrega (el punto de salida por defecto, si lo comparten, no
-   se colorea por recorrido — ver Historia 4).
+2. **Given** dos recorridos activos distintos (de dos fletes distintos, ya
+   que un mismo flete no tiene más de un recorrido activo a la vez),
+   **When** el operador compara sus marcadores en el mapa, **Then** cada uno
+   usa un color propio asociado a su flete, aplicado de forma consistente a
+   la posición de ese flete y a todos sus puntos de entrega (el punto de
+   salida por defecto, si lo comparten, no se colorea — ver Historia 4).
 3. **Given** un recorrido activo sin ubicación de flete reportada todavía,
    **When** el operador ve el mapa, **Then** los puntos de ese recorrido se
    muestran igual (con su color), sin inventar una posición de flete.
 4. **Given** el operador hace click sobre el marcador de posición de un
    flete, **When** el click se procesa, **Then** se abre el Detalle de ese
    recorrido (comportamiento ya existente en la vista de Mapa, preservado).
+5. **Given** un recorrido activo cuya información incluye un color explícito
+   para su flete, **When** el operador ve el mapa, **Then** ese color se usa
+   en vez del asignado automáticamente. **Given**, en cambio, ningún color
+   explícito para ese flete, **When** el mismo flete pasa de un recorrido
+   activo al siguiente en el tiempo, **Then** el color puede cambiar entre
+   uno y otro (sin garantía de continuidad automática — ver Clarifications).
 
 ---
 
@@ -196,11 +205,19 @@ aparece un marcador propio para ese origen, con el color de ese recorrido.
 - **FR-001**: El sistema DEBE mostrar en la vista de Mapa, de forma
   simultánea, los puntos de entrega y la posición de flete de todos los
   recorridos activos (no solo del recorrido seleccionado).
-- **FR-002**: El sistema DEBE asignar a cada recorrido activo un color
-  distintivo, aplicado de forma consistente a la posición de su flete y a
-  todos sus puntos de entrega, y a su punto de salida únicamente cuando ese
-  recorrido indica uno distinto al predeterminado (ver FR-006). El punto de
-  salida por defecto/compartido no usa el color de ningún recorrido.
+- **FR-002**: El sistema DEBE asignar un color distintivo por **flete** (no
+  por recorrido ni por posición en una lista) — ya que un flete no tiene más
+  de un recorrido activo a la vez, el color de su recorrido activo se
+  aplica de forma consistente a la posición de ese flete, a todos sus
+  puntos de entrega, y a su punto de salida únicamente cuando ese recorrido
+  indica uno distinto al predeterminado (ver FR-006). El punto de salida por
+  defecto/compartido no usa el color de ningún flete.
+- **FR-002a**: El sistema DEBE permitir que el color de un flete/recorrido
+  llegue como un dato opcional junto con la información del recorrido; si
+  está presente, ese color tiene prioridad sobre cualquier color asignado
+  automáticamente. Sin ese dato, el color se resuelve automáticamente
+  (paleta fija), sin garantía de continuidad entre un recorrido de un flete
+  y el siguiente recorrido de ese mismo flete.
 - **FR-003**: El sistema DEBE distinguir visualmente, mediante una forma o
   ícono propio (independiente del color), el marcador de posición de un
   flete/chofer, los marcadores de punto de entrega y el marcador de punto de
@@ -211,7 +228,9 @@ aparece un marcador propio para ese origen, con el color de ese recorrido.
   lugar, igual que la grilla del Detalle de recorrido.
 - **FR-005**: El sistema DEBE mostrar, al pasar el mouse sobre la posición
   de un flete, información suficiente para identificar a qué
-  flete/recorrido corresponde esa posición.
+  flete/recorrido corresponde esa posición, incluyendo si es una ubicación
+  reciente o no — ya que, en esta vista, el color del marcador identifica al
+  flete (FR-002) y deja de indicar recencia (research.md, Decisión 5).
 - **FR-006**: El sistema DEBE tener un punto de salida predeterminado (por
   defecto, único, sin ícono/color de recorrido) que se muestra siempre en
   la vista de Mapa, incluso sin recorridos activos. Un recorrido activo que
@@ -236,8 +255,9 @@ aparece un marcador propio para ese origen, con el color de ese recorrido.
 
 - **Recorrido activo (en el mapa)**: agrupa, para efectos de esta vista, la
   posición de flete y los puntos de entrega de un mismo recorrido bajo un
-  color común; incluye también su propio punto de salida bajo ese mismo
-  color solo si ese recorrido indica uno distinto al predeterminado.
+  color común (asociado al flete, no al recorrido — ver FR-002); incluye
+  también su propio punto de salida bajo ese mismo color solo si ese
+  recorrido indica uno distinto al predeterminado.
 - **Punto de salida**: ubicación (coordenadas) desde la que parte un
   recorrido. Existe un punto de salida predeterminado, único y
   preconfigurado en el backend (lat=-34.8097527, lon=-58.4574414), que se
@@ -280,11 +300,14 @@ aparece un marcador propio para ese origen, con el color de ese recorrido.
   para incluir también los puntos de entrega y de salida de todos los
   recorridos activos. El mapa embebido dentro del Detalle de un recorrido
   (que ya muestra solo ese recorrido) no cambia de alcance.
-- El esquema de asignación de color por recorrido no requiere que el
-  operador pueda elegir o personalizar colores; alcanza con una paleta fija
-  de colores distinguibles entre sí, reutilizada si la cantidad de
-  recorridos activos superara la paleta (caso hoy fuera del rango esperado
-  de "menos de 10 simultáneos").
+- El esquema de asignación automática de color (cuando Oracle no envía uno
+  explícito) no requiere que el operador pueda elegir o personalizar
+  colores, ni que se persista ningún estado nuevo para mantener continuidad
+  entre recorridos sucesivos de un mismo flete (Clarifications); alcanza con
+  una paleta fija de colores distinguibles entre sí, asignados por
+  `flete_id` dentro del conjunto de recorridos activos de cada respuesta,
+  reutilizada si la cantidad de fletes activos superara la paleta (caso hoy
+  fuera del rango esperado de "menos de 10 simultáneos").
 - Por ahora, el punto de salida de todos los recorridos es el mismo lugar
   (un depósito/base única, predeterminado en el backend); el requisito de
   modelarlo por recorrido (FR-008) es para no bloquear que a futuro cada
