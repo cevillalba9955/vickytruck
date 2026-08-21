@@ -1,10 +1,10 @@
 import mqtt from "mqtt";
 import { ahoraLocalIso } from "./tiempo.js";
 
-const TOPIC_TEMPLATE = "chofer/{fleteId}/ubicacion";
+const TOPIC_TEMPLATE = "chofer/{choferId}/ubicacion";
 
-function topicPara(fleteId) {
-  return TOPIC_TEMPLATE.replace("{fleteId}", encodeURIComponent(String(fleteId)));
+function topicPara(choferId) {
+  return TOPIC_TEMPLATE.replace("{choferId}", encodeURIComponent(String(choferId)));
 }
 
 /**
@@ -12,15 +12,16 @@ function topicPara(fleteId) {
  * ver backend/src/routes/recorrido.js): credencial MQTT permanente del
  * chofer, aprovisionada por `choferId` en EMQX Cloud
  * (backend/src/mqtt/emqxProvisioning.js, FR-013 2026-08-10), no una
- * credencial fija de build. El topic de publicación sigue siendo por-flete
- * (`chofer/{fleteId}/ubicacion`); la credencial ya no está scoped a ese
- * único topic (ver research.md Decisión 8 — riesgo aceptado explícitamente).
- * `mqttConfig` es `null` si el backend todavía no tiene `fleteId`/`choferId`
- * para este recorrido, o si EMQX no está configurado: en ese caso, no-op (el
- * caller cae al fallback REST, ver ubicacionPeriodica.js).
+ * credencial fija de build. El topic de publicación es por-choferId
+ * (`chofer/{choferId}/ubicacion`, 012-ubicacion-por-chofer — antes era
+ * por-fleteId, ver contracts/mqtt-topics.md); la credencial no está scoped
+ * a ese único topic (ver research.md Decisión 8 — riesgo aceptado
+ * explícitamente). `mqttConfig` es `null` si el backend todavía no tiene
+ * `choferId` para este recorrido, o si EMQX no está configurado: en ese
+ * caso, no-op (el caller cae al fallback REST, ver ubicacionPeriodica.js).
  */
-export function createPublisherUbicacionMqtt(fleteId, mqttConfig) {
-  if (!fleteId || !mqttConfig?.url) {
+export function createPublisherUbicacionMqtt(choferId, mqttConfig) {
+  if (!choferId || !mqttConfig?.url) {
     return {
       async publicar() {
         return false;
@@ -38,14 +39,14 @@ export function createPublisherUbicacionMqtt(fleteId, mqttConfig) {
     clean: true,
   });
 
-  const topic = mqttConfig.topic || topicPara(fleteId);
+  const topic = mqttConfig.topic || topicPara(choferId);
 
   return {
     publicar({ lat, lon, recorridoId }) {
       return new Promise((resolve) => {
         const payload = JSON.stringify({
           eventId: crypto.randomUUID(),
-          fleteId: String(fleteId),
+          choferId: String(choferId),
           recorridoId: recorridoId ? String(recorridoId) : null,
           lat,
           lon,

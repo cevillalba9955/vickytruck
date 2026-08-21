@@ -39,15 +39,22 @@ async function reportarUnaVez(token, publisher) {
  * Arranca el reporte periódico de ubicación instantánea (FR-014) mientras el
  * recorrido está activo. Devuelve una función para detener el temporizador.
  *
- * El publisher MQTT usa `fleteId` para el topic de publicación (Central lo
- * busca por `fleteId`, no por token — ver mqttBridge.js), pero la credencial
- * en sí (`mqttConfig`, devuelta por GET /:token → `recorrido.mqtt`) es la
- * permanente del chofer (FR-013, 2026-08-10) — no scoped a este fleteId. El
- * reporte HTTP usa `token` (identifica el recorrido vía enlace) y ahora es
- * solo fallback si la publicación MQTT del ciclo falla (ver reportarUnaVez).
+ * El publisher MQTT usa `choferId` para el topic de publicación (Central lo
+ * busca por `choferId`, no por token — ver mqttBridge.js, 012-ubicacion-por-chofer),
+ * y la credencial en sí (`mqttConfig`, devuelta por GET /:token →
+ * `recorrido.mqtt`) es la permanente del chofer (FR-013, 2026-08-10) — no
+ * scoped a un fleteId puntual. El reporte HTTP usa `token` (identifica el
+ * recorrido vía enlace) y ahora es solo fallback si la publicación MQTT del
+ * ciclo falla (ver reportarUnaVez).
  */
-export function iniciarReportePeriodico(token, fleteId, mqttConfig, intervaloMs) {
-  const publisher = createPublisherUbicacionMqtt(fleteId, mqttConfig);
+export function iniciarReportePeriodico(token, choferId, mqttConfig, intervaloMs) {
+  const publisher = createPublisherUbicacionMqtt(choferId, mqttConfig);
+
+  // Disparo inmediato al arrancar (012-ubicacion-por-chofer, FR-002): el
+  // chofer rara vez deja la app abierta el tiempo suficiente para que el
+  // setInterval de abajo llegue a disparar — el momento real de oportunidad
+  // es cuando abre la app, no un timer corriendo en segundo plano.
+  reportarUnaVez(token, publisher);
 
   const timer = setInterval(() => {
     reportarUnaVez(token, publisher);

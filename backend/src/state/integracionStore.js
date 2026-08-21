@@ -101,13 +101,22 @@ function camposInformativos(entrante, previo) {
 
 export function createIntegracionStore() {
   const recorridos = new Map();
-  const recorridoPorFlete = new Map();
+  // recorridoPorChofer (012-ubicacion-por-chofer): reemplaza al viejo
+  // recorridoPorFlete — la ubicación en vivo ahora se rutea por choferId
+  // (identidad estable), no por fleteId (ver research.md Decisión 1).
+  const recorridoPorChofer = new Map();
   const recorridoPorToken = new Map();
+  // ultimaUbicacionPorChofer (012-ubicacion-por-chofer): retención en
+  // memoria de la última posición de un chofer sin recorrido activo
+  // asociado en ese instante — excepción acotada habilitada por la
+  // Constitución v5.0.0 (Principio VII). Sin persistencia, sin exposición
+  // pública todavía.
+  const ultimaUbicacionPorChofer = new Map();
 
   function indexarRecorrido(recorrido) {
     recorridos.set(String(recorrido.id), recorrido);
-    if (recorrido.fleteId != null && recorrido.estado === "activo") {
-      recorridoPorFlete.set(String(recorrido.fleteId), String(recorrido.id));
+    if (recorrido.choferId != null && recorrido.estado === "activo") {
+      recorridoPorChofer.set(String(recorrido.choferId), String(recorrido.id));
     }
     if (recorrido.token) {
       recorridoPorToken.set(recorrido.token, String(recorrido.id));
@@ -178,17 +187,24 @@ export function createIntegracionStore() {
       return [...recorridos.values()];
     },
 
-    actualizarUbicacionPorFlete(fleteId, ubicacion) {
-      const recorridoId = recorridoPorFlete.get(String(fleteId));
-      if (!recorridoId) return false;
-      const recorrido = recorridos.get(recorridoId);
-      if (!recorrido) return false;
-      recorrido.ultimaUbicacion = {
+    // actualizarUbicacionPorChofer (012-ubicacion-por-chofer): reemplaza a
+    // actualizarUbicacionPorFlete. Siempre retiene el snapshot por-chofer
+    // (ultimaUbicacionPorChofer, excepción acotada de la Constitución
+    // v5.0.0 Principio VII), y además actualiza el recorrido activo de ese
+    // chofer si existe uno (recorridoPorChofer).
+    actualizarUbicacionPorChofer(choferId, ubicacion) {
+      const registro = {
         lat: ubicacion.lat,
         lon: ubicacion.lon,
         en: ubicacion.en,
         eventId: ubicacion.eventId ?? null,
       };
+      ultimaUbicacionPorChofer.set(String(choferId), registro);
+
+      const recorridoId = recorridoPorChofer.get(String(choferId));
+      const recorrido = recorridoId ? recorridos.get(recorridoId) : null;
+      if (!recorrido) return false;
+      recorrido.ultimaUbicacion = registro;
       recorrido.updatedAt = ahoraLocalIso();
       return true;
     },

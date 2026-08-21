@@ -38,7 +38,9 @@ function parsearPayload(raw) {
   const body = JSON.parse(String(raw));
   return {
     eventId: body.eventId ?? null,
-    fleteId: String(body.fleteId),
+    // choferId (012-ubicacion-por-chofer): reemplaza a fleteId como clave
+    // de ruteo — ver contracts/mqtt-topics.md.
+    choferId: String(body.choferId),
     lat: Number(body.lat),
     lon: Number(body.lon),
     en: body.en || ahoraLocalIso(),
@@ -49,28 +51,53 @@ export function startMqttBridge(store, logger = console) {
   return startMqttBridgeWithConnector(store, mqtt.connect, logger);
 }
 
+// crearMetricas (012-ubicacion-por-chofer, FR-007/FR-008): snapshot en
+// memoria de la salud del canal de ubicación, sin persistencia — se
+// reinicia en cada deploy/restart del proceso, igual que el resto del store
+// (ver contracts/mqtt-estado-api.md).
+function crearMetricas() {
+  return {
+    recibidos: 0,
+    procesados: 0,
+    duplicadosDescartados: 0,
+    invalidos: 0,
+    reconexiones: 0,
+    ultimoMensajeEn: null,
+    conectado: false,
+  };
+}
+
 export function startMqttBridgeWithConnector(store, connectClient, logger = console) {
   const brokerUrl = process.env.MQTT_BROKER_URL;
   if (!brokerUrl) {
     logger.warn("[mqtt-bridge] MQTT_BROKER_URL no configurado; bridge deshabilitado.");
-    return { stop() {} };
+    return { stop() {}, obtenerMetricas: () => ({ habilitado: false }) };
   }
 
   const dedupe = createDeduplicadorEventos();
+  const metricas = crearMetricas();
   const client = connectClient(brokerUrl, opcionesConexion());
 
   client.on("connect", () => {
+    metricas.conectado = true;
     client.subscribe(topicUbicacion(), { qos: 1 }, (err) => {
       if (err) logger.error("[mqtt-bridge] error subscribe", err);
     });
   });
 
   client.on("message", (topic, payload) => {
+    metricas.recibidos += 1;
     try {
       const evento = parsearPayload(payload);
-      if (dedupe.yaVisto(evento.eventId)) return;
-      store.actualizarUbicacionPorFlete(evento.fleteId, evento);
+      if (dedupe.yaVisto(evento.eventId)) {
+        metricas.duplicadosDescartados += 1;
+        return;
+      }
+      store.actualizarUbicacionPorChofer(evento.choferId, evento);
+      metricas.procesados += 1;
+      metricas.ultimoMensajeEn = evento.en;
     } catch (err) {
+      metricas.invalidos += 1;
       logger.error(`[mqtt-bridge] payload inválido en ${topic}`, err);
     }
   });
@@ -80,12 +107,23 @@ export function startMqttBridgeWithConnector(store, connectClient, logger = cons
   });
 
   client.on("reconnect", () => {
+    metricas.conectado = false;
+    metricas.reconexiones += 1;
     logger.info("[mqtt-bridge] reconectando...");
+  });
+
+  client.on("close", () => {
+    metricas.conectado = false;
+  });
+
+  client.on("offline", () => {
+    metricas.conectado = false;
   });
 
   return {
     stop() {
       client.end(true);
     },
+    obtenerMetricas: () => ({ habilitado: true, ...metricas }),
   };
 }

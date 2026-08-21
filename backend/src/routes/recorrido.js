@@ -11,19 +11,21 @@ function intervaloReporteUbicacionMs() {
 // Cloud (ver derivarCredencialChofer — determinística, la credencial ya se
 // aprovisionó de antemano al recibir el push de Oracle, ver
 // POST /api/integracion/recorridos en integracion.js). El topic de
-// publicación sigue siendo por-fleteId (chofer/{fleteId}/ubicacion,
-// FR-004), pero la credencial ahora es la permanente del chofer (FR-013,
-// 2026-08-10) — no scoped a este único fleteId, ver research.md Decisión 8.
-// Degrada a `null` sin romper este endpoint si todavía no hay
-// fleteId/choferId asignado o si el backend corre sin EMQX configurado
-// (dev/test) — el frontend ya trata `mqtt: null` como "no reportar
-// ubicación por MQTT" (cae al fallback REST, FR-004).
-function mqttConfigPara(fleteId, choferId) {
+// publicación es por-choferId (chofer/{choferId}/ubicacion, 012-ubicacion-por-chofer)
+// — la credencial del chofer es permanente (FR-013, 2026-08-10) con ACL
+// amplia sobre chofer/+/ubicacion, así que ya no hace falta un fleteId
+// activo para poder reportar ubicación (ver research.md Decisión 8 y
+// specs/012-ubicacion-por-chofer/research.md Decisión 1). Degrada a `null`
+// sin romper este endpoint si todavía no hay choferId asignado o si el
+// backend corre sin EMQX configurado (dev/test) — el frontend ya trata
+// `mqtt: null` como "no reportar ubicación por MQTT" (cae al fallback REST,
+// FR-004).
+function mqttConfigPara(choferId) {
   const url = process.env.EMQX_WSS_URL;
-  if (!fleteId || !choferId || !url) return null;
+  if (!choferId || !url) return null;
   try {
     const { username, password } = derivarCredencialChofer(choferId);
-    return { url, username, password, topic: topicPara(fleteId) };
+    return { url, username, password, topic: topicPara(choferId) };
   } catch {
     return null;
   }
@@ -72,11 +74,15 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
         recorrido: {
           estado: recorrido.estado,
           fleteId: recorrido.fleteId ?? null,
+          // choferId (012-ubicacion-por-chofer): expuesto para que el
+          // frontend pueda cachearlo (choferCache.js) como resiliencia ante
+          // un backend que pierda el recorrido de su store en memoria.
+          choferId: recorrido.choferId ?? null,
           // cierreEn (008-registro-inicio-fin-recorrido, FR-005): sin
           // cierreLat/cierreLon, mismo criterio que el resto de esta lista.
           cierreEn: recorrido.cierreEn ?? null,
           intervaloUbicacionMs: intervaloReporteUbicacionMs(),
-          mqtt: mqttConfigPara(recorrido.fleteId, recorrido.choferId),
+          mqtt: mqttConfigPara(recorrido.choferId),
           // Estado de viaje guiado (005-chofer-estados-viaje, FR-005).
           viajeEstado: recorrido.viajeEstado ?? "detenido",
           puntoActivoId: recorrido.puntoActivoId ?? null,

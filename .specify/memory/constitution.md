@@ -1,33 +1,28 @@
 <!--
 Sync Impact Report
-Version change: 3.0.0 → 4.0.0
+Version change: 4.0.0 → 5.0.0
 Modified principles:
-  - II. "Ruta Acotada y Ordenada (Máximo 10 Puntos)" → "Ruta Acotada y Ordenada (Máximo 10
-    Puntos), con Reordenamiento Limitado por el Chofer" — REDEFINICIÓN INCOMPATIBLE: se
-    elimina la restricción absoluta "el chofer no puede reordenar ni editar los puntos" y
-    se introduce una excepción acotada: el chofer puede mover cualquier punto pendiente de
-    su recorrido activo al primer puesto (acción IR PRIMERO, feature 005), y ese
-    reordenamiento se sincroniza como el nuevo orden autoritativo hacia Central/Oracle.
-    Fuera de esa acción puntual, el chofer sigue sin poder editar los puntos ni alterar el
-    orden de ningún otro modo; el límite de 10 puntos y las coordenadas obligatorias no
-    cambian.
+  - VII. "Simplicidad y Datos Mínimos Necesarios" — REDEFINICIÓN INCOMPATIBLE: se acota
+    la restricción absoluta "los datos de ubicación del chofer se recolectan únicamente
+    mientras tiene un recorrido activo asignado" con una excepción de resiliencia: el
+    dispositivo puede seguir intentando reportar la ubicación del último chofer que lo
+    usó exitosamente, y el backend puede retener en memoria (no persistente, sin
+    exposición en ningún panel) la última ubicación conocida de un chofer sin recorrido
+    activo asociado en ese instante — únicamente para tolerar inconsistencias
+    transitorias del propio sistema (p. ej. el store en memoria del backend cloud
+    perdiendo el recorrido vigente tras un despliegue, ver feature 012), nunca para
+    rastrear choferes sin ninguna asignación de trabajo real. Fuera de esa excepción
+    acotada, la restricción general se mantiene sin cambios.
 Added sections: ninguna (modificación de un principio existente)
-Removed sections: ninguna (se retira una restricción dentro del Principio II, no una
+Removed sections: ninguna (se acota una restricción dentro del Principio VII, no una
   sección completa)
 Templates requiring updates:
   - .specify/templates/plan-template.md ✅ no changes needed (Constitution Check gate is derived dynamically from this file)
   - .specify/templates/spec-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/tasks-template.md ✅ no changes needed (generic structure, compatible)
   - .specify/templates/checklist-template.md ✅ no changes needed
-  - specs/005-chofer-estados-viaje/spec.md ⚠ pending manual alignment (retirar nota de
-    conflicto en Assumptions/checklist, ahora resuelta por esta enmienda)
-  - specs/001-chofer-recorrido/data-model.md ⚠ no requiere cambio (describe el
-    comportamiento vigente al momento de esa feature; el reordenamiento del chofer es
-    alcance de la feature 005, no retroactivo)
-Follow-up TODOs:
-  - Definir en el plan de la feature 005 el contrato de sincronización concreto (endpoint,
-    payload, resolución de conflictos) para que IR PRIMERO persista el nuevo orden hacia
-    Oracle/Central.
+  - specs/012-ubicacion-por-chofer/spec.md ✅ ya escrito conforme a esta enmienda (FR-005/FR-006)
+Follow-up TODOs: ninguno
 -->
 
 # VickyTruck Constitution
@@ -123,14 +118,29 @@ visiblemente al emisor.
 Rationale: en operación logística, un mensaje "perdido" sin aviso puede
 traducirse en una entrega fallida o mal coordinada.
 
-### VII. Simplicidad y Datos Mínimos Necesarios
+### VII. Simplicidad y Datos Mínimos Necesarios, con Resiliencia Acotada
 Se prefiere la solución más simple que cumpla los principios anteriores.
 No se introduce infraestructura, capas de abstracción, ni almacenamiento de
 datos personales/de ubicación adicionales a los estrictamente necesarios
 para operar la ruta activa. Los datos de ubicación del chofer se recolectan
-únicamente mientras tiene un recorrido activo asignado.
+únicamente mientras tiene un recorrido activo asignado, con una única
+excepción acotada de resiliencia operativa: si el propio sistema pierde
+transitoriamente el registro del recorrido vigente de un chofer (por
+ejemplo, el store en memoria del backend cloud vaciado por un despliegue),
+el dispositivo puede seguir intentando reportar la ubicación de ese chofer
+usando su identidad recordada localmente, y el backend puede retener en
+memoria (no persistente, sin exponerse en ningún panel) la última ubicación
+conocida de un chofer sin recorrido activo asociado en ese instante. Esta
+excepción cubre únicamente inconsistencias transitorias del propio sistema
+sobre un chofer con una asignación de trabajo real (presente o
+inmediatamente anterior); no habilita recolectar ni retener ubicación de un
+chofer sin ningún recorrido asignado.
 Rationale: menor superficie de código y de datos sensibles implica menor
-costo de mantenimiento y menor riesgo de privacidad/seguridad.
+costo de mantenimiento y menor riesgo de privacidad/seguridad; la excepción
+de resiliencia evita que un problema de sincronización interno (no del
+chofer) se traduzca en una pérdida de visibilidad operativa para Central,
+sin abrir la puerta a recolectar ubicación fuera de una asignación de
+trabajo real.
 
 ## Restricciones Técnicas y de Integración
 
@@ -197,4 +207,4 @@ semver:
 "Constitution Check" antes de la Fase 0 y volver a repasarla tras la Fase 1
 de diseño.
 
-**Version**: 4.0.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-07
+**Version**: 5.0.0 | **Ratified**: 2026-08-03 | **Last Amended**: 2026-08-21

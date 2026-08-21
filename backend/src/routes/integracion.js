@@ -26,10 +26,17 @@ function serializarEstado(recorrido) {
   };
 }
 
-export function createIntegracionRouter(store, emqxProvisioning = emqxProvisioningCompartido) {
+export function createIntegracionRouter(store, emqxProvisioning = emqxProvisioningCompartido, mqttBridge = null) {
   const router = Router();
 
   router.use(validarAuthIntegracion);
+
+  // GET /mqtt/estado (012-ubicacion-por-chofer, FR-007/FR-008): salud del
+  // canal de ubicación en vivo, consultable sin depender de la consola de
+  // EMQX Cloud — ver contracts/mqtt-estado-api.md.
+  router.get("/mqtt/estado", (req, res) => {
+    res.json(mqttBridge?.obtenerMetricas?.() ?? { habilitado: false });
+  });
 
   router.post("/recorridos", async (req, res) => {
     const payload = req.body || {};
