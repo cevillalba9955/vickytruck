@@ -27,7 +27,7 @@ body {
 
 .mapa-seguimiento {
   width: 100%;
-  height: 480px;
+  height: 640px;
   border-radius: 0.5rem;
 }
 
@@ -49,10 +49,10 @@ body {
    usa la paleta de recorrido); un `background` inline lo sobrescribe cuando
    el marcador es el propio de un recorrido (`salidaRecorrido`). */
 .marcador-salida__cuerpo {
-  width: 14px;
-  height: 14px;
-  background: #4b5563;
-  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  width: 20px;
+  height: 30px;
+  background: #0d27f3;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.6));
 }
 
