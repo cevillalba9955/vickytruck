@@ -59,24 +59,37 @@ test("listarActivos — ultimaUbicacion refleja lo que reportó el bridge MQTT y
   process.env.UBICACION_STALE_MS = String(5 * 60 * 1000);
   try {
     const store = createIntegracionStore();
-    seedActivo(store);
+    seedActivo(store, { choferId: "CH-1" });
 
     const sinUbicacion = (await store.listarActivos())[0];
     assert.equal(sinUbicacion.ultimaUbicacion.reciente, false);
     assert.equal(sinUbicacion.ultimaUbicacion.lat, null);
 
-    store.actualizarUbicacionPorFlete("F-1", { lat: -34.6, lon: -58.4, en: new Date().toISOString() });
+    store.actualizarUbicacionPorChofer("CH-1", { lat: -34.6, lon: -58.4, en: new Date().toISOString() });
     const conUbicacion = (await store.listarActivos())[0];
     assert.equal(conUbicacion.ultimaUbicacion.reciente, true);
     assert.equal(conUbicacion.ultimaUbicacion.lat, -34.6);
 
     const haceDiezMinutos = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    store.actualizarUbicacionPorFlete("F-1", { lat: -34.6, lon: -58.4, en: haceDiezMinutos });
+    store.actualizarUbicacionPorChofer("CH-1", { lat: -34.6, lon: -58.4, en: haceDiezMinutos });
     const vieja = (await store.listarActivos())[0];
     assert.equal(vieja.ultimaUbicacion.reciente, false);
   } finally {
     process.env.UBICACION_STALE_MS = prev;
   }
+});
+
+test("actualizarUbicacionPorChofer — retiene la última ubicación de un chofer sin recorrido activo asociado", async () => {
+  const store = createIntegracionStore();
+  const aplicado = store.actualizarUbicacionPorChofer("CH-huerfano", {
+    lat: -34.6,
+    lon: -58.4,
+    en: new Date().toISOString(),
+  });
+  // No hay ningún recorrido activo para "CH-huerfano": no debe haber nada
+  // que actualizar en Central, pero tampoco debe lanzar ni perder el dato
+  // (queda retenido en memoria — FR-006, Constitución v5.0.0 Principio VII).
+  assert.equal(aplicado, false);
 });
 
 test("obtenerDetalle — recorrido inexistente devuelve null", async () => {

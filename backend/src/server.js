@@ -21,6 +21,10 @@ export function createApp(
   ubicacionStore,
   integracionStore = integracionStoreCompartido,
   emqxProvisioning = emqxProvisioningCompartido,
+  // mqttBridge (012-ubicacion-por-chofer, FR-007): opcional para no romper
+  // los tests existentes que llaman a createApp() sin él — sin bridge, el
+  // endpoint de estado responde { habilitado: false } (ver integracion.js).
+  mqttBridge = null,
 ) {
   const app = express();
   app.use(cors);
@@ -29,7 +33,7 @@ export function createApp(
   app.use("/api/recorridos", createRecorridoRouter(repository, ubicacionStore));
   app.use("/api/recorridos", createViajeRouter(repository));
   app.use("/api/central", createCentralRouter(centralRepository));
-  app.use("/api/integracion", createIntegracionRouter(integracionStore, emqxProvisioning));
+  app.use("/api/integracion", createIntegracionRouter(integracionStore, emqxProvisioning, mqttBridge));
 
   app.use((req, res) => {
     res.status(404).json({ error: "ruta_no_encontrada" });
@@ -57,8 +61,8 @@ if (esModuloPrincipal) {
   // Oracle/APEX vía /api/integracion y consultada después por polling (ver
   // specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md).
   const integracionStore = integracionStoreCompartido;
-  startMqttBridge(integracionStore);
-  const app = createApp(integracionStore, integracionStore, undefined, integracionStore);
+  const mqttBridge = startMqttBridge(integracionStore);
+  const app = createApp(integracionStore, integracionStore, undefined, integracionStore, undefined, mqttBridge);
   const port = Number(process.env.PORT || 3001);
   // Bind explícito a 0.0.0.0: en contenedores (Fly.io) el default de Node
   // puede quedar solo en IPv6, y el proxy externo espera IPv4.

@@ -34,6 +34,65 @@ test("POST /api/integracion/recorridos — 401 sin credenciales", async () => {
   }
 });
 
+test("GET /api/integracion/mqtt/estado — 401 sin credenciales", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, createIntegracionStore());
+
+  try {
+    const res = await fetch(`${server.integracionBaseUrl}/mqtt/estado`);
+    assert.equal(res.status, 401);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/integracion/mqtt/estado — habilitado:false si no se inyectó ningún mqttBridge (012-ubicacion-por-chofer)", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, createIntegracionStore());
+
+  try {
+    const res = await fetch(`${server.integracionBaseUrl}/mqtt/estado`, withApiKey());
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { habilitado: false });
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/integracion/mqtt/estado — refleja las métricas del mqttBridge inyectado", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const mqttBridgeFake = {
+    obtenerMetricas: () => ({
+      habilitado: true,
+      conectado: true,
+      recibidos: 5,
+      procesados: 4,
+      duplicadosDescartados: 1,
+      invalidos: 0,
+      reconexiones: 0,
+      ultimoMensajeEn: "2026-08-21T12:00:00-03:00",
+    }),
+  };
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, createIntegracionStore(), undefined, mqttBridgeFake);
+
+  try {
+    const res = await fetch(`${server.integracionBaseUrl}/mqtt/estado`, withApiKey());
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.habilitado, true);
+    assert.equal(body.recibidos, 5);
+    assert.equal(body.procesados, 4);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
 test("POST+GET /api/integracion/* — upsert y consulta de estado", async () => {
   const prev = process.env.INTEGRACION_API_KEY;
   process.env.INTEGRACION_API_KEY = "test-key";
