@@ -5,11 +5,21 @@
 -- por specs/005-chofer-estados-viaje/contracts/sincronizacion-oracle-central.md)
 -- leyendo las vistas ya validadas contra este esquema real (mismas que usa
 -- RECORRIDO_API, ver recorrido_api.pkb.sql):
---   VIC.V_RECORRIDOS(ID, TOKEN, ESTADO, FLETE_ID, CHOFER_ID)
+--   VIC.V_RECORRIDOS(ID, TOKEN, ESTADO, FLETE_ID, CHOFER_ID,
+--                     PUNTO_SALIDA_LATITUD, PUNTO_SALIDA_LONGITUD)
 --   VIC.V_PUNTOS_ENTREGA(ID, RECORRIDO_ID, ORDEN, LATITUD, LONGITUD, ESTADO,
 --                         CLIENTE, DIRECCION, HORARIO, NOTAS, REMITO_IDS)
---   VIC.V_FLETES(ID, NOMBRE)
+--   VIC.V_FLETES(ID, NOMBRE, COLOR)
 --   DB_ENTIDADES.V_CHOFERES(ID, TITLE) -- solo lectura, GRANT a VIC (2026-08-10)
+--
+-- COLOR/PUNTO_SALIDA_LATITUD/PUNTO_SALIDA_LONGITUD (010-mapa-central-
+-- unificado, FR-002a/FR-006, 2026-08-21): columnas nuevas, nullable — si la
+-- vista real todavía no las tiene, agregarlas (nombres elegidos acá, no hay
+-- restricción del lado cloud más que "opcionales" — ver contrato en
+-- specs/010-mapa-central-unificado/contracts/mapa-central-api.md, Cambio 3).
+-- COLOR sale de V_FLETES (no V_RECORRIDOS): la continuidad de color entre
+-- recorridos de un mismo flete es responsabilidad de Oracle, no del store
+-- operacional cloud.
 --
 -- CLIENTE/DIRECCION/HORARIO/NOTAS (005-chofer-estados-viaje, FR-001/FR-002):
 -- columnas de texto, nullable — se omiten del JSON cuando vienen NULL
@@ -138,7 +148,11 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
     v_flete_nombre  VARCHAR2(200);
     v_chofer_id     NUMBER;
     v_chofer_nombre VARCHAR2(200);
+    v_flete_color   VARCHAR2(20);
+    v_ps_lat        NUMBER;
+    v_ps_lon        NUMBER;
     v_puntos        CLOB;
+    v_punto_salida  CLOB;
     v_recorrido     CLOB;
     v_payload       CLOB;
   BEGIN
@@ -157,12 +171,29 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
     -- (transicionarPunto), sin depender de que Oracle lo reenvíe con ese
     -- estado. Un re-push posterior de acá con 'activo' ya no lo revierte
     -- (mismo integracionStore.js lo protege).
-    SELECT r.id, r.token, 'activo' estado, r.flete_id, f.nombre, r.chofer_id, ch.title chofer_nombre
-      INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre, v_chofer_id, v_chofer_nombre
+    -- COLOR (010-mapa-central-unificado, FR-002a): sale de V_FLETES, no de
+    -- V_RECORRIDOS — la clave conceptual es el flete (para que conserve su
+    -- color entre un recorrido y el siguiente), no este recorrido puntual.
+    -- PUNTO_SALIDA_LATITUD/LONGITUD (FR-006): en cambio sí son de
+    -- V_RECORRIDOS — topología fija de ESTE recorrido, mismo criterio que
+    -- LATITUD/LONGITUD de V_PUNTOS_ENTREGA. Ambas columnas nullable; si
+    -- vienen NULL el JSON las omite (ABSENT ON NULL) y Central usa su
+    -- fallback (color autoasignado / puntoSalidaDefault).
+    SELECT r.id, r.token, 'activo' estado, r.flete_id, f.nombre, r.chofer_id, ch.title chofer_nombre,
+           f.color_html, gbl.vicky_lat, gbl.vicky_lng
+      INTO v_id, v_token, v_estado, v_flete_id, v_flete_nombre, v_chofer_id, v_chofer_nombre,
+           v_flete_color, v_ps_lat, v_ps_lon
       FROM VIC.V_RECORRIDOS r
       LEFT JOIN DB_ENTIDADES.V_FLETES f ON f.id = r.flete_id
       LEFT JOIN DB_ENTIDADES.V_CHOFERES ch ON ch.id = r.chofer_id
      WHERE r.id = p_recorrido_id;
+
+    IF v_ps_lat IS NOT NULL AND v_ps_lon IS NOT NULL THEN
+      SELECT JSON_OBJECT('lat' VALUE v_ps_lat, 'lon' VALUE v_ps_lon RETURNING CLOB)
+        INTO v_punto_salida
+        FROM DUAL;
+    END IF;
+
 
     SELECT JSON_ARRAYAGG(
              JSON_OBJECT(
@@ -199,6 +230,8 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
              'choferNombre' VALUE v_chofer_nombre,
              'estado' VALUE v_estado,
              'puntos' VALUE NVL(v_puntos, TO_CLOB('[]')) FORMAT JSON,
+             'color' VALUE v_flete_color,
+             'puntoSalida' VALUE v_punto_salida FORMAT JSON,
              -- 006-normalizar-formato-horario: hora local de Argentina con
              -- offset explícito en vez de UTC ('Z'), ver research.md
              -- Decisión 1 y 3 — reemplaza el contrato de intercambio interno.

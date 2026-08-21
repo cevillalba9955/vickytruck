@@ -16,7 +16,7 @@ test("US3 — bridge procesa mensaje tras reconexión", async () => {
   process.env.MQTT_BROKER_URL = "mqtt://fake";
 
   const store = createIntegracionStore();
-  store.upsertRecorridos([{ id: "R-1", fleteId: "F-1", estado: "activo", puntos: [] }]);
+  store.upsertRecorridos([{ id: "R-1", fleteId: "F-1", choferId: "CH-1", estado: "activo", puntos: [] }]);
 
   const logs = [];
   const logger = {
@@ -33,9 +33,9 @@ test("US3 — bridge procesa mensaje tras reconexión", async () => {
     client.emit("reconnect");
     client.emit(
       "message",
-      "chofer/F-1/ubicacion",
+      "chofer/CH-1/ubicacion",
       Buffer.from(
-        JSON.stringify({ eventId: "evt-1", fleteId: "F-1", lat: -34.6, lon: -58.4, en: "2026-08-05T12:00:00Z" }),
+        JSON.stringify({ eventId: "evt-1", choferId: "CH-1", lat: -34.6, lon: -58.4, en: "2026-08-05T12:00:00Z" }),
       ),
     );
 

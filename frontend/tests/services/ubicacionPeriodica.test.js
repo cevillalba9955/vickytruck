@@ -44,7 +44,7 @@ describe("ubicacionPeriodica", () => {
   it("reporta la ubicación al intervalo indicado (FR-014)", async () => {
     obtenerUbicacionBestEffort.mockResolvedValue({ lat: -34.6, lon: -58.4 });
 
-    iniciar("tok-1", "flete-1", null, 1000);
+    iniciar("tok-1", "chofer-1", null, 1000);
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(global.fetch).toHaveBeenCalledWith(
@@ -56,10 +56,24 @@ describe("ubicacionPeriodica", () => {
     );
   });
 
+  it("dispara un reporte inmediato al arrancar, sin esperar el primer tick del intervalo (012-ubicacion-por-chofer, FR-002)", async () => {
+    obtenerUbicacionBestEffort.mockResolvedValue({ lat: -34.6, lon: -58.4 });
+
+    iniciar("tok-1", "chofer-1", null, 60000);
+    // Avanza 0ms: no hay tick de intervalo posible todavía, solo se resuelve
+    // la promesa del disparo inmediato si existe.
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/recorridos/tok-1/ubicacion",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("no llama a la API si no hay ubicación disponible (best-effort)", async () => {
     obtenerUbicacionBestEffort.mockResolvedValue(null);
 
-    iniciar("tok-1", "flete-1", null, 1000);
+    iniciar("tok-1", "chofer-1", null, 1000);
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(global.fetch).not.toHaveBeenCalled();
@@ -68,7 +82,13 @@ describe("ubicacionPeriodica", () => {
   it("la función de limpieza detiene el temporizador", async () => {
     obtenerUbicacionBestEffort.mockResolvedValue({ lat: -34.6, lon: -58.4 });
 
-    const detener = iniciar("tok-1", "flete-1", null, 1000);
+    const detener = iniciar("tok-1", "chofer-1", null, 1000);
+    // Deja resolver el disparo inmediato al montar (012-ubicacion-por-chofer)
+    // ANTES de detener — si no, esa llamada en vuelo competiría con el
+    // detener() de abajo y el resultado dependería del timing.
+    await vi.advanceTimersByTimeAsync(0);
+    global.fetch.mockClear();
+
     detener();
     await vi.advanceTimersByTimeAsync(5000);
 
@@ -78,7 +98,7 @@ describe("ubicacionPeriodica", () => {
   it("dispara un reporte inmediato al volver a estar visible (iOS pausa timers en background, FR-014)", async () => {
     obtenerUbicacionBestEffort.mockResolvedValue({ lat: -34.6, lon: -58.4 });
 
-    iniciar("tok-1", "flete-1", null, 60000);
+    iniciar("tok-1", "chofer-1", null, 60000);
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
 
@@ -91,7 +111,12 @@ describe("ubicacionPeriodica", () => {
   it("la función de limpieza deja de escuchar visibilitychange", async () => {
     obtenerUbicacionBestEffort.mockResolvedValue({ lat: -34.6, lon: -58.4 });
 
-    const detener = iniciar("tok-1", "flete-1", null, 60000);
+    const detener = iniciar("tok-1", "chofer-1", null, 60000);
+    // Ídem test anterior: deja resolver el disparo inmediato al montar antes
+    // de detener y de disparar visibilitychange.
+    await vi.advanceTimersByTimeAsync(0);
+    global.fetch.mockClear();
+
     detener();
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
@@ -107,7 +132,7 @@ describe("ubicacionPeriodica", () => {
     const publicar = vi.fn().mockResolvedValue(true);
     createPublisherUbicacionMqtt.mockReturnValueOnce({ publicar, cerrar: vi.fn() });
 
-    iniciar("tok-1", "flete-1", { url: "wss://broker-test", username: "u", password: "p" }, 1000);
+    iniciar("tok-1", "chofer-1", { url: "wss://broker-test", username: "u", password: "p" }, 1000);
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(publicar).toHaveBeenCalledWith({ lat: -34.6, lon: -58.4, recorridoId: "tok-1" });
@@ -119,7 +144,7 @@ describe("ubicacionPeriodica", () => {
     const publicar = vi.fn().mockResolvedValue(false);
     createPublisherUbicacionMqtt.mockReturnValueOnce({ publicar, cerrar: vi.fn() });
 
-    iniciar("tok-1", "flete-1", { url: "wss://broker-test", username: "u", password: "p" }, 1000);
+    iniciar("tok-1", "chofer-1", { url: "wss://broker-test", username: "u", password: "p" }, 1000);
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(publicar).toHaveBeenCalled();
@@ -134,7 +159,7 @@ describe("ubicacionPeriodica", () => {
     const publicar = vi.fn().mockRejectedValue(new Error("mqtt caído"));
     createPublisherUbicacionMqtt.mockReturnValueOnce({ publicar, cerrar: vi.fn() });
 
-    iniciar("tok-1", "flete-1", { url: "wss://broker-test", username: "u", password: "p" }, 1000);
+    iniciar("tok-1", "chofer-1", { url: "wss://broker-test", username: "u", password: "p" }, 1000);
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(global.fetch).toHaveBeenCalledWith(

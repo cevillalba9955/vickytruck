@@ -17,6 +17,7 @@ import {
 } from "./services/api.js";
 import { iniciarReportePeriodico } from "./services/ubicacionPeriodica.js";
 import { guardarCacheRecorrido, leerCacheRecorrido } from "./services/recorridoCache.js";
+import { guardarCacheChofer, leerCacheChofer } from "./services/choferCache.js";
 
 const INTERVALO_UBICACION_DEFAULT_MS = 60000;
 
@@ -38,7 +39,10 @@ function calcularOrdenTrasIrPrimero(puntos, puntoId) {
   return [{ id: objetivo.id, orden: ordenesDisponibles[0] }, ...resto.map((p, i) => ({ id: p.id, orden: ordenesDisponibles[i + 1] }))];
 }
 
-function App() {
+// Exportado (además del uso normal más abajo) para poder testear el
+// comportamiento de la app completa sin re-implementar su wiring — ver
+// tests/main.test.jsx (012-ubicacion-por-chofer, resiliencia US2).
+export function App() {
   const [token] = useState(obtenerTokenDeUrl);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -68,6 +72,13 @@ function App() {
       setRecorrido(data);
       setError(null);
       setSinConexion(false);
+      // Cachea la identidad/credencial del chofer (012-ubicacion-por-chofer,
+      // FR-004) en cada carga exitosa que la incluya — permite seguir
+      // reportando ubicación más adelante aunque este mismo GET /:token
+      // empiece a fallar (store del backend vaciado por un deploy).
+      if (data.recorrido?.choferId && data.recorrido?.mqtt) {
+        guardarCacheChofer({ choferId: data.recorrido.choferId, mqtt: data.recorrido.mqtt });
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         // Respuesta HTTP real (p.ej. 404 de token inválido): no es un
@@ -121,13 +132,24 @@ function App() {
 
   // FR-014: reporte periódico de ubicación instantánea mientras el recorrido
   // está activo; el intervalo lo decide el backend (recorrido.intervaloUbicacionMs).
+  // choferId/mqttConfig (012-ubicacion-por-chofer, FR-001/FR-005): ya no
+  // dependen de que `fleteId`/GET /:token hayan resuelto un recorrido
+  // válido — si el backend perdió el recorrido (404) pero este dispositivo
+  // ya reportó con éxito antes, se cae a la identidad/credencial cacheada
+  // (choferCache.js) para seguir intentando publicar la posición del chofer.
   const intervaloUbicacionMs = recorrido?.recorrido?.intervaloUbicacionMs ?? INTERVALO_UBICACION_DEFAULT_MS;
-  const fleteId = recorrido?.recorrido?.fleteId ?? null;
-  const mqttConfig = recorrido?.recorrido?.mqtt ?? null;
+  const cacheChofer = leerCacheChofer();
+  const choferId = recorrido?.recorrido?.choferId ?? cacheChofer?.choferId ?? null;
+  const mqttConfig = recorrido?.recorrido?.mqtt ?? cacheChofer?.mqtt ?? null;
   useEffect(() => {
-    if (!token || !fleteId) return undefined;
-    return iniciarReportePeriodico(token, fleteId, mqttConfig, intervaloUbicacionMs);
-  }, [token, fleteId, mqttConfig, intervaloUbicacionMs]);
+    // Gate solo en token/choferId (no en mqttConfig): sin credencial MQTT
+    // (EMQX no configurado, o mqttConfig null por cualquier motivo) el
+    // reporte igual debe arrancar y caer al fallback REST en cada ciclo
+    // (ver ubicacionPeriodica.js/ubicacionMqtt.js) — este comportamiento ya
+    // existía antes de 012-ubicacion-por-chofer y no debía perderse.
+    if (!token || !choferId) return undefined;
+    return iniciarReportePeriodico(token, choferId, mqttConfig, intervaloUbicacionMs);
+  }, [token, choferId, mqttConfig, intervaloUbicacionMs]);
 
   const actualizarPuntoLocal = (puntoId, cambios) => {
     setRecorrido((actual) => {
@@ -340,8 +362,15 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+// Guardado tras `#root` (en vez de incondicional): permite importar `App`
+// en tests (tests/main.test.jsx) sin que este módulo intente montar contra
+// un DOM que en jsdom no tiene ese elemento — index.html siempre lo tiene
+// en producción, así que el comportamiento real no cambia.
+const elementoRaiz = document.getElementById("root");
+if (elementoRaiz) {
+  createRoot(elementoRaiz).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  );
+}
