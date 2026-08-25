@@ -11,12 +11,12 @@ description: "Task list template for feature implementation"
 
 **Tests**: incluidos — mismo convenio ya establecido en el proyecto (`node --test` en `backend/tests/{unit,contract,integration}`, `vitest` en `frontend/tests`/`central/tests`, ver plan.md § Testing).
 
-**Organization**: Tasks agrupadas por historia de usuario de spec.md (US1, US2 — ambas P1, independientes entre sí).
+**Organization**: Tasks agrupadas por historia de usuario de spec.md (US1, US2 — ambas P1, independientes entre sí; US3 — P2, agregada 2026-08-25, depende de que existan datos de US1/US2 pero no de sus tareas de código).
 
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Puede ejecutarse en paralelo (archivos distintos, sin dependencias pendientes)
-- **[Story]**: A qué historia de usuario pertenece (US1, US2)
+- **[Story]**: A qué historia de usuario pertenece (US1, US2, US3)
 - Rutas de archivo exactas en cada descripción
 
 ## Path Conventions
@@ -102,7 +102,35 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 
 ---
 
-## Phase 5: Polish & Cross-Cutting Concerns
+## Phase 5: User Story 3 - Ver en Central la ubicación GPS de los eventos de inicio y cierre (Priority: P2, agregada 2026-08-25)
+
+**Goal**: Central puede ver, además de la fecha/hora ya visible, la latitud/longitud de los eventos de INICIAR (por punto) y FINALIZAR (por recorrido) cuando el dispositivo las capturó — mismo nivel de visibilidad que ya tienen `arriboLat`/`arriboLon`/`descargaLat`/`descargaLon` desde 009-central-mejora-visual (research.md, Decisión 7, revierte Decisión 4).
+
+**Independent Test**: con un recorrido finalizado cuyo INICIAR y FINALIZAR se tocaron con GPS disponible, consultar `GET /api/central/recorridos/:id` y `GET /api/central/recorridos/historial` y verificar que `recorrido.cierreLat`/`cierreLon` y `puntos[].inicioLat`/`inicioLon` están presentes (no `undefined`); repetir sin GPS disponible y verificar que quedan en `null` sin romper la respuesta.
+
+### Tests for User Story 3
+
+- [ ] T033 [P] [US3] Unit test en `backend/tests/unit/integracion-store-central.test.js`: `serializarPuntosCentral()` incluye `inicioLat`/`inicioLon` por punto (mismo patrón que el test ya existente para `arriboLat`/`arriboLon`); `null` cuando el punto no tiene ubicación de inicio registrada
+- [ ] T034 [P] [US3] Contract test en `backend/tests/contract/get-recorrido-detalle.test.js`: `GET /api/central/recorridos/:id` incluye `recorrido.cierreLat`/`recorrido.cierreLon` y `puntos[].inicioLat`/`inicioLon` (extender `inMemoryCentralRepository.js` primero, T038)
+- [ ] T035 [P] [US3] Contract test en `backend/tests/contract/get-historial.test.js`: `GET /api/central/recorridos/historial` incluye `recorrido.cierreLat`/`recorrido.cierreLon` en cada entrada del listado (no solo en el detalle puntual)
+- [ ] T036 [P] [US3] Contract test (regresión) en `backend/tests/contract/get-recorridos-activos.test.js`: `GET /api/central/recorridos/activos` sigue **sin** incluir `cierreLat`/`cierreLon`/`inicioLat`/`inicioLon` en ningún nivel (ese endpoint es solo para recorridos todavía activos, sin cierre)
+- [ ] T037 [P] [US3] Unit test en `central/tests/services/tiempo.test.js`: nueva función (p. ej. `primerEventoConUbicacion(puntos)`) devuelve `{ iso, lat, lon }` del punto cuyo `inicioEn` es el más temprano; `lat`/`lon` en `null` si ese punto no tiene `inicioLat`/`inicioLon`; `null` completo si ningún punto tiene `inicioEn`
+- [ ] T038 [P] [US3] Component test en `central/tests/components/RecorridoDetalle.test.jsx`: el campo "Hora inicio" del encabezado muestra un tooltip/ícono con coordenadas cuando el punto de inicio más temprano las tiene; el campo "Final" muestra tooltip/ícono con `cierreLat`/`cierreLon` cuando existen; ambos sin tooltip (o con indicación de "sin ubicación") cuando faltan, sin romper el render cuando el recorrido no tiene puntos o no está finalizado
+
+### Implementation for User Story 3
+
+- [ ] T039 [US3] En `backend/src/state/integracionStore.js`, extender `serializarPuntosCentral()` (línea ~607) agregando `inicioLat: p.inicioLat ?? null` e `inicioLon: p.inicioLon ?? null`, mismo lugar/patrón que `arriboLat`/`arriboLon`
+- [ ] T040 [US3] En `backend/src/state/integracionStore.js`, extender el objeto `recorrido` devuelto por `listarHistorial()` (línea ~556) y `obtenerDetalle()` (línea ~577) agregando `cierreLat: r.cierreLat ?? null`, `cierreLon: r.cierreLon ?? null`
+- [ ] T041 [US3] En `backend/src/routes/central.js`, extender el mapeo explícito de `GET /recorridos/historial` (línea ~34) agregando `cierreLat: d.recorrido.cierreLat`, `cierreLon: d.recorrido.cierreLon` junto a `cierreEn` (sin este cambio, T040 no llega a esta respuesta porque el router recorta campos a mano)
+- [ ] T042 [P] [US3] En `backend/tests/helpers/inMemoryCentralRepository.js`, extender `serializarPuntos()` con `inicioLat: p.inicioLat ?? null`/`inicioLon: p.inicioLon ?? null`, y los objetos `recorrido` de `obtenerDetalle()`/`listarHistorial()` con `cierreLat: r.cierreLat ?? null`/`cierreLon: r.cierreLon ?? null` — necesario para que T034/T035/T036 puedan setear estos campos vía seed de test
+- [ ] T043 [US3] En `central/src/services/tiempo.js`, agregar `primerEventoConUbicacion(puntos)` junto a `primerEventoIso` (puede reusar su misma lógica de `Math.min` sobre `inicioEn`, devolviendo además `inicioLat`/`inicioLon` del punto ganador)
+- [ ] T044 [US3] En `central/src/components/RecorridoDetalle.jsx`, usar `primerEventoConUbicacion` para el `Descriptions.Item` "Hora inicio" y agregar un tooltip/ícono con las coordenadas (formato `lat.toFixed(5), lon.toFixed(5)`) cuando existan — **sin** reusar `HoraConProximidad` (no hay punto de referencia para medir proximidad en INICIAR, research.md Decisión 7); análogo para `Descriptions.Item` "Final" usando `recorrido.cierreLat`/`recorrido.cierreLon` directamente
+
+**Checkpoint**: US3 es demostrable de forma independiente sobre un recorrido ya finalizado — Central ve las coordenadas de inicio/cierre en la API y en el detalle visual, sin afectar el flujo del chofer ni las historias US1/US2 ya entregadas.
+
+---
+
+## Phase 6: Polish & Cross-Cutting Concerns
 
 **Purpose**: mejoras transversales tras completar ambas historias
 
@@ -120,12 +148,14 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 - **Foundational (Phase 2)**: N/A — sin tareas
 - **US1 (Phase 3)**: depende solo de Setup — 100% independiente de US2
 - **US2 (Phase 4)**: depende solo de Setup — 100% independiente de US1 a nivel de código (T010 de US1 toca `serializarPuntosCentral`/`inMemoryCentralRepository` para agregar `inicioEn`; T021 de US2 toca las mismas funciones para agregar `cierreEn`/`esperandoFinalizar` — mismo archivo, cambios no solapados; coordinar el merge si se hacen en paralelo)
-- **Polish (Phase 5)**: depende de que ambas historias estén completas
+- **US3 (Phase 5)**: depende de que US1 y US2 ya estén implementadas (T006-T029) — toca las mismas funciones (`serializarPuntosCentral`, `listarHistorial`, `obtenerDetalle`) que ellas ya extendieron, y necesita que `inicioLat`/`inicioLon`/`cierreLat`/`cierreLon` ya existan en el store (los capturan T007/T020, sin cambios en esta historia). No bloquea ni es bloqueada por Polish (Phase 6) de la entrega original.
+- **Polish (Phase 6)**: depende de que las tres historias estén completas
 
 ### Parallel Opportunities
 
 - US1 (Phase 3) completa puede desarrollarse en paralelo con US2 (Phase 4) por dos personas distintas
-- Dentro de cada fase, todas las tareas marcadas [P] (tests, y los componentes de Central en US2) son paralelizables entre sí
+- Dentro de cada fase, todas las tareas marcadas [P] (tests, y los componentes de Central en US2/US3) son paralelizables entre sí
+- Dentro de US3, T033-T038 (tests, distintos archivos) son paralelizables entre sí; T039-T041 (mismo archivo `integracionStore.js`/`central.js`) son secuenciales entre sí pero T042 (archivo de test helper) y T043 (archivo de Central) pueden avanzar en paralelo con ellas
 
 ---
 
@@ -157,14 +187,15 @@ Task: "Component test en frontend/tests/components/RouteView.test.jsx"
 1. Setup → base lista
 2. US1 (INICIAR registra hora/ubicación) → validar Escenario 1 de quickstart.md → deploy
 3. US2 (FINALIZAR explícito + cierre) → validar Escenarios 2-4 → deploy
-4. Polish → limpieza y notas cruzadas con 005
+4. US3 (Central ve las coordenadas de inicio/cierre, P2, agregada 2026-08-25) → validar Escenario 5 de quickstart.md → deploy
+5. Polish → limpieza y notas cruzadas con 005
 
 ---
 
 ## Notes
 
 - `[P]` = archivos distintos, sin dependencias pendientes entre sí
-- US1 y US2 son independientes entre sí (a diferencia de 005, donde US3-US5 dependían de US2) — pueden implementarse, testearse y entregarse en cualquier orden
+- US1 y US2 son independientes entre sí (a diferencia de 005, donde US3-US5 dependían de US2) — pueden implementarse, testearse y entregarse en cualquier orden. US3 sí depende de que US1/US2 ya estén implementadas (necesita los campos que ellas capturan), pero no de que Polish (Phase 6) esté hecho.
 - Verificar que los tests fallan antes de implementar
 - Commitear después de cada tarea o grupo lógico
 - Parar en cada checkpoint para validar la historia de forma independiente

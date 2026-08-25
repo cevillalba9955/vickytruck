@@ -119,15 +119,36 @@ Se agrega `esperandoFinalizar` por recorrido (research.md, Decisión 5).
 ## GET /api/central/recorridos/historial y GET /api/central/recorridos/:id (extendido)
 
 Se agrega `cierreEn` a `recorrido`, e `inicioEn` a cada punto dentro de
-`puntos`. `inicioLat`/`inicioLon`/`cierreLat`/`cierreLon` **no** se incluyen
-(research.md, Decisión 4).
+`puntos`. **Actualización 2026-08-25 (User Story 3, research.md Decisión
+7)**: también se agregan `cierreLat`/`cierreLon` a `recorrido`, e
+`inicioLat`/`inicioLon` a cada punto — mismo nivel de visibilidad que ya
+tienen `arriboLat`/`arriboLon`/`descargaLat`/`descargaLon` en `puntos`
+desde 009-central-mejora-visual. `null` cuando el dispositivo no pudo
+obtener ubicación GPS en ese evento (FR-013).
 
 **200 OK** (`GET /api/central/recorridos/:id`)
 ```json
 {
-  "recorrido": { "id": "R-1", "estado": "finalizado", "fleteId": "7", "cierreEn": "2026-08-13T14:40:00-03:00" },
+  "recorrido": {
+    "id": "R-1",
+    "estado": "finalizado",
+    "fleteId": "7",
+    "cierreEn": "2026-08-13T14:40:00-03:00",
+    "cierreLat": -34.61,
+    "cierreLon": -58.39
+  },
   "puntos": [
-    { "id": "p3", "orden": 3, "estado": "completado", "inicioEn": "2026-08-13T14:02:00-03:00", "arriboEn": "...", "descargaEn": "...", "remitoIds": [] }
+    {
+      "id": "p3",
+      "orden": 3,
+      "estado": "completado",
+      "inicioEn": "2026-08-13T14:02:00-03:00",
+      "inicioLat": -34.60,
+      "inicioLon": -58.38,
+      "arriboEn": "...",
+      "descargaEn": "...",
+      "remitoIds": []
+    }
   ]
 }
 ```

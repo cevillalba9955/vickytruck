@@ -4,9 +4,13 @@
 
 **Created**: 2026-08-13
 
+**Updated**: 2026-08-25 — se agrega User Story 3: exponer a Central las coordenadas GPS de los eventos de inicio y cierre (ya capturadas y guardadas desde la versión original, pero no expuestas — ver Decisión 4 en research.md).
+
 **Status**: Draft
 
 **Input**: User description: "nueva spec: registrar inicio y final de recorrido; debe guardar ubicacion y hora cuando chofer presiona iniciar en cada punto y cuando presiona finalizar recorrido. ademas para considerar el tiempo de regreso a base, el finalizar recorrido deja de ser automatico en el ultimo punto."
+
+**Update input (2026-08-25)**: "Registrar ubicacion al iniciar y finalizar el recorrido" — al revisar el estado actual se confirmó que el sistema ya registra fecha/hora en ambos eventos, y ya captura la ubicación GPS internamente, pero no la expone a Central. Esta actualización agrega esa exposición.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -43,6 +47,23 @@ Al completar el último punto de entrega, el recorrido ya no se da por finalizad
 
 ---
 
+### User Story 3 - Ver en Central la ubicación GPS de los eventos de inicio y cierre (Priority: P2)
+
+Central ya puede ver la fecha/hora de cuándo el chofer tocó INICIAR en cada punto y FINALIZAR el recorrido. Ahora, cuando esos eventos tengan una ubicación GPS asociada, Central también puede ver la latitud/longitud de dónde ocurrieron, con el mismo nivel de visibilidad que ya tiene para los eventos de arribo y descarga completa.
+
+**Why this priority**: Es una mejora de visibilidad sobre datos que el sistema ya captura y guarda desde la versión original de esta feature; no cambia el comportamiento del chofer ni la lógica de estados, por eso es P2 y no P1.
+
+**Independent Test**: Con un recorrido que tiene al menos un punto con evento de inicio registrado con ubicación GPS, y un cierre de recorrido también con ubicación GPS, se consulta el recorrido desde Central y se verifica que la latitud/longitud de ambos eventos está disponible en la respuesta, no solo la fecha/hora.
+
+**Acceptance Scenarios**:
+
+1. **Given** un punto con evento de inicio registrado con ubicación GPS, **When** Central consulta el recorrido (activo o en historial), **Then** puede ver la latitud/longitud de esa ubicación además de la fecha/hora.
+2. **Given** un recorrido finalizado con ubicación GPS registrada en el momento del cierre, **When** Central lo consulta, **Then** puede ver la latitud/longitud del cierre además de la fecha/hora.
+3. **Given** un evento de inicio o de cierre sin ubicación GPS disponible (el dispositivo no pudo obtenerla), **When** Central lo consulta, **Then** ve la fecha/hora sin coordenadas asociadas, sin error ni dato inconsistente.
+4. **Given** un recorrido cuyos eventos de inicio/cierre con ubicación fueron registrados antes de esta actualización, **When** Central lo consulta después de esta actualización, **Then** también puede ver esas coordenadas, sin necesidad de que el chofer repita la acción.
+
+---
+
 ### Edge Cases
 
 - ¿Qué pasa si el chofer pierde conectividad justo al tocar INICIAR o FINALIZAR? La acción debe quedar encolada localmente y reintentarse automáticamente al recuperar señal, sin que el chofer deba repetirla manualmente ni pueda duplicarla (mismo mecanismo ya usado para arribo/descarga completa).
@@ -64,11 +85,14 @@ Al completar el último punto de entrega, el recorrido ya no se da por finalizad
 - **FR-008**: El botón FINALIZAR MUST seguir mostrándose únicamente cuando el estado de viaje sea Detenido y no queden puntos pendientes, igual que en el comportamiento ya existente.
 - **FR-009**: Las acciones de INICIAR y FINALIZAR realizadas sin conectividad MUST quedar encoladas localmente y reintentarse automáticamente al recuperar conexión, sin duplicarse ni perderse, siguiendo el mismo mecanismo ya usado para arribo/descarga completa.
 - **FR-010**: El sistema MUST sincronizar hacia Central, en tiempo (casi) real, el nuevo estado de finalización del recorrido y los eventos de inicio por punto, de modo que Central pueda ver reflejado el tiempo transcurrido entre la descarga completa del último punto y el cierre efectivo del recorrido (tiempo de regreso a base).
+- **FR-011**: El sistema MUST exponer a Central la latitud/longitud del evento de inicio de cada punto cuando estén disponibles, con el mismo nivel de visibilidad con el que ya expone las de los eventos de arribo y descarga completa.
+- **FR-012**: El sistema MUST exponer a Central la latitud/longitud del evento de cierre del recorrido cuando estén disponibles, con el mismo nivel de visibilidad con el que ya expone las de los eventos de arribo y descarga completa.
+- **FR-013**: La ausencia de ubicación GPS en un evento de inicio o cierre ya registrado MUST seguir representándose como dato faltante (sin coordenadas), sin bloquear ni alterar la consulta del resto del recorrido por parte de Central.
 
 ### Key Entities
 
-- **Evento de inicio (por punto)**: Marca de tiempo de servidor y ubicación GPS opcional del chofer en el instante en que se tocó INICIAR sobre ese punto; se agrega a los eventos ya existentes de arribo y descarga completa de cada punto de entrega.
-- **Evento de cierre de recorrido**: Marca de tiempo de servidor y ubicación GPS opcional del chofer en el instante en que se tocó FINALIZAR; determina la transición del recorrido a estado finalizado y reemplaza la derivación automática anterior basada únicamente en el estado de los puntos.
+- **Evento de inicio (por punto)**: Marca de tiempo de servidor y ubicación GPS opcional del chofer en el instante en que se tocó INICIAR sobre ese punto; se agrega a los eventos ya existentes de arribo y descarga completa de cada punto de entrega. Tanto la fecha/hora como la latitud/longitud (si existe) son consultables por Central.
+- **Evento de cierre de recorrido**: Marca de tiempo de servidor y ubicación GPS opcional del chofer en el instante en que se tocó FINALIZAR; determina la transición del recorrido a estado finalizado y reemplaza la derivación automática anterior basada únicamente en el estado de los puntos. Tanto la fecha/hora como la latitud/longitud (si existe) son consultables por Central.
 
 ## Success Criteria *(mandatory)*
 
@@ -78,6 +102,7 @@ Al completar el último punto de entrega, el recorrido ya no se da por finalizad
 - **SC-002**: Para el 100% de los recorridos completados, el cierre (estado finalizado) ocurre únicamente tras una acción explícita del chofer, nunca antes de que toque FINALIZAR.
 - **SC-003**: Central puede calcular, para cualquier recorrido finalizado, el tiempo transcurrido entre la descarga completa del último punto y el cierre del recorrido, sin necesidad de cálculos externos al sistema.
 - **SC-004**: El chofer puede finalizar su recorrido con un único toque adicional sobre FINALIZAR, sin pasos ni pantallas intermedias, igual que en el flujo ya existente.
+- **SC-005**: Para el 100% de los eventos de inicio y cierre que tienen ubicación GPS registrada, Central puede ver su latitud/longitud sin necesidad de otra fuente de datos ni de cálculos externos.
 
 ## Assumptions
 
@@ -85,3 +110,5 @@ Al completar el último punto de entrega, el recorrido ya no se da por finalizad
 - El evento de cierre de recorrido (FINALIZAR) se registra sobre el recorrido en su conjunto, no sobre un punto de entrega en particular; no se modela un "punto base" como entidad de datos en esta especificación, ya que no fue solicitado.
 - El mecanismo de cola offline y reintento ya definido en las features 001 y 007 se reutiliza sin cambios de diseño para las acciones INICIAR y FINALIZAR.
 - No se agrega validación de geocerca (radio permitido) alrededor de la base al tocar FINALIZAR; se registra la ubicación reportada por el dispositivo sin bloquear la acción, consistente con el criterio ya usado para arribo/descarga completa.
+- (User Story 3) La captura y guardado de la ubicación GPS de INICIAR/FINALIZAR ya existe desde la versión original de esta feature (FR-002, FR-006); esta extensión no cambia esa captura, solo agrega su exposición hacia Central, revirtiendo la Decisión 4 documentada en `research.md` a la luz del precedente sentado después por la feature 009 (que sí expone `arriboLat`/`arriboLon`/`descargaLat`/`descargaLon`).
+- (User Story 3) No se requiere ninguna acción del chofer ni reprocesamiento de recorridos ya finalizados: las coordenadas ya guardadas en el store para recorridos previos quedan disponibles automáticamente al exponerse el campo.

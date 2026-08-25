@@ -141,3 +141,37 @@ también `finalizar` — descartada por lo anterior; si en el futuro se
 necesita corregir un FINALIZAR accidental, es una feature nueva a
 especificar aparte (posible reapertura de recorrido), no una extensión
 trivial de CANCELAR.
+
+## Decisión 7 (2026-08-25, User Story 3) — Revertir Decisión 4: sí exponer coordenadas de auditoría a Central
+
+**Decisión**: `inicioLat`/`inicioLon` (por punto) y `cierreLat`/`cierreLon`
+(por recorrido) se agregan a los serializadores de Central
+(`serializarPuntosCentral`, `listarHistorial`, `obtenerDetalle` en
+`integracionStore.js`, y el mapeo explícito de
+`GET /api/central/recorridos/historial` en `central.js`). No cambia nada en
+la captura (ya existente desde la versión original) ni en lo que ve el
+chofer (`GET /api/recorridos/:token` sigue sin exponer estas coordenadas,
+igual que antes).
+
+**Rationale**: la Decisión 4 original se apoyaba en el precedente real del
+código *al momento de escribirse* (`arriboLat`/`arriboLon`/`descargaLat`/
+`descargaLon` tampoco se exponían a Central entonces). Ese precedente
+cambió: la feature 009-central-mejora-visual agregó exactamente esos cuatro
+campos a `serializarPuntosCentral` para poder mostrar un indicador de
+proximidad GPS en `RecorridoDetalle.jsx` (`HoraConProximidad`). El
+razonamiento original de Decisión 4 ("reproducir exactamente ese nivel de
+visibilidad, no uno mayor") ahora apunta en la dirección contraria: ese
+nivel de visibilidad ya incluye coordenadas de auditoría para arribo y
+descarga, así que reproducirlo para inicio y cierre es lo consistente. Esto
+coincide además con lo que pidió el usuario directamente ("agregar el
+registro de ubicación" a inicio/fin), que la implementación original ya
+capturaba pero nunca terminó de exponer.
+
+**Alternativas consideradas**: reutilizar tal cual `HoraConProximidad` para
+inicio/cierre — descartada porque esa función colorea según distancia a un
+punto de referencia (el destino del punto de entrega), y ni "inicio" (el
+chofer todavía no llegó al punto cuando toca INICIAR) ni "cierre" (no hay
+"punto base" modelado como entidad, ver Assumptions de spec.md) tienen un
+punto de referencia no ambiguo contra el cual medir proximidad. Se optó por
+mostrar las coordenadas crudas en un tooltip informativo, sin badge de
+color ni cálculo de distancia, evitando inventar semántica no pedida.

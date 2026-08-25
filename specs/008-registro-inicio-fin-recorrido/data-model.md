@@ -104,8 +104,17 @@ Ver research.md, Decisión 5.
 |---|---|---|---|---|---|---|
 | Chofer | `GET /api/recorridos/:token` | Sí (mismo nivel que `arriboEn`/`descargaEn`, ya visibles hoy) | No (mismo criterio que `arriboLat`/`descargaLat`, ya ocultos hoy) | Sí (a nivel `recorrido`) | No | N/A (el chofer ya sabe si está `detenido` sin pendientes) |
 | Central | `GET /api/central/recorridos/activos` | N/A (este endpoint no expone puntos individuales) | N/A | N/A (recorrido todavía `activo`, `cierreEn` es `null`) | N/A | Sí (FR-010, research.md Decisión 5) |
-| Central | `GET /api/central/recorridos/historial`, `.../:id` | Sí (dentro de `puntos`, vía `serializarPuntosCentral`) | **No** (research.md, Decisión 4) | Sí (a nivel `recorrido`) | **No** (research.md, Decisión 4) | N/A (estos endpoints son solo para recorridos ya `finalizado` o el detalle puntual) |
+| Central | `GET /api/central/recorridos/historial`, `.../:id` | Sí (dentro de `puntos`, vía `serializarPuntosCentral`) | **Sí** (research.md, Decisión 7 — 2026-08-25, revierte Decisión 4) | Sí (a nivel `recorrido`) | **Sí** (research.md, Decisión 7) | N/A (estos endpoints son solo para recorridos ya `finalizado` o el detalle puntual) |
 | Oracle/APEX | `GET /api/integracion/estado` | No (fuera de alcance — Oracle no consume estos campos en esta spec) | No | No | No | No |
+
+**Nota (2026-08-25, User Story 3)**: `inicioLat`/`inicioLon`/`cierreLat`/
+`cierreLon` ya existían en el modelo y se guardaban desde la versión
+original (tabla "Recorrido"/"PuntoEntrega" arriba, sin cambios de forma);
+lo único que cambia es su visibilidad para Central, alineándola con la que
+ya tienen `arriboLat`/`arriboLon`/`descargaLat`/`descargaLon` desde
+009-central-mejora-visual. El chofer (`GET /api/recorridos/:token`) no
+gana visibilidad nueva — sigue sin ver ninguna de las cuatro coordenadas de
+auditoría, igual que ya ocurre con las de arribo/descarga.
 
 ## Relación con `specs/005-chofer-estados-viaje/data-model.md`
 

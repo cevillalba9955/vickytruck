@@ -198,3 +198,34 @@ nuevos, solo extiende archivos ya existentes de las tres apps.
 ## Complexity Tracking
 
 *Sin violaciones a justificar — Constitution Check pasa sin excepciones.*
+
+## Extensión (User Story 3, 2026-08-25)
+
+Agrega exposición hacia Central de `inicioLat`/`inicioLon` (por punto) y
+`cierreLat`/`cierreLon` (por recorrido), ya capturados y guardados desde la
+versión original de esta feature pero excluidos de los serializadores de
+Central por research.md Decisión 4. Revierte esa decisión a la luz del
+precedente sentado después por 009-central-mejora-visual, que sí expone
+`arriboLat`/`arriboLon`/`descargaLat`/`descargaLon` con el mismo patrón.
+Sin cambios de captura (frontend chofer), sin endpoints nuevos, sin cambios
+de esquema — solo agregar 4 campos a serializadores ya existentes y su
+consumo en la UI de Central.
+
+**Alcance de archivos a tocar**:
+
+- `backend/src/state/integracionStore.js`:
+  - `serializarPuntosCentral` (línea ~607): agregar `inicioLat: p.inicioLat ?? null`, `inicioLon: p.inicioLon ?? null`, mismo patrón que `arriboLat`/`arriboLon`.
+  - `listarHistorial` y `obtenerDetalle`: agregar `cierreLat: r.cierreLat ?? null`, `cierreLon: r.cierreLon ?? null` al objeto `recorrido`.
+  - `GET /api/recorridos/:token` (chofer, `obtenerPorToken`) y `listarActivos` **no** cambian — fuera de alcance (FR-011/FR-012 piden exponer a Central específicamente, no al chofer; `listarActivos` no expone puntos individuales ni `cierreEn`, ver data-model.md § Serialización).
+- `backend/src/routes/central.js`: `GET /recorridos/historial` (línea ~43) hace un mapeo explícito de campos del `recorrido` — agregar `cierreLat`/`cierreLon` al objeto mapeado (si no, quedarían presentes en el store pero cortados acá).
+- `central/src/components/RecorridoDetalle.jsx`: mostrar las coordenadas nuevas sin romper el patrón visual existente:
+  - "Final" (`Descriptions.Item`, cierre del recorrido): agregar un ícono/tooltip con las coordenadas crudas (`cierreLat`/`cierreLon`) cuando existan — **no** reutilizar `HoraConProximidad` (que colorea según distancia a un punto de referencia): no hay un "punto de regreso a base" modelado como entidad (Assumptions de spec.md), así que no hay contra qué medir proximidad de forma no ambigua.
+  - Columna "Hora de llegada"/"Hora de descarga" no cambian. `inicioEn` por punto sigue sin columna dedicada en la tabla (decisión ya tomada y validada en la versión original: se usa agregado en el encabezado "Hora inicio" vía `primerEventoIso`) — agregar el mismo tratamiento de tooltip con coordenadas crudas al campo "Hora inicio" del encabezado, usando las coordenadas del punto cuyo `inicioEn` resultó el más temprano.
+  - `central/src/services/tiempo.js`: `primerEventoIso` hoy solo devuelve el ISO más temprano; agregar una función hermana (o extender el retorno) que además devuelva `inicioLat`/`inicioLon` del punto correspondiente, para alimentar el tooltip del encabezado.
+- Tests: extender `backend/tests/unit/integracion-store-central.test.js`, `backend/tests/contract/get-historial.test.js`, `backend/tests/contract/get-recorrido-detalle.test.js`, `backend/tests/contract/get-recorridos-activos.test.js` (verificar que activos **no** gana estos campos), y `central/` tests de `RecorridoDetalle`/`tiempo.js`.
+
+**Constitution Check (re-evaluado)**: PASS sin excepciones — mismos
+principios que la versión original; Principio VII sigue cumplido (4 campos
+opcionales reexpuestos, sin entidades ni infraestructura nueva); Principio
+III sigue cumplido (solo agrega un tooltip informativo en componentes ya
+existentes, sin popups ni mecanismos incompatibles con iframe).

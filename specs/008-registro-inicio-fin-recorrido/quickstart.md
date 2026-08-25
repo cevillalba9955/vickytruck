@@ -100,6 +100,33 @@ Vite puede variar).
    o la vista correspondiente) y verificar que `R-QS-8` aparece con su
    `cierreEn`, y que el detalle de cada punto incluye `inicioEn`.
 
+## Escenario 5 — Central ve las coordenadas de inicio y cierre (User Story 3, 2026-08-25)
+
+1. Con el recorrido `R-QS-8` ya finalizado (Escenario 3), consultar
+   `GET http://localhost:3000/api/central/recorridos/R-QS-8` (o el id que
+   corresponda) y confirmar que `recorrido.cierreLat`/`recorrido.cierreLon`
+   están presentes (no `undefined`), con el mismo valor enviado al tocar
+   FINALIZAR en el Escenario 3.
+2. En la misma respuesta, confirmar que cada punto dentro de `puntos`
+   incluye `inicioLat`/`inicioLon`, con el valor enviado al tocar INICIAR
+   en el Escenario 1.
+3. Repetir contra `GET http://localhost:3000/api/central/recorridos/historial`
+   y confirmar que `R-QS-8` también trae `cierreLat`/`cierreLon` en ese
+   listado (no solo en el detalle puntual).
+4. Repetir el flujo completo (Escenarios 1-3) pero denegando el permiso de
+   ubicación del navegador en INICIAR y en FINALIZAR: confirmar que
+   `inicioLat`/`inicioLon`/`cierreLat`/`cierreLon` quedan en `null` (no
+   bloquean nada, FR-013) mientras que `inicioEn`/`cierreEn` sí quedan
+   registrados.
+5. En la UI de Central (`central/`), abrir el detalle de `R-QS-8` y
+   confirmar visualmente que los campos "Hora inicio" y "Final" muestran
+   un indicador (tooltip/ícono) con las coordenadas cuando existen, y que
+   no lo muestran (o indican "sin ubicación") cuando el paso 4 las dejó en
+   `null`.
+6. Confirmar que `GET /api/central/recorridos/activos` **no** cambia:
+   sigue sin exponer `puntos` ni coordenadas de inicio/cierre (ese endpoint
+   es solo para recorridos activos, sin cierre todavía).
+
 ## Automatizado
 
 ```bash
