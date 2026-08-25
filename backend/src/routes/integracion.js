@@ -2,13 +2,43 @@ import { Router } from "express";
 import { validarAuthIntegracion } from "../middleware/integracionAuth.js";
 import { emqxProvisioningCompartido } from "../mqtt/emqxProvisioning.js";
 
+// Momento de inicio del RECORRIDO completo (008-registro-inicio-fin-recorrido,
+// User Story 4, 2026-08-25): no es un evento capturado aparte — es el
+// inicioEn/inicioLat/inicioLon más temprano entre los puntos, es decir, el
+// evento de inicio del punto que efectivamente resultó ser el primero en
+// iniciarse (FR-016), sin importar si ese punto sigue siendo el "punto 1"
+// nominal o fue reordenado (IR PRIMERO) antes de iniciarse. `null` si
+// todavía no se tocó INICIAR sobre ningún punto.
+function primerInicio(puntos) {
+  const conInicio = puntos.filter((p) => p.inicioEn);
+  if (conInicio.length === 0) return { en: null, lat: null, lon: null };
+  const primero = conInicio.reduce((min, p) => (new Date(p.inicioEn) < new Date(min.inicioEn) ? p : min));
+  return { en: primero.inicioEn, lat: primero.inicioLat ?? null, lon: primero.inicioLon ?? null };
+}
+
 function serializarEstado(recorrido) {
+  const inicioRecorrido = primerInicio(recorrido.puntos);
   return {
     id: recorrido.id,
     estado: recorrido.estado,
     fleteId: recorrido.fleteId,
     updatedAt: recorrido.updatedAt,
     ultimaUbicacion: recorrido.ultimaUbicacion ?? null,
+    // inicioEn/inicioLat/inicioLon a este nivel (008, User Story 4,
+    // 2026-08-25): momento de inicio del recorrido completo, ver
+    // primerInicio() arriba. Distinto de puntos[].inicioEn (por punto, más
+    // abajo) — Oracle escribe este en T_RECORRIDOS, aquél en
+    // T_PUNTOS_ENTREGA (ver integracion_cloud_api.pkb.sql, leer_estado_puntos).
+    inicioEn: inicioRecorrido.en,
+    inicioLat: inicioRecorrido.lat,
+    inicioLon: inicioRecorrido.lon,
+    // cierreEn/cierreLat/cierreLon (008-registro-inicio-fin-recorrido, dirección
+    // Oracle, 2026-08-25): evento de FINALIZAR, a nivel de recorrido — Oracle
+    // lo escribe sobre T_RECORRIDOS, no sobre un punto (ver
+    // integracion_cloud_api.pkb.sql, leer_estado_puntos).
+    cierreEn: recorrido.cierreEn ?? null,
+    cierreLat: recorrido.cierreLat ?? null,
+    cierreLon: recorrido.cierreLon ?? null,
     puntos: recorrido.puntos.map((p) => ({
       id: p.id,
       // `orden` (005-chofer-estados-viaje, FR-016): antes ausente de este
@@ -16,6 +46,12 @@ function serializarEstado(recorrido) {
       // reordenamiento del chofer (IR PRIMERO) que Oracle todavía no tenía.
       orden: p.orden,
       estado: p.estado,
+      // inicioEn/inicioLat/inicioLon (008-registro-inicio-fin-recorrido,
+      // dirección Oracle, 2026-08-25): evento de INICIAR sobre este punto,
+      // mismo nivel que arriboEn/descargaEn.
+      inicioEn: p.inicioEn ?? null,
+      inicioLat: p.inicioLat ?? null,
+      inicioLon: p.inicioLon ?? null,
       arriboEn: p.arriboEn,
       arriboLat: p.arriboLat ?? null,
       arriboLon: p.arriboLon ?? null,

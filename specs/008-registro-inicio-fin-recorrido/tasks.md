@@ -11,12 +11,12 @@ description: "Task list template for feature implementation"
 
 **Tests**: incluidos — mismo convenio ya establecido en el proyecto (`node --test` en `backend/tests/{unit,contract,integration}`, `vitest` en `frontend/tests`/`central/tests`, ver plan.md § Testing).
 
-**Organization**: Tasks agrupadas por historia de usuario de spec.md (US1, US2 — ambas P1, independientes entre sí).
+**Organization**: Tasks agrupadas por historia de usuario de spec.md (US1, US2 — ambas P1, independientes entre sí; US3 — P2, agregada 2026-08-25, depende de que existan datos de US1/US2 pero no de sus tareas de código).
 
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Puede ejecutarse en paralelo (archivos distintos, sin dependencias pendientes)
-- **[Story]**: A qué historia de usuario pertenece (US1, US2)
+- **[Story]**: A qué historia de usuario pertenece (US1, US2, US3)
 - Rutas de archivo exactas en cada descripción
 
 ## Path Conventions
@@ -102,7 +102,60 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 
 ---
 
-## Phase 5: Polish & Cross-Cutting Concerns
+## Phase 5: User Story 3 - Ver en Central la ubicación GPS de los eventos de inicio y cierre (Priority: P2, agregada 2026-08-25)
+
+**Goal**: Central puede ver, además de la fecha/hora ya visible, la latitud/longitud de los eventos de INICIAR (por punto) y FINALIZAR (por recorrido) cuando el dispositivo las capturó — mismo nivel de visibilidad que ya tienen `arriboLat`/`arriboLon`/`descargaLat`/`descargaLon` desde 009-central-mejora-visual (research.md, Decisión 7, revierte Decisión 4).
+
+**Independent Test**: con un recorrido finalizado cuyo INICIAR y FINALIZAR se tocaron con GPS disponible, consultar `GET /api/central/recorridos/:id` y `GET /api/central/recorridos/historial` y verificar que `recorrido.cierreLat`/`cierreLon` y `puntos[].inicioLat`/`inicioLon` están presentes (no `undefined`); repetir sin GPS disponible y verificar que quedan en `null` sin romper la respuesta.
+
+### Tests for User Story 3
+
+- [X] T033 [P] [US3] Unit test en `backend/tests/unit/integracion-store-central.test.js`: `serializarPuntosCentral()` incluye `inicioLat`/`inicioLon` por punto (mismo patrón que el test ya existente para `arriboLat`/`arriboLon`); `null` cuando el punto no tiene ubicación de inicio registrada. También reescrito el test de `listarActivos — expone puntos, puntoSalida y color` (deepEqual exacto) para incluir las claves nuevas, y quitada la aserción `p.inicioLat === undefined` de un test previo que asumía la Decisión 4 original
+- [X] T034 [P] [US3] Contract test en `backend/tests/contract/get-recorrido-detalle.test.js`: `GET /api/central/recorridos/:id` incluye `recorrido.cierreLat`/`recorrido.cierreLon` y `puntos[].inicioLat`/`inicioLon` (con GPS y sin GPS); reescrito también el título del test que asumía la ausencia de estos campos
+- [X] T035 [P] [US3] Contract test en `backend/tests/contract/get-historial.test.js`: `GET /api/central/recorridos/historial` incluye `recorrido.cierreLat`/`recorrido.cierreLon` en cada entrada del listado (no solo en el detalle puntual)
+- [X] T036 [P] [US3] Contract test (regresión) en `backend/tests/contract/get-recorridos-activos.test.js`. **Corrección durante implementación**: el alcance original de esta tarea ("activos no incluye inicioLat/inicioLon") era incorrecto — `listarActivos()` del store real reusa `serializarPuntosCentral()` para su campo `puntos` (mismo que Historial/Detalle, desde 010-mapa-central-unificado), así que `inicioLat`/`inicioLon` **sí** aparecen ahí también, de forma consistente (no es un bug). Lo que sí sigue estando fuera de `activos` es `cierreEn`/`cierreLat`/`cierreLon` a nivel de `recorrido` (un recorrido activo no tiene cierre) — el test de regresión quedó acotado a eso. También se actualizó el deepEqual exacto de `puntos[0]` en el test ya existente de este archivo para incluir `inicioLat: null, inicioLon: null`
+- [X] T037 [P] [US3] Unit test en `central/tests/services/tiempo.test.js`: `primerEventoConUbicacion(puntos)` devuelve `{ iso, lat, lon }` del punto cuyo `inicioEn` es el más temprano; `lat`/`lon` en `null` si ese punto no tiene `inicioLat`/`inicioLon`; cae a `arriboEn`/`arriboLat`/`arriboLon` si ningún punto tiene `inicioEn` (mismo fallback que `primerEventoIso`); `null` completo si no hay ningún evento
+- [X] T038 [P] [US3] Component test en `central/tests/components/RecorridoDetalle.test.jsx`: "Hora inicio" y "Final" exponen las coordenadas en el atributo `title` nativo del `<span>` cuando existen; sin ubicación registrada, no se agrega el atributo (en vez de "tooltip/ícono" genérico, se implementó como `title` HTML simple — más simple de testear que un `Tooltip` de antd con portal, y visualmente equivalente)
+
+### Implementation for User Story 3
+
+- [X] T039 [US3] En `backend/src/state/integracionStore.js`, extendido `serializarPuntosCentral()` agregando `inicioLat: p.inicioLat ?? null` e `inicioLon: p.inicioLon ?? null`, mismo lugar/patrón que `arriboLat`/`arriboLon`
+- [X] T040 [US3] En `backend/src/state/integracionStore.js`, extendido el objeto `recorrido` devuelto por `listarHistorial()` y `obtenerDetalle()` agregando `cierreLat: r.cierreLat ?? null`, `cierreLon: r.cierreLon ?? null`
+- [X] T041 [US3] En `backend/src/routes/central.js`, extendido el mapeo explícito de `GET /recorridos/historial` agregando `cierreLat: d.recorrido.cierreLat`, `cierreLon: d.recorrido.cierreLon` junto a `cierreEn`
+- [X] T042 [P] [US3] En `backend/tests/helpers/inMemoryCentralRepository.js`, extendido `serializarPuntos()` con `inicioLat`/`inicioLon`, y los objetos `recorrido` de `obtenerDetalle()`/`listarHistorial()`/el seed inicial con `cierreLat`/`cierreLon`
+- [X] T043 [US3] En `central/src/services/tiempo.js`, agregado `primerEventoConUbicacion(puntos)` junto a `primerEventoIso`, con el mismo fallback a `arriboEn` que esa función
+- [X] T044 [US3] En `central/src/components/RecorridoDetalle.jsx`, agregado `HoraConUbicacion` (nuevo, deliberadamente distinto de `HoraConProximidad`) y usado en los `Descriptions.Item` "Hora inicio" (vía `primerEventoConUbicacion`) y "Final" (vía `recorrido.cierreLat`/`cierreLon` directo) — sin colorear ni medir distancia, solo expone las coordenadas crudas (research.md, Decisión 7)
+
+- [X] T045 [US3] **Encontrado durante la verificación manual en navegador (no estaba en el alcance original de tasks.md)**: `central/src/components/HistorialView.jsx`, función `abrirLineaDeTiempo()`, arma a mano el objeto `recorrido` que pasa a `RecorridoDetalle` (mismo patrón ya usado para `cierreEn`) — se había olvidado agregar `cierreLat`/`cierreLon` a esa lista explícita de campos, así que el tooltip de "Final" quedaba sin coordenadas al abrir el detalle **desde Historial** (aunque el backend ya las mandara, y aunque sí funcionaba al abrir el mismo detalle desde Monitoreo, que usa `obtenerDetalle(id)` — fetch real, no un objeto armado a mano). Corregido agregando ambos campos; test de regresión agregado en `central/tests/components/HistorialView.test.jsx`
+
+**Checkpoint**: US3 es demostrable de forma independiente sobre un recorrido ya finalizado — Central ve las coordenadas de inicio/cierre en la API y en el detalle visual (verificado en vivo contra un backend real: seed vía `POST /api/integracion/recorridos` + ciclo completo INICIAR→LLEGUE→DESCARGA COMPLETA→FINALIZAR con GPS vía curl, detalle abierto en el navegador desde Historial y desde Monitoreo), sin afectar el flujo del chofer ni las historias US1/US2 ya entregadas.
+
+---
+
+## Phase 6: User Story 4 - Mantener a Oracle/APEX al tanto del inicio y cierre del recorrido (Priority: P2, agregada 2026-08-25)
+
+**Goal**: Oracle/APEX, a través del mismo mecanismo ya existente de lectura de estado (`GET /api/integracion/estado` + `INTEGRACION_CLOUD_API.leer_estado_puntos`), recibe el evento de inicio de cada punto, el evento de cierre del recorrido, y el momento de inicio del recorrido completo (el inicioEn más temprano entre los puntos) — todos con su ubicación GPS si estuvo disponible.
+
+**Independent Test**: con un recorrido donde el chofer tocó INICIAR sobre dos puntos (en orden) y luego FINALIZAR, consultar `GET /api/integracion/estado?recorridoId=<id>` y verificar que `recorrido.inicioEn`/`inicioLat`/`inicioLon` coinciden con el evento de inicio del **primer** punto tocado (no el último), que `recorrido.cierreEn`/`cierreLat`/`cierreLon` coinciden con FINALIZAR, y que cada punto sigue trayendo su propio `inicioEn`/`inicioLat`/`inicioLon`.
+
+### Tests for User Story 4
+
+- [X] T046 [P] [US4] Contract test en `backend/tests/contract/integracion-endpoints.test.js`: `GET /api/integracion/estado` expone `puntos[].inicioLat`/`inicioLon` y `recorrido.cierreLat`/`cierreLon` con el GPS capturado en INICIAR/FINALIZAR (extiende el test ya existente de arribo/descarga en ese mismo archivo, que no cubría estos campos en absoluto)
+- [X] T047 [P] [US4] Contract test en `backend/tests/contract/integracion-endpoints.test.js`: `recorrido.inicioEn`/`inicioLat`/`inicioLon` (a nivel recorrido) reflejan el punto que arrancó **primero**, no el último tocado — recorrido con 2 puntos, se completa el primero (INICIAR→LLEGUE→DESCARGA COMPLETA) y luego se toca INICIAR sobre el segundo; `recorrido.inicioEn` debe seguir siendo el del primero
+- [X] T048 [P] [US4] Contract test en `backend/tests/contract/integracion-endpoints.test.js`: `recorrido.inicioEn`/`inicioLat`/`inicioLon` son `null` (no `undefined`) si todavía no se tocó INICIAR sobre ningún punto
+
+### Implementation for User Story 4
+
+- [X] T049 [US4] En `backend/src/routes/integracion.js`, agregada la función `primerInicio(puntos)`: devuelve `{ en, lat, lon }` del punto cuyo `inicioEn` es el más temprano (sin fallback a `arriboEn` — a diferencia de `primerEventoConUbicacion` de Central, este es un campo nuevo sin recorridos viejos que dependan de un fallback, ver research.md Decisión 9); `{ en: null, lat: null, lon: null }` si ningún punto tiene `inicioEn`
+- [X] T050 [US4] En `backend/src/routes/integracion.js`, extendida `serializarEstado()`: agrega `inicioEn`/`inicioLat`/`inicioLon` por punto (mismo patrón que `arriboEn`/`arriboLat`); agrega a nivel `recorrido` `cierreEn`/`cierreLat`/`cierreLon` (ya existían en el store, nunca expuestos en este endpoint) e `inicioEn`/`inicioLat`/`inicioLon` (nuevo, vía `primerInicio()`)
+- [X] T051 [US4] En `backend/sql/integracion-cloud/integracion_cloud_api.pkb.sql`, extendido `leer_estado_puntos`: agregadas `inicio_en`/`inicio_lat`/`inicio_lon` a las columnas de `JSON_TABLE` (por punto, path `$.recorridos[0].puntos[*]`) y al `UPDATE T_PUNTOS_ENTREGA`; agregada extracción vía `JSON_VALUE` de `cierreEn`/`cierreLat`/`cierreLon` e `inicioEn`/`inicioLat`/`inicioLon` a nivel `$.recorridos[0]` (variables `v_cierre_*`/`v_inicio_rec_*`) y agregados ambos pares al `UPDATE T_RECORRIDOS` (columnas `CIERRE_EN`/`CIERRE_LAT`/`CIERRE_LON` e `INICIO_EN`/`INICIO_LAT`/`INICIO_LON` — mismo nombre que en `T_PUNTOS_ENTREGA`, tabla distinta, decidido en sesión de `/speckit-clarify` del 2026-08-25); `p_respuesta` extendido a `'puntos_actualizados: N, recorrido_actualizado: 0|1'`
+- [X] T052 [US4] Documentación actualizada en consonancia: `backend/sql/integracion-cloud/integracion_cloud_api.pks.sql` (comentario de `leer_estado_puntos` y su `p_respuesta`), `backend/sql/integracion-cloud/README.md` (sección "Dirección inversa", bloque "Probar", advertencia de "no probado contra Oracle real"), `specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md` (ejemplo de payload extendido con los 4 campos nuevos a nivel recorrido), `specs/008-registro-inicio-fin-recorrido/contracts/chofer-viaje-cierre.md` (corregida la nota transversal que decía "inicioEn/cierreEn no viajan hacia Oracle en esta spec" — quedó desactualizada por este mismo trabajo)
+
+**Checkpoint**: US4 es demostrable de forma independiente contra el backend (185/185 tests verdes, incluyendo los 3 nuevos de este story) — el lado Oracle real (`T_PUNTOS_ENTREGA.INICIO_*`/`T_RECORRIDOS.INICIO_*`/`CIERRE_*`) queda documentado como **no probado todavía contra una instancia Oracle real** (ver Escenario 6 de quickstart.md); antes de dar esto por cerrado hay que correrlo contra la instancia real.
+
+---
+
+## Phase 7: Polish & Cross-Cutting Concerns
 
 **Purpose**: mejoras transversales tras completar ambas historias
 
@@ -120,12 +173,17 @@ Web app existente de 3 componentes (ver plan.md § Project Structure):
 - **Foundational (Phase 2)**: N/A — sin tareas
 - **US1 (Phase 3)**: depende solo de Setup — 100% independiente de US2
 - **US2 (Phase 4)**: depende solo de Setup — 100% independiente de US1 a nivel de código (T010 de US1 toca `serializarPuntosCentral`/`inMemoryCentralRepository` para agregar `inicioEn`; T021 de US2 toca las mismas funciones para agregar `cierreEn`/`esperandoFinalizar` — mismo archivo, cambios no solapados; coordinar el merge si se hacen en paralelo)
-- **Polish (Phase 5)**: depende de que ambas historias estén completas
+- **US3 (Phase 5)**: depende de que US1 y US2 ya estén implementadas (T006-T029) — toca las mismas funciones (`serializarPuntosCentral`, `listarHistorial`, `obtenerDetalle`) que ellas ya extendieron, y necesita que `inicioLat`/`inicioLon`/`cierreLat`/`cierreLon` ya existan en el store (los capturan T007/T020, sin cambios en esta historia). No bloquea ni es bloqueada por Polish (Phase 7) de la entrega original.
+- **US4 (Phase 6)**: depende de que US1 y US2 ya estén implementadas (mismos campos del store que necesita US3), pero es 100% independiente de US3 a nivel de código — US3 toca `integracionStore.js`/`central.js`/`central/`; US4 toca `backend/src/routes/integracion.js` (archivo nuevo para esta feature) y el SQL de Oracle, sin superposición. Pueden desarrollarse en paralelo entre sí.
+- **Polish (Phase 7)**: depende de que las cuatro historias estén completas
 
 ### Parallel Opportunities
 
 - US1 (Phase 3) completa puede desarrollarse en paralelo con US2 (Phase 4) por dos personas distintas
-- Dentro de cada fase, todas las tareas marcadas [P] (tests, y los componentes de Central en US2) son paralelizables entre sí
+- US3 (Phase 5) y US4 (Phase 6), una vez que US1/US2 están listas, son independientes entre sí y pueden desarrollarse en paralelo (archivos distintos: Central vs. `integracion.js`+SQL de Oracle)
+- Dentro de cada fase, todas las tareas marcadas [P] (tests, y los componentes de Central en US2/US3) son paralelizables entre sí
+- Dentro de US3, T033-T038 (tests, distintos archivos) son paralelizables entre sí; T039-T041 (mismo archivo `integracionStore.js`/`central.js`) son secuenciales entre sí pero T042 (archivo de test helper) y T043 (archivo de Central) pueden avanzar en paralelo con ellas
+- Dentro de US4, T046-T048 (mismo archivo de test, pero tests independientes) son paralelizables en el sentido de "sin dependencias de código pendientes", aunque en la práctica conviene escribirlos en el mismo PR por tocar el mismo archivo; T049-T050 (`integracion.js`) son secuenciales con T051 (SQL de Oracle, archivo distinto, pero depende de que el JSON que Oracle lee ya tenga los campos que T049/T050 agregan)
 
 ---
 
@@ -157,14 +215,17 @@ Task: "Component test en frontend/tests/components/RouteView.test.jsx"
 1. Setup → base lista
 2. US1 (INICIAR registra hora/ubicación) → validar Escenario 1 de quickstart.md → deploy
 3. US2 (FINALIZAR explícito + cierre) → validar Escenarios 2-4 → deploy
-4. Polish → limpieza y notas cruzadas con 005
+4. US3 (Central ve las coordenadas de inicio/cierre, P2, agregada 2026-08-25) → validar Escenario 5 de quickstart.md → deploy
+5. US4 (Oracle/APEX recibe inicio/cierre por el mecanismo existente, P2, agregada 2026-08-25) → validar Escenario 6 de quickstart.md (requiere Oracle real — ver advertencia de "no probado todavía") → deploy
+6. Polish → limpieza y notas cruzadas con 005
 
 ---
 
 ## Notes
 
 - `[P]` = archivos distintos, sin dependencias pendientes entre sí
-- US1 y US2 son independientes entre sí (a diferencia de 005, donde US3-US5 dependían de US2) — pueden implementarse, testearse y entregarse en cualquier orden
+- US1 y US2 son independientes entre sí (a diferencia de 005, donde US3-US5 dependían de US2) — pueden implementarse, testearse y entregarse en cualquier orden. US3 y US4 sí dependen de que US1/US2 ya estén implementadas (necesitan los campos que ellas capturan), pero no de que Polish (Phase 7) esté hecho, ni una de la otra.
+- US4 (Oracle) tiene una asimetría de verificación respecto a las demás historias: el lado backend está 100% probado (tests automatizados, 185/185 verdes); el lado Oracle (SQL) no se pudo correr contra una instancia real durante esta sesión — queda documentado como pendiente en el propio SQL, en el README de esa carpeta, y en el Escenario 6 de quickstart.md.
 - Verificar que los tests fallan antes de implementar
 - Commitear después de cada tarea o grupo lógico
 - Parar en cada checkpoint para validar la historia de forma independiente

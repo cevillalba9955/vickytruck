@@ -130,9 +130,6 @@ test("obtenerDetalle — expone cliente por punto, y arriboLat/descargaLat en nu
   assert.equal(p.cliente, "Almacén Centro");
   assert.equal(p.arriboLat, null);
   assert.equal(p.descargaLon, null);
-  // inicioLat/cierreLat siguen fuera de alcance (research.md, Decisión 4) —
-  // no deben aparecer ni como clave con valor null.
-  assert.equal(p.inicioLat, undefined);
 });
 
 test("obtenerDetalle — arriboLat/arriboLon reflejan el GPS capturado al marcar arribo (009-central-mejora-visual)", async () => {
@@ -181,6 +178,8 @@ test("listarActivos — expone puntos, puntoSalida y color (010-mapa-central-uni
     estado: "pendiente",
     cliente: "Almacén Centro",
     inicioEn: null,
+    inicioLat: null,
+    inicioLon: null,
     arriboEn: null,
     arriboLat: null,
     arriboLon: null,
@@ -237,4 +236,58 @@ test("listarHistorial — expone flete/chofer del recorrido finalizado (009-cent
   const [h] = await store.listarHistorial();
   assert.deepEqual(h.recorrido.flete, { id: "F-10", nombre: "Camión 10" });
   assert.deepEqual(h.recorrido.chofer, { id: "CH-10", nombre: "Nora Vidal" });
+});
+
+// 008-registro-inicio-fin-recorrido, User Story 3 (2026-08-25): Central
+// ahora ve inicioLat/inicioLon (por punto) y cierreLat/cierreLon (del
+// recorrido) — research.md, Decisión 7, revierte la Decisión 4 original a
+// la luz del precedente sentado por 009-central-mejora-visual para
+// arriboLat/arriboLon/descargaLat/descargaLon.
+
+test("obtenerDetalle — inicioLat/inicioLon y cierreLat/cierreLon reflejan el GPS capturado al tocar INICIAR/FINALIZAR", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, { token: "tok-us3", puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4 }] });
+
+  await store.iniciarViaje("tok-us3", { lat: -34.601, lon: -58.401 });
+  await store.registrarLlegue("tok-us3");
+  await store.registrarDescargaCompleta("tok-us3");
+  await store.finalizarRecorrido("tok-us3", { lat: -34.61, lon: -58.41 });
+
+  const { recorrido, puntos } = await store.obtenerDetalle("R-1");
+  assert.equal(puntos[0].inicioLat, -34.601);
+  assert.equal(puntos[0].inicioLon, -58.401);
+  assert.equal(recorrido.cierreLat, -34.61);
+  assert.equal(recorrido.cierreLon, -58.41);
+});
+
+test("obtenerDetalle — inicioLat/inicioLon/cierreLat/cierreLon quedan en null (no undefined) cuando el dispositivo no proveyó GPS (FR-013)", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, { token: "tok-us3b", puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] });
+
+  await store.iniciarViaje("tok-us3b");
+  await store.registrarLlegue("tok-us3b");
+  await store.registrarDescargaCompleta("tok-us3b");
+  await store.finalizarRecorrido("tok-us3b");
+
+  const { recorrido, puntos } = await store.obtenerDetalle("R-1");
+  assert.equal(puntos[0].inicioLat, null);
+  assert.equal(puntos[0].inicioLon, null);
+  assert.equal(recorrido.cierreLat, null);
+  assert.equal(recorrido.cierreLon, null);
+});
+
+test("listarHistorial — cierreLat/cierreLon viajan en el listado, no solo en el detalle puntual", async () => {
+  const store = createIntegracionStore();
+  seedActivo(store, { token: "tok-us3c", puntos: [{ id: "p1", orden: 1, estado: "pendiente" }] });
+
+  await store.iniciarViaje("tok-us3c", { lat: -34.6, lon: -58.4 });
+  await store.registrarLlegue("tok-us3c");
+  await store.registrarDescargaCompleta("tok-us3c");
+  await store.finalizarRecorrido("tok-us3c", { lat: -34.62, lon: -58.42 });
+
+  const [h] = await store.listarHistorial();
+  assert.equal(h.recorrido.cierreLat, -34.62);
+  assert.equal(h.recorrido.cierreLon, -58.42);
+  assert.equal(h.puntos[0].inicioLat, -34.6);
+  assert.equal(h.puntos[0].inicioLon, -58.4);
 });

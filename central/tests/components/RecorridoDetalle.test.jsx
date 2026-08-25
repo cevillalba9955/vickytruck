@@ -229,6 +229,50 @@ describe("RecorridoDetalle — horarios en hora local (006-normalizar-formato-ho
   });
 });
 
+describe("RecorridoDetalle — ubicación de inicio/cierre en el encabezado (008, User Story 3, 2026-08-25)", () => {
+  it("'Hora inicio' muestra un tooltip con las coordenadas del punto de inicio más temprano", () => {
+    render(
+      <RecorridoDetalle
+        detalle={detalleDePrueba({
+          recorrido: { id: "50", estado: "activo", fleteId: "7" },
+          puntos: [{ id: "p1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4, inicioEn: "2026-08-13T08:00:00-03:00", inicioLat: -34.601, inicioLon: -58.401 }],
+        })}
+      />,
+    );
+
+    const hora = screen.getByText("08:00:00");
+    expect(hora.getAttribute("title")).toBe("-34.60100, -58.40100");
+  });
+
+  it("'Final' muestra un tooltip con cierreLat/cierreLon del recorrido", () => {
+    render(
+      <RecorridoDetalle
+        detalle={detalleDePrueba({
+          recorrido: { id: "50", estado: "finalizado", fleteId: "7", cierreEn: "2026-08-13T14:40:00-03:00", cierreLat: -34.61, cierreLon: -58.39 },
+          puntos: [],
+        })}
+      />,
+    );
+
+    const hora = screen.getByText("14:40:00");
+    expect(hora.getAttribute("title")).toBe("-34.61000, -58.39000");
+  });
+
+  it("sin ubicación registrada para el inicio o el cierre, no agrega el atributo title (sin inventar un tooltip vacío)", () => {
+    render(
+      <RecorridoDetalle
+        detalle={detalleDePrueba({
+          recorrido: { id: "50", estado: "finalizado", fleteId: "7", cierreEn: "2026-08-13T14:40:00-03:00" },
+          puntos: [{ id: "p1", orden: 1, estado: "completado", lat: -34.6, lon: -58.4, inicioEn: "2026-08-13T08:00:00-03:00" }],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("08:00:00").hasAttribute("title")).toBe(false);
+    expect(screen.getByText("14:40:00").hasAttribute("title")).toBe(false);
+  });
+});
+
 describe("RecorridoDetalle — recorrido todavía activo (008-registro-inicio-fin-recorrido)", () => {
   beforeEach(() => {
     vi.useFakeTimers();

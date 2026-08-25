@@ -118,7 +118,7 @@ test("GET /api/central/recorridos/activos — incluye puntos y puntoSalidaDefaul
     const body = await res.json();
     assert.deepEqual(body.puntoSalidaDefault, { lat: -34.8097527, lon: -58.4574414 });
     const [r] = body.recorridos;
-    assert.deepEqual(r.puntos[0], { id: "p1", orden: 1, lat: -34.6, lon: -58.4, cliente: "Almacén Centro", estado: "pendiente", inicioEn: null, arriboEn: null, descargaEn: null, remitoIds: [] });
+    assert.deepEqual(r.puntos[0], { id: "p1", orden: 1, lat: -34.6, lon: -58.4, cliente: "Almacén Centro", estado: "pendiente", inicioEn: null, inicioLat: null, inicioLon: null, arriboEn: null, descargaEn: null, remitoIds: [] });
     assert.equal(r.puntoSalida, null);
     assert.equal(r.color, null);
   } finally {
@@ -161,6 +161,32 @@ test("GET /api/central/recorridos/activos — expone puntoSalida y color de un r
     const body = await res.json();
     assert.deepEqual(body.recorridos[0].puntoSalida, { lat: -34.55, lon: -58.35 });
     assert.equal(body.recorridos[0].color, "#8e44ad");
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("GET /api/central/recorridos/activos — no expone cierreEn/cierreLat/cierreLon a nivel de recorrido (regresión, 008 User Story 3, 2026-08-25): ese endpoint es solo para recorridos todavía sin cerrar", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "55",
+        estado: "activo",
+        fleteId: "7",
+        puntos: [{ id: "p1", orden: 1, estado: "pendiente" }],
+      },
+    ],
+    fletes: [{ id: "7", nombre: "Juan Pérez" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/activos`);
+    const body = await res.json();
+    const [r] = body.recorridos;
+    assert.equal(r.cierreEn, undefined);
+    assert.equal(r.cierreLat, undefined);
+    assert.equal(r.cierreLon, undefined);
   } finally {
     await server.cerrar();
   }

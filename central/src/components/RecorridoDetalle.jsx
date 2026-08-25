@@ -5,7 +5,7 @@ import {
   formatearHoraLocal,
   formatearFechaLocal,
   formatearDuracionMin,
-  primerEventoIso,
+  primerEventoConUbicacion,
   calcularTiempoTotalMin,
   minutosTranscurridos,
 } from "../services/tiempo.js";
@@ -49,6 +49,17 @@ function HoraConProximidad({ hora, lat, lon, puntoLat, puntoLon }) {
       <Badge status={dentro ? "success" : "error"} text={formatearHoraLocal(hora)} />
     </Tooltip>
   );
+}
+
+// Hora + ubicación cruda en el atributo `title` nativo (008-registro-inicio-
+// fin-recorrido, User Story 3, 2026-08-25): a diferencia de
+// HoraConProximidad, no hay un punto de referencia no ambiguo contra el
+// cual medir distancia para INICIAR/FINALIZAR (research.md, Decisión 7), así
+// que se muestran las coordenadas crudas en vez de un badge de color.
+function HoraConUbicacion({ hora, lat, lon }) {
+  if (!hora) return <span>—</span>;
+  if (lat == null || lon == null) return <span>{formatearHoraLocal(hora)}</span>;
+  return <span title={`${lat.toFixed(5)}, ${lon.toFixed(5)}`}>{formatearHoraLocal(hora)}</span>;
 }
 
 // Minutos desde la última posición GPS reportada por el flete (mismo patrón
@@ -123,7 +134,8 @@ const COLUMNAS_PUNTOS = [
 export function RecorridoDetalle({ detalle, marcadorFlete, accionVolver }) {
   if (!detalle) return null;
   const { recorrido, puntos } = detalle;
-  const inicioIso = primerEventoIso(puntos);
+  const primerEvento = primerEventoConUbicacion(puntos);
+  const inicioIso = primerEvento?.iso ?? null;
   const fechaIso = recorrido.cierreEn ?? inicioIso;
   const tiempoTotalMin = calcularTiempoTotalMin(puntos, recorrido.cierreEn);
 
@@ -139,8 +151,12 @@ export function RecorridoDetalle({ detalle, marcadorFlete, accionVolver }) {
         <Descriptions.Item label="Flete">{recorrido.flete?.nombre ?? "—"}</Descriptions.Item>
         <Descriptions.Item label="Chofer">{recorrido.chofer?.nombre ?? "—"}</Descriptions.Item>
         <Descriptions.Item label="Estado">{recorrido.estado}</Descriptions.Item>
-        <Descriptions.Item label="Hora inicio">{inicioIso ? formatearHoraLocal(inicioIso) : "—"}</Descriptions.Item>
-        <Descriptions.Item label="Final">{recorrido.cierreEn ? formatearHoraLocal(recorrido.cierreEn) : "—"}</Descriptions.Item>
+        <Descriptions.Item label="Hora inicio">
+          <HoraConUbicacion hora={inicioIso} lat={primerEvento?.lat} lon={primerEvento?.lon} />
+        </Descriptions.Item>
+        <Descriptions.Item label="Final">
+          <HoraConUbicacion hora={recorrido.cierreEn} lat={recorrido.cierreLat} lon={recorrido.cierreLon} />
+        </Descriptions.Item>
         <Descriptions.Item label="Tiempo total">{formatearDuracionMin(tiempoTotalMin)}</Descriptions.Item>
         <Descriptions.Item label="Última ubicación"><UltimaUbicacion marcadorFlete={marcadorFlete} /></Descriptions.Item>
       </Descriptions>

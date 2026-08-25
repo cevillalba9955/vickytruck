@@ -76,6 +76,25 @@ export function primerEventoIso(puntos) {
 }
 
 /**
+ * Mismo evento que `primerEventoIso` (inicioEn más temprano, o arriboEn si
+ * ningún punto tiene inicioEn), pero devolviendo también la ubicación GPS
+ * capturada en ese evento — 008-registro-inicio-fin-recorrido, User Story 3
+ * (2026-08-25, research.md Decisión 7): Central ahora puede mostrar de dónde
+ * salió el chofer, no solo a qué hora. `{ iso, lat, lon }`, con `lat`/`lon`
+ * en `null` si el dispositivo no proveyó ubicación en ese evento; `null`
+ * completo si no hay ningún evento registrado (mismo caso que `primerEventoIso`).
+ */
+export function primerEventoConUbicacion(puntos) {
+  const conInicio = puntos.filter((p) => p.inicioEn);
+  const candidatos =
+    conInicio.length > 0
+      ? conInicio.map((p) => ({ iso: p.inicioEn, lat: p.inicioLat ?? null, lon: p.inicioLon ?? null }))
+      : puntos.filter((p) => p.arriboEn).map((p) => ({ iso: p.arriboEn, lat: p.arriboLat ?? null, lon: p.arriboLon ?? null }));
+  if (candidatos.length === 0) return null;
+  return candidatos.reduce((min, e) => (new Date(e.iso) < new Date(min.iso) ? e : min));
+}
+
+/**
  * Duración total del recorrido en minutos, desde `primerEventoIso(puntos)`
  * hasta `cierreEn` (o hasta `ahora` si todavía no se finalizó — un recorrido
  * activo muestra el tiempo transcurrido hasta el momento). `null` si no hay

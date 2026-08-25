@@ -26,9 +26,12 @@ function serializarPuntos(puntos) {
       lon: p.lon ?? null,
       cliente: p.cliente ?? null,
       estado: p.estado,
-      // inicioEn (008-registro-inicio-fin-recorrido): mismo nivel que
-      // arriboEn/descargaEn ya expuestos acá.
+      // inicioEn/inicioLat/inicioLon (008-registro-inicio-fin-recorrido,
+      // User Story 3, 2026-08-25): mismo nivel que arriboEn/descargaEn ya
+      // expuestos acá (research.md, Decisión 7).
       inicioEn: p.inicioEn ?? null,
+      inicioLat: p.inicioLat ?? null,
+      inicioLon: p.inicioLon ?? null,
       arriboEn: p.arriboEn ?? null,
       descargaEn: p.descargaEn ?? null,
       // remitoIds SÍ es visible para Central (005-chofer-estados-viaje,
@@ -59,6 +62,10 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
         // solo lo escribiría finalizarRecorrido() en el store real — acá se
         // toma del seed de test tal cual.
         cierreEn: r.cierreEn ?? null,
+        // cierreLat/cierreLon (008, User Story 3, 2026-08-25): mismo criterio
+        // que cierreEn — tomado del seed de test tal cual.
+        cierreLat: r.cierreLat ?? null,
+        cierreLon: r.cierreLon ?? null,
         // puntoSalida/color (010-mapa-central-unificado): opcionales, tal
         // cual vendrían del seed de test.
         puntoSalida: r.puntoSalida ?? null,
@@ -119,7 +126,15 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
       const r = recorridos.get(recorridoId);
       if (!r) return null;
       return {
-        recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, updatedAt: r.updatedAt, cierreEn: r.cierreEn },
+        recorrido: {
+          id: r.id,
+          estado: r.estado,
+          fleteId: r.fleteId,
+          updatedAt: r.updatedAt,
+          cierreEn: r.cierreEn,
+          cierreLat: r.cierreLat,
+          cierreLon: r.cierreLon,
+        },
         puntos: serializarPuntos(r.puntos),
       };
     },
@@ -129,7 +144,7 @@ export function createInMemoryCentralRepository(seed = {}, opts = {}) {
       for (const r of recorridos.values()) {
         if (r.estado !== "finalizado") continue;
         resultado.push({
-          recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, cierreEn: r.cierreEn },
+          recorrido: { id: r.id, estado: r.estado, fleteId: r.fleteId, cierreEn: r.cierreEn, cierreLat: r.cierreLat, cierreLon: r.cierreLon },
           puntos: serializarPuntos(r.puntos),
         });
       }

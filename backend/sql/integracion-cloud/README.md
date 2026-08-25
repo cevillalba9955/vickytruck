@@ -195,10 +195,25 @@ en `armar_payload`, `integracion_cloud_api.pkb.sql`).
 `sincronizar_recorrido`: llama a `GET /api/integracion/estado?recorridoId=<id>`
 y escribe sobre `T_PUNTOS_ENTREGA` (propia del esquema `VIC`, dueño del
 paquete — sin GRANT cross-schema que otorgar) el `estado` de cada punto y la
-ubicación/fechahora que capturó el celular del chofer al marcar arribo y
-descarga (`ARRIBO_EN`/`ARRIBO_LAT`/`ARRIBO_LON`,
-`DESCARGA_EN`/`DESCARGA_LAT`/`DESCARGA_LON` — mismas columnas que ya usa
-`RECORRIDO_API`, ver `backend/sql/recorrido_api.pkb.sql`).
+ubicación/fechahora que capturó el celular del chofer al tocar INICIAR,
+marcar arribo y marcar descarga (`INICIO_EN`/`INICIO_LAT`/`INICIO_LON`,
+`ARRIBO_EN`/`ARRIBO_LAT`/`ARRIBO_LON`,
+`DESCARGA_EN`/`DESCARGA_LAT`/`DESCARGA_LON` — `ARRIBO_*`/`DESCARGA_*` son las
+mismas columnas que ya usa `RECORRIDO_API`, ver
+`backend/sql/recorrido_api.pkb.sql`; `INICIO_*` son nuevas, agregadas por
+008-registro-inicio-fin-recorrido, 2026-08-25).
+
+Además escribe sobre `T_RECORRIDOS` dos eventos del recorrido completo
+(ambos también nuevos de 008-registro-inicio-fin-recorrido, User Story 4):
+el cierre (`CIERRE_EN`/`CIERRE_LAT`/`CIERRE_LON`, evento de FINALIZAR) y el
+momento de inicio del recorrido en su conjunto (`INICIO_EN`/`INICIO_LAT`/
+`INICIO_LON` — mismo nombre de columna que en `T_PUNTOS_ENTREGA`, pero acá
+es el `inicioEn` más temprano entre los puntos, ya calculado del lado cloud
+antes de mandarlo, no el de un punto puntual). A diferencia de
+inicio-por-punto/arribo/descarga, estos dos son eventos del recorrido en su
+conjunto, no de un punto puntual, así que no encajan en `T_PUNTOS_ENTREGA`;
+mismo precedente que `COLOR`/`PUNTO_SALIDA_LATITUD`/`PUNTO_SALIDA_LONGITUD`,
+ya agregadas ahí por 010-mapa-central-unificado.
 
 **Resuelto (006-normalizar-formato-horario)**: `ARRIBO_EN`/`DESCARGA_EN`
 sigue siendo `TIMESTAMP` sin zona horaria — no se migró el esquema — pero
@@ -207,7 +222,26 @@ depender de `DBTIMEZONE`: `RECORRIDO_API` vía
 `SYSTIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'`, y acá vía
 `TO_TIMESTAMP_TZ` (el cloud manda `-03:00` explícito desde esta feature, ya
 no UTC) + `CAST(... AS TIMESTAMP)`. Ver
-`specs/006-normalizar-formato-horario/research.md` Decisión 3-4.
+`specs/006-normalizar-formato-horario/research.md` Decisión 3-4. Mismo
+criterio se aplica ahora a `INICIO_EN`/`CIERRE_EN`.
+
+**No probado todavía contra Oracle real (2026-08-25)**: a diferencia del
+resto de este package, el agregado de `INICIO_*`/`CIERRE_*` — incluyendo el
+`UPDATE T_RECORRIDOS` (primera vez que este procedure escribe una tabla
+distinta de `T_PUNTOS_ENTREGA`) y el uso de `JSON_VALUE(...RETURNING NUMBER)`
+— todavía no se corrió contra la instancia real. Antes de dar esto por
+cerrado: confirmar que `T_PUNTOS_ENTREGA` tiene (o se le agregaron)
+`INICIO_EN`/`INICIO_LAT`/`INICIO_LON`, y que `T_RECORRIDOS` tiene (o se le
+agregaron) tanto `CIERRE_EN`/`CIERRE_LAT`/`CIERRE_LON` **como**
+`INICIO_EN`/`INICIO_LAT`/`INICIO_LON` (mismo nombre que en
+`T_PUNTOS_ENTREGA`, pero es una columna distinta en una tabla distinta —
+confirmar que Oracle no se queja de nada al tener el mismo nombre de
+columna en dos tablas del mismo esquema, lo cual no debería ser un
+problema pero no está confirmado contra la instancia real), y correr el
+bloque de "Probar" de abajo contra un recorrido con INICIAR (sobre el
+primer punto y sobre algún otro punto más) y FINALIZAR ya tocados desde el
+chofer — confirmar que `T_RECORRIDOS.INICIO_EN` termina con la hora del
+INICIAR más temprano (el del primer punto), no la del último tocado.
 
 ### Probar
 
@@ -232,9 +266,11 @@ END;
 /
 ```
 
-- `resultado = 'OK'` → `v_respuesta` dice cuántos puntos se actualizaron
-  (`puntos_actualizados: N`). Confirmar con
-  `SELECT id, estado, arribo_en, arribo_lat, arribo_lon, descarga_en, descarga_lat, descarga_lon FROM VIC.T_PUNTOS_ENTREGA WHERE flt_viaje_id = 3716;`
+- `resultado = 'OK'` → `v_respuesta` dice cuántos puntos y cuántos recorridos
+  se actualizaron (`puntos_actualizados: N, recorrido_actualizado: 0|1`).
+  Confirmar con
+  `SELECT id, estado, inicio_en, inicio_lat, inicio_lon, arribo_en, arribo_lat, arribo_lon, descarga_en, descarga_lat, descarga_lon FROM VIC.T_PUNTOS_ENTREGA WHERE flt_viaje_id = 3716;`
+  y `SELECT id, inicio_en, inicio_lat, inicio_lon, cierre_en, cierre_lat, cierre_lon FROM VIC.T_RECORRIDOS WHERE id = 3716;`
 - `resultado = 'NOT_FOUND'` → no hay ningún recorrido con ese ID en el store
   cloud (nunca se pusheó, o el ID no coincide).
 - `resultado = 'ERROR'` → mismos motivos posibles que `sincronizar_recorrido`

@@ -4,9 +4,19 @@
 
 **Created**: 2026-08-13
 
+**Updated**: 2026-08-25 — se agrega User Story 3: exponer a Central las coordenadas GPS de los eventos de inicio y cierre (ya capturadas y guardadas desde la versión original, pero no expuestas — ver Decisión 4 en research.md).
+
 **Status**: Draft
 
 **Input**: User description: "nueva spec: registrar inicio y final de recorrido; debe guardar ubicacion y hora cuando chofer presiona iniciar en cada punto y cuando presiona finalizar recorrido. ademas para considerar el tiempo de regreso a base, el finalizar recorrido deja de ser automatico en el ultimo punto."
+
+**Update input (2026-08-25)**: "Registrar ubicacion al iniciar y finalizar el recorrido" — al revisar el estado actual se confirmó que el sistema ya registra fecha/hora en ambos eventos, y ya captura la ubicación GPS internamente, pero no la expone a Central. Esta actualización agrega esa exposición.
+
+## Clarifications
+
+### Session 2026-08-25
+
+- Q: El nuevo campo de "inicio del recorrido" va a T_RECORRIDOS (Oracle), mientras T_PUNTOS_ENTREGA ya tiene su propio INICIO_EN/INICIO_LAT/INICIO_LON (por punto, del INICIAR de cada punto). ¿Cómo se nombran las columnas nuevas en T_RECORRIDOS? → A: INICIO_EN/INICIO_LAT/INICIO_LON — mismo nombre que en T_PUNTOS_ENTREGA (tablas distintas, sin colisión real), simétrico con CIERRE_EN/CIERRE_LAT/CIERRE_LON ya agregado ahí mismo.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -43,6 +53,40 @@ Al completar el último punto de entrega, el recorrido ya no se da por finalizad
 
 ---
 
+### User Story 3 - Ver en Central la ubicación GPS de los eventos de inicio y cierre (Priority: P2)
+
+Central ya puede ver la fecha/hora de cuándo el chofer tocó INICIAR en cada punto y FINALIZAR el recorrido. Ahora, cuando esos eventos tengan una ubicación GPS asociada, Central también puede ver la latitud/longitud de dónde ocurrieron, con el mismo nivel de visibilidad que ya tiene para los eventos de arribo y descarga completa.
+
+**Why this priority**: Es una mejora de visibilidad sobre datos que el sistema ya captura y guarda desde la versión original de esta feature; no cambia el comportamiento del chofer ni la lógica de estados, por eso es P2 y no P1.
+
+**Independent Test**: Con un recorrido que tiene al menos un punto con evento de inicio registrado con ubicación GPS, y un cierre de recorrido también con ubicación GPS, se consulta el recorrido desde Central y se verifica que la latitud/longitud de ambos eventos está disponible en la respuesta, no solo la fecha/hora.
+
+**Acceptance Scenarios**:
+
+1. **Given** un punto con evento de inicio registrado con ubicación GPS, **When** Central consulta el recorrido (activo o en historial), **Then** puede ver la latitud/longitud de esa ubicación además de la fecha/hora.
+2. **Given** un recorrido finalizado con ubicación GPS registrada en el momento del cierre, **When** Central lo consulta, **Then** puede ver la latitud/longitud del cierre además de la fecha/hora.
+3. **Given** un evento de inicio o de cierre sin ubicación GPS disponible (el dispositivo no pudo obtenerla), **When** Central lo consulta, **Then** ve la fecha/hora sin coordenadas asociadas, sin error ni dato inconsistente.
+4. **Given** un recorrido cuyos eventos de inicio/cierre con ubicación fueron registrados antes de esta actualización, **When** Central lo consulta después de esta actualización, **Then** también puede ver esas coordenadas, sin necesidad de que el chofer repita la acción.
+
+---
+
+### User Story 4 - Mantener a Oracle/APEX al tanto del inicio y cierre del recorrido (Priority: P2)
+
+Oracle/APEX ya recibe de vuelta (vía su mecanismo existente de lectura de estado) los eventos de arribo y descarga de cada punto, para mantener su propia copia de los datos consistente con lo que el chofer marcó en el cloud. Ahora ese mismo mecanismo también trae el evento de inicio de cada punto, el evento de cierre del recorrido completo, y el momento en que arrancó el recorrido en su conjunto (el primer INICIAR tocado, hacia el primer punto de entrega) — todos con su ubicación GPS si estuvo disponible.
+
+**Why this priority**: Es una extensión de sincronización de datos ya existente (mismo mecanismo que ya trae arribo/descarga), no cambia ningún comportamiento visible para el chofer ni para Central; por eso es P2, igual que User Story 3.
+
+**Independent Test**: Con un recorrido donde el chofer ya tocó INICIAR sobre el primer punto y luego FINALIZAR, se consulta el mecanismo de lectura de estado de Oracle/APEX y se verifica que trae el momento de inicio del recorrido completo (fecha/hora y ubicación si existe), el evento de inicio de cada punto individual, y el evento de cierre del recorrido, todos consistentes con lo que ya ve Central.
+
+**Acceptance Scenarios**:
+
+1. **Given** que el chofer tocó INICIAR sobre el primer punto de entrega de un recorrido, **When** Oracle/APEX consulta el estado de ese recorrido, **Then** recibe la fecha/hora (y ubicación, si existe) del momento en que arrancó el recorrido en su conjunto, igual a la del evento de inicio de ese primer punto.
+2. **Given** un recorrido con varios puntos ya iniciados, **When** Oracle/APEX consulta el estado, **Then** recibe el evento de inicio de cada punto individual (fecha/hora y ubicación si existe), no solo el del recorrido completo.
+3. **Given** un recorrido ya finalizado, **When** Oracle/APEX consulta el estado, **Then** recibe también el evento de cierre del recorrido (fecha/hora y ubicación si existe).
+4. **Given** que el chofer reordenó los puntos (IR PRIMERO) antes de tocar INICIAR por primera vez, **When** Oracle/APEX consulta el estado, **Then** el momento de inicio del recorrido completo corresponde al punto que efectivamente quedó primero en ese momento, no al orden original.
+
+---
+
 ### Edge Cases
 
 - ¿Qué pasa si el chofer pierde conectividad justo al tocar INICIAR o FINALIZAR? La acción debe quedar encolada localmente y reintentarse automáticamente al recuperar señal, sin que el chofer deba repetirla manualmente ni pueda duplicarla (mismo mecanismo ya usado para arribo/descarga completa).
@@ -64,11 +108,18 @@ Al completar el último punto de entrega, el recorrido ya no se da por finalizad
 - **FR-008**: El botón FINALIZAR MUST seguir mostrándose únicamente cuando el estado de viaje sea Detenido y no queden puntos pendientes, igual que en el comportamiento ya existente.
 - **FR-009**: Las acciones de INICIAR y FINALIZAR realizadas sin conectividad MUST quedar encoladas localmente y reintentarse automáticamente al recuperar conexión, sin duplicarse ni perderse, siguiendo el mismo mecanismo ya usado para arribo/descarga completa.
 - **FR-010**: El sistema MUST sincronizar hacia Central, en tiempo (casi) real, el nuevo estado de finalización del recorrido y los eventos de inicio por punto, de modo que Central pueda ver reflejado el tiempo transcurrido entre la descarga completa del último punto y el cierre efectivo del recorrido (tiempo de regreso a base).
+- **FR-011**: El sistema MUST exponer a Central la latitud/longitud del evento de inicio de cada punto cuando estén disponibles, con el mismo nivel de visibilidad con el que ya expone las de los eventos de arribo y descarga completa.
+- **FR-012**: El sistema MUST exponer a Central la latitud/longitud del evento de cierre del recorrido cuando estén disponibles, con el mismo nivel de visibilidad con el que ya expone las de los eventos de arribo y descarga completa.
+- **FR-013**: La ausencia de ubicación GPS en un evento de inicio o cierre ya registrado MUST seguir representándose como dato faltante (sin coordenadas), sin bloquear ni alterar la consulta del resto del recorrido por parte de Central.
+- **FR-014**: El sistema MUST poner a disposición de Oracle/APEX, a través del mismo mecanismo ya usado para que Oracle/APEX lea de vuelta los eventos de arribo y descarga de cada punto, el evento de inicio de cada punto (fecha/hora y ubicación si existe).
+- **FR-015**: El sistema MUST poner a disposición de Oracle/APEX, a través de ese mismo mecanismo, el evento de cierre del recorrido completo (fecha/hora y ubicación si existe).
+- **FR-016**: El sistema MUST poner a disposición de Oracle/APEX el momento de inicio del recorrido completo (fecha/hora y ubicación si existe) — el evento de inicio del punto que efectivamente resultó ser el primero en iniciarse, sin importar si ese punto sigue siendo el "punto 1" nominal o fue reordenado antes de iniciarse.
 
 ### Key Entities
 
-- **Evento de inicio (por punto)**: Marca de tiempo de servidor y ubicación GPS opcional del chofer en el instante en que se tocó INICIAR sobre ese punto; se agrega a los eventos ya existentes de arribo y descarga completa de cada punto de entrega.
-- **Evento de cierre de recorrido**: Marca de tiempo de servidor y ubicación GPS opcional del chofer en el instante en que se tocó FINALIZAR; determina la transición del recorrido a estado finalizado y reemplaza la derivación automática anterior basada únicamente en el estado de los puntos.
+- **Evento de inicio (por punto)**: Marca de tiempo de servidor y ubicación GPS opcional del chofer en el instante en que se tocó INICIAR sobre ese punto; se agrega a los eventos ya existentes de arribo y descarga completa de cada punto de entrega. Tanto la fecha/hora como la latitud/longitud (si existe) son consultables por Central y por Oracle/APEX.
+- **Evento de cierre de recorrido**: Marca de tiempo de servidor y ubicación GPS opcional del chofer en el instante en que se tocó FINALIZAR; determina la transición del recorrido a estado finalizado y reemplaza la derivación automática anterior basada únicamente en el estado de los puntos. Tanto la fecha/hora como la latitud/longitud (si existe) son consultables por Central y por Oracle/APEX.
+- **Inicio del recorrido (a nivel recorrido completo)**: No es un evento capturado de forma independiente — es el evento de inicio del punto que efectivamente resultó ser el primero en iniciarse (el más temprano entre los eventos de inicio por punto). Se pone a disposición de Oracle/APEX junto al resto del estado del recorrido, para que Oracle tenga una marca de "arrancó el recorrido" a nivel del recorrido en su conjunto, sin tener que derivarla él mismo a partir de los puntos individuales.
 
 ## Success Criteria *(mandatory)*
 
@@ -78,6 +129,8 @@ Al completar el último punto de entrega, el recorrido ya no se da por finalizad
 - **SC-002**: Para el 100% de los recorridos completados, el cierre (estado finalizado) ocurre únicamente tras una acción explícita del chofer, nunca antes de que toque FINALIZAR.
 - **SC-003**: Central puede calcular, para cualquier recorrido finalizado, el tiempo transcurrido entre la descarga completa del último punto y el cierre del recorrido, sin necesidad de cálculos externos al sistema.
 - **SC-004**: El chofer puede finalizar su recorrido con un único toque adicional sobre FINALIZAR, sin pasos ni pantallas intermedias, igual que en el flujo ya existente.
+- **SC-005**: Para el 100% de los eventos de inicio y cierre que tienen ubicación GPS registrada, Central puede ver su latitud/longitud sin necesidad de otra fuente de datos ni de cálculos externos.
+- **SC-006**: Para el 100% de los recorridos con al menos un punto iniciado, Oracle/APEX puede leer el momento de inicio del recorrido completo, el evento de inicio de cada punto, y (si el recorrido ya finalizó) el evento de cierre, usando el mismo mecanismo con el que ya lee arribo/descarga — sin un mecanismo nuevo ni una consulta aparte.
 
 ## Assumptions
 
@@ -85,3 +138,7 @@ Al completar el último punto de entrega, el recorrido ya no se da por finalizad
 - El evento de cierre de recorrido (FINALIZAR) se registra sobre el recorrido en su conjunto, no sobre un punto de entrega en particular; no se modela un "punto base" como entidad de datos en esta especificación, ya que no fue solicitado.
 - El mecanismo de cola offline y reintento ya definido en las features 001 y 007 se reutiliza sin cambios de diseño para las acciones INICIAR y FINALIZAR.
 - No se agrega validación de geocerca (radio permitido) alrededor de la base al tocar FINALIZAR; se registra la ubicación reportada por el dispositivo sin bloquear la acción, consistente con el criterio ya usado para arribo/descarga completa.
+- (User Story 3) La captura y guardado de la ubicación GPS de INICIAR/FINALIZAR ya existe desde la versión original de esta feature (FR-002, FR-006); esta extensión no cambia esa captura, solo agrega su exposición hacia Central, revirtiendo la Decisión 4 documentada en `research.md` a la luz del precedente sentado después por la feature 009 (que sí expone `arriboLat`/`arriboLon`/`descargaLat`/`descargaLon`).
+- (User Story 3) No se requiere ninguna acción del chofer ni reprocesamiento de recorridos ya finalizados: las coordenadas ya guardadas en el store para recorridos previos quedan disponibles automáticamente al exponerse el campo.
+- (User Story 4) El mecanismo por el cual Oracle/APEX lee de vuelta el estado (ya existente desde la feature 003, usado hoy para arribo/descarga) es de lectura manual/on-demand, no un push automático del cloud — esta especificación no cambia esa característica, solo agrega más datos a lo que ese mecanismo ya trae.
+- (User Story 4) El "inicio del recorrido completo" no introduce un botón ni una acción nueva del chofer: es el mismo evento de INICIAR sobre el primer punto que ya captura User Story 1, simplemente puesto a disposición también a nivel del recorrido (no solo del punto) para quien consulta desde Oracle/APEX.

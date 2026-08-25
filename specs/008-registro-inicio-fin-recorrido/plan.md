@@ -198,3 +198,83 @@ nuevos, solo extiende archivos ya existentes de las tres apps.
 ## Complexity Tracking
 
 *Sin violaciones a justificar — Constitution Check pasa sin excepciones.*
+
+## Extensión (User Story 3, 2026-08-25)
+
+Agrega exposición hacia Central de `inicioLat`/`inicioLon` (por punto) y
+`cierreLat`/`cierreLon` (por recorrido), ya capturados y guardados desde la
+versión original de esta feature pero excluidos de los serializadores de
+Central por research.md Decisión 4. Revierte esa decisión a la luz del
+precedente sentado después por 009-central-mejora-visual, que sí expone
+`arriboLat`/`arriboLon`/`descargaLat`/`descargaLon` con el mismo patrón.
+Sin cambios de captura (frontend chofer), sin endpoints nuevos, sin cambios
+de esquema — solo agregar 4 campos a serializadores ya existentes y su
+consumo en la UI de Central.
+
+**Alcance de archivos a tocar**:
+
+- `backend/src/state/integracionStore.js`:
+  - `serializarPuntosCentral` (línea ~607): agregar `inicioLat: p.inicioLat ?? null`, `inicioLon: p.inicioLon ?? null`, mismo patrón que `arriboLat`/`arriboLon`.
+  - `listarHistorial` y `obtenerDetalle`: agregar `cierreLat: r.cierreLat ?? null`, `cierreLon: r.cierreLon ?? null` al objeto `recorrido`.
+  - `GET /api/recorridos/:token` (chofer, `obtenerPorToken`) y `listarActivos` **no** cambian — fuera de alcance (FR-011/FR-012 piden exponer a Central específicamente, no al chofer; `listarActivos` no expone puntos individuales ni `cierreEn`, ver data-model.md § Serialización).
+- `backend/src/routes/central.js`: `GET /recorridos/historial` (línea ~43) hace un mapeo explícito de campos del `recorrido` — agregar `cierreLat`/`cierreLon` al objeto mapeado (si no, quedarían presentes en el store pero cortados acá).
+- `central/src/components/RecorridoDetalle.jsx`: mostrar las coordenadas nuevas sin romper el patrón visual existente:
+  - "Final" (`Descriptions.Item`, cierre del recorrido): agregar un ícono/tooltip con las coordenadas crudas (`cierreLat`/`cierreLon`) cuando existan — **no** reutilizar `HoraConProximidad` (que colorea según distancia a un punto de referencia): no hay un "punto de regreso a base" modelado como entidad (Assumptions de spec.md), así que no hay contra qué medir proximidad de forma no ambigua.
+  - Columna "Hora de llegada"/"Hora de descarga" no cambian. `inicioEn` por punto sigue sin columna dedicada en la tabla (decisión ya tomada y validada en la versión original: se usa agregado en el encabezado "Hora inicio" vía `primerEventoIso`) — agregar el mismo tratamiento de tooltip con coordenadas crudas al campo "Hora inicio" del encabezado, usando las coordenadas del punto cuyo `inicioEn` resultó el más temprano.
+  - `central/src/services/tiempo.js`: `primerEventoIso` hoy solo devuelve el ISO más temprano; agregar una función hermana (o extender el retorno) que además devuelva `inicioLat`/`inicioLon` del punto correspondiente, para alimentar el tooltip del encabezado.
+- Tests: extender `backend/tests/unit/integracion-store-central.test.js`, `backend/tests/contract/get-historial.test.js`, `backend/tests/contract/get-recorrido-detalle.test.js`, `backend/tests/contract/get-recorridos-activos.test.js` (verificar que activos **no** gana estos campos), y `central/` tests de `RecorridoDetalle`/`tiempo.js`.
+
+**Constitution Check (re-evaluado)**: PASS sin excepciones — mismos
+principios que la versión original; Principio VII sigue cumplido (4 campos
+opcionales reexpuestos, sin entidades ni infraestructura nueva); Principio
+III sigue cumplido (solo agrega un tooltip informativo en componentes ya
+existentes, sin popups ni mecanismos incompatibles con iframe).
+
+## Extensión (User Story 4, 2026-08-25)
+
+Pone a disposición de Oracle/APEX, a través del mismo mecanismo ya existente
+de lectura de estado (`GET /api/integracion/estado` +
+`INTEGRACION_CLOUD_API.leer_estado_puntos`, spec 003), los eventos de
+inicio-por-punto y cierre-de-recorrido (ya capturados desde la versión
+original de esta feature, nunca antes expuestos a Oracle — ver research.md
+Decisión 8), más un nuevo dato derivado: el momento de inicio del recorrido
+completo (el `inicioEn` más temprano entre los puntos). Sin cambios de
+captura, sin endpoints nuevos, sin cambios en lo que ve el chofer o Central
+— solo un nuevo consumidor (Oracle) para datos que el cloud ya tenía, más
+un campo derivado nuevo.
+
+**Alcance de archivos a tocar**:
+
+- `backend/src/routes/integracion.js`: `serializarEstado()` — agregar
+  `inicioEn`/`inicioLat`/`inicioLon` por punto (mismo patrón que
+  `arriboEn`/`arriboLat`); agregar a nivel `recorrido`:
+  `cierreEn`/`cierreLat`/`cierreLon` (ya existían en el store, nunca
+  expuestos acá) e `inicioEn`/`inicioLat`/`inicioLon` (nuevo campo
+  derivado — función `primerInicio(puntos)`, el `inicioEn` más temprano
+  entre los puntos, mismo criterio que `primerEventoConUbicacion` de
+  Central pero sin el fallback a `arriboEn` — ver research.md Decisión 9).
+- `backend/sql/integracion-cloud/integracion_cloud_api.pkb.sql`:
+  `leer_estado_puntos` — agregar `inicio_en`/`inicio_lat`/`inicio_lon` a
+  las columnas de `JSON_TABLE` (por punto) y al `UPDATE T_PUNTOS_ENTREGA`;
+  agregar extracción vía `JSON_VALUE` de `cierreEn`/`cierreLat`/`cierreLon`
+  e `inicioEn`/`inicioLat`/`inicioLon` a nivel `$.recorridos[0]` (no del
+  array de puntos) y agregarlos al `UPDATE T_RECORRIDOS` (nombres de
+  columna: `CIERRE_EN`/`CIERRE_LAT`/`CIERRE_LON` e
+  `INICIO_EN`/`INICIO_LAT`/`INICIO_LON` — mismo nombre que en
+  `T_PUNTOS_ENTREGA`, tabla distinta, sin colisión — ver Clarifications de
+  spec.md).
+- Tests: extender `backend/tests/contract/integracion-endpoints.test.js`
+  (nuevo — antes este endpoint no tenía cobertura de `inicioEn`/`cierreEn`
+  en absoluto).
+- **Fuera de alcance**: sin cambios en `frontend/` (chofer) ni en
+  `central/` — Central ya deriva su propio "Hora inicio" del lado cliente
+  (`primerEventoConUbicacion`, User Story 3); el campo derivado nuevo es
+  solo para el consumo de Oracle/APEX.
+
+**Constitution Check (re-evaluado)**: PASS sin excepciones — Principio IV
+(fuentes de verdad por dominio, sincronización explícita) es el más
+directamente reforzado: el cloud sigue siendo autoritativo, y esto es
+exactamente "sincronización explícita" hacia Oracle a través del mecanismo
+ya existente, no uno nuevo. Principio VII sigue cumplido (reexpone datos ya
+capturados + un campo derivado simple, sin infraestructura ni entidades
+nuevas).

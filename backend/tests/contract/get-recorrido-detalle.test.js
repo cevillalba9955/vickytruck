@@ -66,7 +66,7 @@ test("GET /api/central/recorridos/:id — expone remitoIds por punto, dato inter
   }
 });
 
-test("GET /api/central/recorridos/:id — expone inicioEn por punto y cierreEn del recorrido (008), sin inicioLat/inicioLon/cierreLat/cierreLon", async () => {
+test("GET /api/central/recorridos/:id — expone inicioEn por punto y cierreEn del recorrido (008)", async () => {
   const repository = createInMemoryCentralRepository({
     recorridos: [
       {
@@ -86,8 +86,71 @@ test("GET /api/central/recorridos/:id — expone inicioEn por punto y cierreEn d
     const body = await res.json();
     assert.equal(body.recorrido.cierreEn, "2026-08-13T14:40:00-03:00");
     assert.equal(body.puntos[0].inicioEn, "2026-08-13T14:02:00-03:00");
-    assert.equal(body.recorrido.cierreLat, undefined);
-    assert.equal(body.puntos[0].inicioLat, undefined);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("GET /api/central/recorridos/:id — expone cierreLat/cierreLon del recorrido e inicioLat/inicioLon por punto (008, User Story 3, 2026-08-25, research.md Decisión 7)", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "53",
+        estado: "finalizado",
+        fleteId: "9",
+        cierreEn: "2026-08-13T14:40:00-03:00",
+        cierreLat: -34.61,
+        cierreLon: -58.39,
+        puntos: [
+          {
+            id: "p1",
+            orden: 1,
+            estado: "completado",
+            inicioEn: "2026-08-13T14:02:00-03:00",
+            inicioLat: -34.6,
+            inicioLon: -58.38,
+          },
+        ],
+      },
+    ],
+    fletes: [{ id: "9", nombre: "Chofer de Prueba" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/53`);
+    const body = await res.json();
+    assert.equal(body.recorrido.cierreLat, -34.61);
+    assert.equal(body.recorrido.cierreLon, -58.39);
+    assert.equal(body.puntos[0].inicioLat, -34.6);
+    assert.equal(body.puntos[0].inicioLon, -58.38);
+  } finally {
+    await server.cerrar();
+  }
+});
+
+test("GET /api/central/recorridos/:id — cierreLat/cierreLon/inicioLat/inicioLon quedan en null (no undefined) cuando el seed no los trae", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "54",
+        estado: "finalizado",
+        fleteId: "9",
+        cierreEn: "2026-08-13T14:40:00-03:00",
+        puntos: [{ id: "p1", orden: 1, estado: "completado", inicioEn: "2026-08-13T14:02:00-03:00" }],
+      },
+    ],
+    fletes: [{ id: "9", nombre: "Chofer de Prueba" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/54`);
+    const body = await res.json();
+    assert.equal(body.recorrido.cierreLat, null);
+    assert.equal(body.recorrido.cierreLon, null);
+    assert.equal(body.puntos[0].inicioLat, null);
+    assert.equal(body.puntos[0].inicioLon, null);
   } finally {
     await server.cerrar();
   }

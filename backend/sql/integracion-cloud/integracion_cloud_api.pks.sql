@@ -35,15 +35,20 @@ CREATE OR REPLACE PACKAGE VIC.INTEGRACION_CLOUD_API AS
   );
 
   -- Dirección inversa: trae de vuelta el estado de los puntos de entrega que
-  -- el chofer marcó en el backend cloud (arribo/descarga, con la ubicación
-  -- GPS y fechahora de cada evento — GET /api/integracion/estado, ver
+  -- el chofer marcó en el backend cloud (inicio/arribo/descarga por punto,
+  -- con la ubicación GPS y fechahora de cada evento — GET
+  -- /api/integracion/estado, ver
   -- specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md) y lo
-  -- escribe sobre T_PUNTOS_ENTREGA.
+  -- escribe sobre T_PUNTOS_ENTREGA. También trae dos eventos del recorrido
+  -- completo (008-registro-inicio-fin-recorrido, User Story 4): el cierre
+  -- (FINALIZAR) y el momento de inicio del recorrido en su conjunto (el
+  -- inicioEn más temprano entre los puntos) — y los escribe sobre
+  -- T_RECORRIDOS.
   PROCEDURE leer_estado_puntos(
     p_recorrido_id IN  NUMBER,
     p_resultado    OUT VARCHAR2,  -- 'OK' | 'NOT_FOUND' | 'ERROR'
     p_http_status  OUT NUMBER,
-    p_respuesta    OUT VARCHAR2   -- 'puntos_actualizados: N', o el motivo si ERROR/NOT_FOUND
+    p_respuesta    OUT VARCHAR2   -- 'puntos_actualizados: N, recorrido_actualizado: 0|1', o el motivo si ERROR/NOT_FOUND
   );
 
 END INTEGRACION_CLOUD_API;
