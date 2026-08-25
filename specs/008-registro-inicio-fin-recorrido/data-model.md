@@ -105,7 +105,17 @@ Ver research.md, Decisión 5.
 | Chofer | `GET /api/recorridos/:token` | Sí (mismo nivel que `arriboEn`/`descargaEn`, ya visibles hoy) | No (mismo criterio que `arriboLat`/`descargaLat`, ya ocultos hoy) | Sí (a nivel `recorrido`) | No | N/A (el chofer ya sabe si está `detenido` sin pendientes) |
 | Central | `GET /api/central/recorridos/activos` | Sí (dentro de `puntos`, vía `serializarPuntosCentral` — desde 010-mapa-central-unificado este endpoint también expone `puntos`) | **Sí** (research.md, Decisión 7 — mismo `serializarPuntosCentral` que historial/detalle, sin lógica separada) | N/A (recorrido todavía `activo`, no tiene `cierreEn` a nivel `recorrido` en este endpoint) | N/A (idem — un recorrido activo no tiene cierre) | Sí (FR-010, research.md Decisión 5) |
 | Central | `GET /api/central/recorridos/historial`, `.../:id` | Sí (dentro de `puntos`, vía `serializarPuntosCentral`) | **Sí** (research.md, Decisión 7 — 2026-08-25, revierte Decisión 4) | Sí (a nivel `recorrido`) | **Sí** (research.md, Decisión 7) | N/A (estos endpoints son solo para recorridos ya `finalizado` o el detalle puntual) |
-| Oracle/APEX | `GET /api/integracion/estado` | No (fuera de alcance — Oracle no consume estos campos en esta spec) | No | No | No | No |
+| Oracle/APEX | `GET /api/integracion/estado` | **Sí** (dentro de `puntos` — research.md, Decisión 8, 2026-08-25, User Story 4) | **Sí** (idem) | **Sí** (a nivel `recorrido` — Decisión 8) | **Sí** (idem) | N/A (Oracle no consume `esperandoFinalizar`, fuera de alcance de esta feature) |
+
+**Nota (2026-08-25, User Story 4)**: Oracle/APEX además recibe un campo que
+ningún otro consumidor tiene: `recorrido.inicioEn`/`inicioLat`/`inicioLon`
+**a nivel recorrido** (no dentro de `puntos`) — el momento de inicio del
+recorrido completo, derivado como el `inicioEn` más temprano entre los
+puntos (research.md, Decisión 9). Es un campo distinto de
+`puntos[].inicioEn` (mismo nombre, nivel de anidación distinto, sin
+ambigüedad real en el JSON). Ni el chofer ni Central reciben este campo
+derivado — Central ya deriva su propio equivalente del lado cliente
+(`primerEventoConUbicacion`, User Story 3).
 
 **Nota (2026-08-25, User Story 3)**: `inicioLat`/`inicioLon`/`cierreLat`/
 `cierreLon` ya existían en el modelo y se guardaban desde la versión

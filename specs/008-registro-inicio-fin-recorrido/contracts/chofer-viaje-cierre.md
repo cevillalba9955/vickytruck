@@ -162,6 +162,16 @@ obtener ubicación GPS en ese evento (FR-013).
   punto no cambia en nada más.
 - Todas las respuestas de error mantienen el formato
   `{ "error": "<código>" }` ya usado en 001/005.
-- Este contrato no agrega ni modifica nada en `GET /api/integracion/estado`
-  (consumido por Oracle/APEX) — `inicioEn`/`cierreEn` no viajan hacia
-  Oracle en esta spec (fuera de alcance, ver Assumptions de spec.md).
+- **Actualizado 2026-08-25 (User Story 4)**: `GET /api/integracion/estado`
+  (consumido por Oracle/APEX) ahora sí incluye `inicioEn`/`inicioLat`/
+  `inicioLon` por punto, y a nivel `recorrido`: `cierreEn`/`cierreLat`/
+  `cierreLon` (evento de FINALIZAR) e `inicioEn`/`inicioLat`/`inicioLon`
+  (momento de inicio del recorrido completo — el evento de inicio del punto
+  que resultó ser el primero en iniciarse). Ver
+  `specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md` para el
+  ejemplo de payload completo, y
+  `backend/sql/integracion-cloud/integracion_cloud_api.pkb.sql`
+  (`leer_estado_puntos`) para cómo Oracle/APEX los lee y los persiste
+  (`INICIO_EN`/`INICIO_LAT`/`INICIO_LON` en `T_PUNTOS_ENTREGA` por punto;
+  `CIERRE_EN`/`CIERRE_LAT`/`CIERRE_LON` e `INICIO_EN`/`INICIO_LAT`/
+  `INICIO_LON` en `T_RECORRIDOS` a nivel recorrido).

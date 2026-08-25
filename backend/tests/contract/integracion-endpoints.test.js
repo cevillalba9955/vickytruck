@@ -177,6 +177,130 @@ test("GET /api/integracion/estado — expone el GPS capturado al marcar arribo/d
   }
 });
 
+test("GET /api/integracion/estado — expone inicioEn/inicioLat/inicioLon por punto y cierreEn/cierreLat/cierreLon del recorrido (008, dirección Oracle, 2026-08-25)", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store);
+
+  try {
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({
+          source: "oracle-apex",
+          recorridos: [
+            {
+              id: "R-2002",
+              token: "tok-2002",
+              fleteId: "F-1",
+              estado: "activo",
+              puntos: [{ id: "P-1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4 }],
+            },
+          ],
+        }),
+      }),
+    );
+
+    await store.iniciarViaje("tok-2002", { lat: -34.601, lon: -58.401 });
+    await store.registrarLlegue("tok-2002");
+    await store.registrarDescargaCompleta("tok-2002");
+    await store.finalizarRecorrido("tok-2002", { lat: -34.61, lon: -58.41 });
+
+    const estado = await fetch(`${server.integracionBaseUrl}/estado?recorridoId=R-2002`, withApiKey());
+    const estadoBody = await estado.json();
+    const recorrido = estadoBody.recorridos[0];
+    const punto = recorrido.puntos[0];
+    assert.equal(punto.inicioLat, -34.601);
+    assert.equal(punto.inicioLon, -58.401);
+    assert.equal(recorrido.cierreLat, -34.61);
+    assert.equal(recorrido.cierreLon, -58.41);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/integracion/estado — recorrido.inicioEn/inicioLat/inicioLon reflejan el punto que arrancó primero, no el último tocado (008, User Story 4, FR-016)", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store);
+
+  try {
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({
+          source: "oracle-apex",
+          recorridos: [
+            {
+              id: "R-2003",
+              token: "tok-2003",
+              fleteId: "F-1",
+              estado: "activo",
+              puntos: [
+                { id: "P-1", orden: 1, estado: "pendiente", lat: -34.6, lon: -58.4 },
+                { id: "P-2", orden: 2, estado: "pendiente", lat: -34.7, lon: -58.5 },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+
+    // Arranca y completa P-1 primero, después arranca P-2 — el inicio del
+    // RECORRIDO debe seguir siendo el de P-1 (el más temprano), no el de P-2
+    // (el último tocado).
+    await store.iniciarViaje("tok-2003", { lat: -34.601, lon: -58.401 });
+    await store.registrarLlegue("tok-2003");
+    await store.registrarDescargaCompleta("tok-2003");
+    await store.iniciarViaje("tok-2003", { lat: -34.701, lon: -58.501 });
+
+    const estado = await fetch(`${server.integracionBaseUrl}/estado?recorridoId=R-2003`, withApiKey());
+    const estadoBody = await estado.json();
+    const recorrido = estadoBody.recorridos[0];
+    assert.equal(recorrido.inicioEn, recorrido.puntos.find((p) => p.id === "P-1").inicioEn);
+    assert.equal(recorrido.inicioLat, -34.601);
+    assert.equal(recorrido.inicioLon, -58.401);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/integracion/estado — recorrido.inicioEn es null si todavía no se tocó INICIAR sobre ningún punto (008, User Story 4)", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store);
+
+  try {
+    await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({
+          source: "oracle-apex",
+          recorridos: [{ id: "R-2004", fleteId: "F-1", estado: "activo", puntos: [{ id: "P-1", orden: 1, estado: "pendiente" }] }],
+        }),
+      }),
+    );
+
+    const estado = await fetch(`${server.integracionBaseUrl}/estado?recorridoId=R-2004`, withApiKey());
+    const estadoBody = await estado.json();
+    const recorrido = estadoBody.recorridos[0];
+    assert.equal(recorrido.inicioEn, null);
+    assert.equal(recorrido.inicioLat, null);
+    assert.equal(recorrido.inicioLon, null);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+});
+
 test("POST /api/integracion/recorridos — aprovisiona la credencial MQTT permanente del choferId recibido (2026-08-10, FR-013)", async () => {
   const prev = process.env.INTEGRACION_API_KEY;
   process.env.INTEGRACION_API_KEY = "test-key";

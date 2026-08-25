@@ -175,3 +175,64 @@ chofer todavía no llegó al punto cuando toca INICIAR) ni "cierre" (no hay
 punto de referencia no ambiguo contra el cual medir proximidad. Se optó por
 mostrar las coordenadas crudas en un tooltip informativo, sin badge de
 color ni cálculo de distancia, evitando inventar semántica no pedida.
+
+## Decisión 8 (2026-08-25, User Story 4) — Exponer inicio/cierre también a Oracle/APEX, reutilizando el mecanismo existente
+
+**Decisión**: `GET /api/integracion/estado` (el endpoint que Oracle/APEX ya
+consulta para leer de vuelta arribo/descarga de cada punto, spec 003) ahora
+también expone `inicioEn`/`inicioLat`/`inicioLon` por punto y
+`cierreEn`/`cierreLat`/`cierreLon` a nivel `recorrido`. `INTEGRACION_CLOUD_API
+.leer_estado_puntos` (Oracle) los lee y los persiste sobre
+`T_PUNTOS_ENTREGA`/`T_RECORRIDOS` respectivamente.
+
+**Rationale**: esta feature nunca declaró expresamente que Oracle quedara
+fuera de alcance — la única mención explícita vivía en una nota transversal
+del contrato de esta feature (`contracts/chofer-viaje-cierre.md`), no en
+`spec.md`. Con Oracle ya sincronizando arribo/descarga por el mismo canal,
+dejar inicio/cierre afuera es una inconsistencia de cobertura, no una
+decisión de alcance deliberada — mismo razonamiento que motivó revertir la
+Decisión 4 para Central (Decisión 7 arriba).
+
+**Alternativas consideradas**: un endpoint/mecanismo nuevo dedicado a
+inicio/cierre — descartada por Principio VII (simplicidad): el mecanismo
+existente (`GET /api/integracion/estado` + `leer_estado_puntos`) ya
+resuelve exactamente este problema (Oracle lee de vuelta eventos que el
+chofer marcó en el cloud), agregar campos a una respuesta ya consumida es
+más simple que introducir un segundo canal paralelo.
+
+## Decisión 9 (2026-08-25, User Story 4) — "Inicio del recorrido" es derivado, no un evento capturado aparte
+
+**Decisión**: el campo `recorrido.inicioEn`/`inicioLat`/`inicioLon` (nuevo,
+a nivel recorrido, distinto de `puntos[].inicioEn`) no tiene captura propia
+— se calcula en `serializarEstado()` (`backend/src/routes/integracion.js`,
+función `primerInicio()`) como el `inicioEn` más temprano entre los puntos
+del recorrido, recalculado en cada request. `null` si ningún punto tiene
+`inicioEn` todavía.
+
+**Rationale**: "el momento en que arrancó el recorrido" no es conceptualmente
+un evento nuevo — es el mismo evento de INICIAR sobre el primer punto que ya
+captura User Story 1 (FR-001/FR-002), solo que puesto a disposición también
+a nivel del recorrido para que Oracle no tenga que derivarlo él mismo
+recorriendo el array de puntos. Ser derivado (no un campo independiente
+escrito una sola vez) además mantiene el comportamiento correcto ante
+CANCELAR: si el chofer toca INICIAR y después CANCELAR sobre el primer
+punto (edge case ya documentado en spec.md — `inicioEn` de ese punto vuelve
+a `null`), el "inicio del recorrido" recalculado también vuelve a `null`
+automáticamente, sin necesidad de un mecanismo de reversión aparte.
+
+**Alternativas consideradas**:
+- Capturar el inicio del recorrido como un evento independiente y
+  persistido (similar a `cierreEn`) — descartada: significa un tercer punto
+  de captura además de por-punto y de-recorrido-completo (cierre), agrega
+  un campo mutable en el store, y puede desincronizarse del array de puntos
+  ante un CANCELAR (quedaría una fecha "fantasma" de un inicio que ya no
+  existe en ningún punto) — contradice el criterio ya establecido en Edge
+  Cases de spec.md ("el evento de inicio registrado para ese punto queda
+  descartado junto con el resto de la reversión").
+- Reusar la misma lógica de fallback a `arriboEn` que usa
+  `primerEventoConUbicacion` de Central (para recorridos viejos sin
+  `inicioEn`) — descartada para este campo: `recorrido.inicioEn` es un dato
+  nuevo que Oracle empieza a recibir desde ahora, no hay recorridos viejos
+  consultando este campo específico que necesiten ese fallback (a
+  diferencia del uso en Central, que sí tenía que seguir mostrando algo
+  razonable para recorridos ya existentes antes de 008).

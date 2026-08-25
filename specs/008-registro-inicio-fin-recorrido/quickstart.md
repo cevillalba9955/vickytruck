@@ -130,6 +130,38 @@ Vite puede variar).
    corrección), mientras que `recorrido.cierreLat`/`cierreLon` siguen
    ausentes a nivel de recorrido (un recorrido activo no tiene cierre).
 
+## Escenario 6 — Oracle/APEX lee inicio/cierre a través del mecanismo existente (User Story 4, 2026-08-25)
+
+Requiere una instancia Oracle real con `INTEGRACION_CLOUD_API` instalado
+(ver `backend/sql/integracion-cloud/README.md`) — sección **no probada
+todavía contra Oracle real**, confirmar antes de dar esto por cerrado.
+
+1. Con `R-QS-8` en el mismo estado del Escenario 3 (INICIAR sobre p1 y p2,
+   FINALIZAR ya tocado, todos con ubicación GPS), consultar directamente
+   `GET http://localhost:3000/api/integracion/estado?recorridoId=R-QS-8`
+   (con el header `x-api-key` correspondiente) y confirmar que:
+   - `recorridos[0].inicioEn`/`inicioLat`/`inicioLon` (a nivel `recorrido`,
+     no dentro de `puntos`) coinciden con el evento de inicio de **p1** (el
+     primer punto en iniciarse), no con el de p2.
+   - `recorridos[0].cierreEn`/`cierreLat`/`cierreLon` coinciden con el
+     evento de FINALIZAR.
+   - `recorridos[0].puntos[0].inicioEn`/`inicioLat`/`inicioLon` (por punto)
+     siguen presentes, igual que antes.
+2. Desde Oracle/APEX (o `sqlplus`/SQL Developer contra la instancia real),
+   correr `INTEGRACION_CLOUD_API.leer_estado_puntos(p_recorrido_id => <id
+   real de R-QS-8 en Oracle>, ...)` (ver bloque "Probar" del README de
+   `backend/sql/integracion-cloud/`) y confirmar:
+   - `T_PUNTOS_ENTREGA.INICIO_EN/INICIO_LAT/INICIO_LON` quedan seteados por
+     punto.
+   - `T_RECORRIDOS.CIERRE_EN/CIERRE_LAT/CIERRE_LON` quedan seteados.
+   - `T_RECORRIDOS.INICIO_EN/INICIO_LAT/INICIO_LON` quedan seteados con la
+     hora/ubicación de **p1** (el primero en iniciarse), no la de p2.
+3. Repetir el paso 2 varias veces (reintento) y confirmar que los valores
+   no cambian entre corridas (mismo criterio idempotente que ya rige para
+   arribo/descarga/cierre — el cloud sigue siendo la fuente de verdad,
+   pisa sin comparar versiones, pero el valor en sí no cambia si el cloud
+   no cambió).
+
 ## Automatizado
 
 ```bash

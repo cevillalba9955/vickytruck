@@ -94,10 +94,19 @@ resultado se expone al chofer en `GET /api/recorridos/:token` →
     {
       "id": "R-1001",
       "estado": "activo",
+      "inicioEn": "2026-08-05T13:15:00-03:00",
+      "inicioLat": -34.6,
+      "inicioLon": -58.4,
+      "cierreEn": null,
+      "cierreLat": null,
+      "cierreLon": null,
       "puntos": [
         {
           "id": "P-1",
           "estado": "arribado",
+          "inicioEn": "2026-08-05T13:15:00-03:00",
+          "inicioLat": -34.6,
+          "inicioLon": -58.4,
           "arriboEn": "2026-08-05T13:31:00Z",
           "arriboLat": -34.61,
           "arriboLon": -58.41,
@@ -117,6 +126,29 @@ que es fija y ya viaja en el Endpoint 1 como `lat`/`lon`) — dato de auditoría
 de "desde dónde" confirmó el chofer. Vienen en `null` hasta que el chofer
 marca el evento; una vez capturados en la primera transición no se pisan en
 repeticiones idempotentes ni en re-pushes de topología desde Oracle/APEX.
+
+**`inicioEn`/`inicioLat`/`inicioLon`** (por punto, dentro de `puntos`) y
+**`cierreEn`/`cierreLat`/`cierreLon`** (a nivel `recorrido`) —
+008-registro-inicio-fin-recorrido, 2026-08-25: mismo criterio que
+arribo/descarga (GPS opcional, `null` hasta que ocurre el evento, no se pisa
+en repeticiones idempotentes). `inicioEn` (por punto) marca cuándo el chofer
+tocó INICIAR sobre ese punto; `cierreEn` marca cuándo tocó FINALIZAR el
+recorrido completo (evento del recorrido, no de un punto — por eso vive
+junto a `estado`, no dentro de `puntos`).
+
+**`inicioEn`/`inicioLat`/`inicioLon` a nivel `recorrido`** (mismo nombre que
+el de cada punto, pero un campo distinto, al lado de `cierreEn`) —
+008-registro-inicio-fin-recorrido, User Story 4, 2026-08-25: momento de
+inicio del recorrido completo, no capturado de forma independiente — es el
+`inicioEn` más temprano entre los puntos (el evento de inicio del punto que
+efectivamente resultó ser el primero en iniciarse). `null` hasta que se
+tocó INICIAR sobre algún punto.
+
+Oracle/APEX consume los cuatro (los tres por punto y los dos de recorrido)
+vía `INTEGRACION_CLOUD_API.leer_estado_puntos` y los escribe sobre
+`T_PUNTOS_ENTREGA` (inicio, por punto) y `T_RECORRIDOS` (cierre e inicio del
+recorrido completo) — ver
+`backend/sql/integracion-cloud/integracion_cloud_api.pkb.sql`.
 
 ### Response 200 (sin `recorridoId`, paginado)
 
