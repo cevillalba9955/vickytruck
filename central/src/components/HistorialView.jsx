@@ -82,7 +82,11 @@ export function HistorialView() {
       // GET /api/central/recorridos/historial en backend/src/routes/central.js.
       // flete/chofer (009-central-mejora-visual): se llevan al detalle para
       // que su encabezado no tenga que volver a pedirlos.
-      recorrido: { id: h.id, estado: "finalizado", fleteId: h.fleteId, flete: h.flete, chofer: h.chofer, cierreEn: h.cierreEn },
+      // cierreLat/cierreLon (008, User Story 3, 2026-08-25): mismo criterio
+      // que cierreEn — sin esto, RecorridoDetalle no puede mostrar la
+      // ubicación del cierre cuando se abre desde Historial (aunque el
+      // backend ya la incluya en el listado).
+      recorrido: { id: h.id, estado: "finalizado", fleteId: h.fleteId, flete: h.flete, chofer: h.chofer, cierreEn: h.cierreEn, cierreLat: h.cierreLat, cierreLon: h.cierreLon },
       puntos: h.puntos,
     });
 

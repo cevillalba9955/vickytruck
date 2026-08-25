@@ -567,6 +567,10 @@ export function createIntegracionStore() {
             flete: { id: r.fleteId, nombre: r.fleteNombre },
             chofer: r.choferId ? { id: r.choferId, nombre: r.choferNombre } : null,
             cierreEn: r.cierreEn,
+            // cierreLat/cierreLon (008, User Story 3, 2026-08-25): research.md
+            // Decisión 7 — mismo nivel de visibilidad que cierreEn.
+            cierreLat: r.cierreLat ?? null,
+            cierreLon: r.cierreLon ?? null,
           },
           puntos: serializarPuntosCentral(r.puntos),
         });
@@ -589,6 +593,10 @@ export function createIntegracionStore() {
           chofer: r.choferId ? { id: r.choferId, nombre: r.choferNombre } : null,
           updatedAt: r.updatedAt,
           cierreEn: r.cierreEn,
+          // cierreLat/cierreLon (008, User Story 3, 2026-08-25): research.md
+          // Decisión 7 — mismo nivel de visibilidad que cierreEn.
+          cierreLat: r.cierreLat ?? null,
+          cierreLon: r.cierreLon ?? null,
         },
         puntos: serializarPuntosCentral(r.puntos),
       };
@@ -601,9 +609,9 @@ export function createIntegracionStore() {
 // `descargaLon` (009-central-mejora-visual): GPS de auditoría capturado por
 // el chofer al marcar arribo/descarga — antes no se exponía a Central (ver
 // comentario histórico), ahora se usa para marcar si esa posición cayó
-// dentro del radio esperado del punto. `inicioLat`/`inicioLon`/`cierreLat`/
-// `cierreLon` siguen sin exponerse (research.md, Decisión 4 — fuera de
-// alcance de esta feature).
+// dentro del radio esperado del punto. `inicioLat`/`inicioLon` (008,
+// User Story 3, 2026-08-25): mismo tratamiento, research.md Decisión 7 —
+// revierte la Decisión 4 original que los dejaba fuera de alcance.
 function serializarPuntosCentral(puntos) {
   return puntos
     .map((p) => ({
@@ -613,10 +621,11 @@ function serializarPuntosCentral(puntos) {
       lon: p.lon,
       estado: p.estado,
       cliente: p.cliente ?? null,
-      // inicioEn (008-registro-inicio-fin-recorrido): mismo nivel que
-      // arriboEn/descargaEn ya expuestos acá — sin inicioLat/inicioLon
-      // (research.md, Decisión 4).
+      // inicioEn/inicioLat/inicioLon (008-registro-inicio-fin-recorrido):
+      // mismo nivel que arriboEn/arriboLat ya expuestos acá.
       inicioEn: p.inicioEn,
+      inicioLat: p.inicioLat ?? null,
+      inicioLon: p.inicioLon ?? null,
       arriboEn: p.arriboEn,
       arriboLat: p.arriboLat ?? null,
       arriboLon: p.arriboLon ?? null,

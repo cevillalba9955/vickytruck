@@ -51,3 +51,41 @@ test("GET /api/central/recorridos/historial — expone cierreEn por recorrido (0
     await server.cerrar();
   }
 });
+
+test("GET /api/central/recorridos/historial — expone cierreLat/cierreLon por recorrido (008, User Story 3, 2026-08-25, research.md Decisión 7)", async () => {
+  const repository = createInMemoryCentralRepository({
+    recorridos: [
+      {
+        id: "42",
+        estado: "finalizado",
+        fleteId: "7",
+        cierreEn: "2026-08-13T14:40:00-03:00",
+        cierreLat: -34.61,
+        cierreLon: -58.39,
+        puntos: [{ id: "p1", orden: 1, estado: "completado" }],
+      },
+      {
+        id: "43",
+        estado: "finalizado",
+        fleteId: "7",
+        cierreEn: "2026-08-14T09:00:00-03:00",
+        puntos: [{ id: "p1", orden: 1, estado: "completado" }],
+      },
+    ],
+    fletes: [{ id: "7", nombre: "Juan Pérez" }],
+  });
+  const server = await iniciarServidorDePrueba(undefined, repository);
+
+  try {
+    const res = await fetch(`${server.centralBaseUrl}/recorridos/historial`);
+    const body = await res.json();
+    const conGps = body.recorridos.find((r) => r.id === "42");
+    const sinGps = body.recorridos.find((r) => r.id === "43");
+    assert.equal(conGps.cierreLat, -34.61);
+    assert.equal(conGps.cierreLon, -58.39);
+    assert.equal(sinGps.cierreLat, null);
+    assert.equal(sinGps.cierreLon, null);
+  } finally {
+    await server.cerrar();
+  }
+});

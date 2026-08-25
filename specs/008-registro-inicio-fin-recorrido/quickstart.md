@@ -123,9 +123,12 @@ Vite puede variar).
    un indicador (tooltip/ícono) con las coordenadas cuando existen, y que
    no lo muestran (o indican "sin ubicación") cuando el paso 4 las dejó en
    `null`.
-6. Confirmar que `GET /api/central/recorridos/activos` **no** cambia:
-   sigue sin exponer `puntos` ni coordenadas de inicio/cierre (ese endpoint
-   es solo para recorridos activos, sin cierre todavía).
+6. Antes de tocar FINALIZAR (con el recorrido todavía `activo`), consultar
+   `GET /api/central/recorridos/activos` y confirmar que `puntos[].inicioLat`/
+   `inicioLon` **sí** aparecen ahí también (mismo `serializarPuntosCentral`
+   que historial/detalle — no es una omisión, ver data-model.md § Nota de
+   corrección), mientras que `recorrido.cierreLat`/`cierreLon` siguen
+   ausentes a nivel de recorrido (un recorrido activo no tiene cierre).
 
 ## Automatizado
 

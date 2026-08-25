@@ -103,7 +103,7 @@ Ver research.md, Decisión 5.
 | Consumidor | Endpoint | Ve `inicioEn` | Ve `inicioLat`/`inicioLon` | Ve `cierreEn` | Ve `cierreLat`/`cierreLon` | Ve `esperandoFinalizar` |
 |---|---|---|---|---|---|---|
 | Chofer | `GET /api/recorridos/:token` | Sí (mismo nivel que `arriboEn`/`descargaEn`, ya visibles hoy) | No (mismo criterio que `arriboLat`/`descargaLat`, ya ocultos hoy) | Sí (a nivel `recorrido`) | No | N/A (el chofer ya sabe si está `detenido` sin pendientes) |
-| Central | `GET /api/central/recorridos/activos` | N/A (este endpoint no expone puntos individuales) | N/A | N/A (recorrido todavía `activo`, `cierreEn` es `null`) | N/A | Sí (FR-010, research.md Decisión 5) |
+| Central | `GET /api/central/recorridos/activos` | Sí (dentro de `puntos`, vía `serializarPuntosCentral` — desde 010-mapa-central-unificado este endpoint también expone `puntos`) | **Sí** (research.md, Decisión 7 — mismo `serializarPuntosCentral` que historial/detalle, sin lógica separada) | N/A (recorrido todavía `activo`, no tiene `cierreEn` a nivel `recorrido` en este endpoint) | N/A (idem — un recorrido activo no tiene cierre) | Sí (FR-010, research.md Decisión 5) |
 | Central | `GET /api/central/recorridos/historial`, `.../:id` | Sí (dentro de `puntos`, vía `serializarPuntosCentral`) | **Sí** (research.md, Decisión 7 — 2026-08-25, revierte Decisión 4) | Sí (a nivel `recorrido`) | **Sí** (research.md, Decisión 7) | N/A (estos endpoints son solo para recorridos ya `finalizado` o el detalle puntual) |
 | Oracle/APEX | `GET /api/integracion/estado` | No (fuera de alcance — Oracle no consume estos campos en esta spec) | No | No | No | No |
 
@@ -115,6 +115,14 @@ ya tienen `arriboLat`/`arriboLon`/`descargaLat`/`descargaLon` desde
 009-central-mejora-visual. El chofer (`GET /api/recorridos/:token`) no
 gana visibilidad nueva — sigue sin ver ninguna de las cuatro coordenadas de
 auditoría, igual que ya ocurre con las de arribo/descarga.
+
+**Corrección (2026-08-25)**: la fila de `activos` de esta tabla decía
+"N/A (este endpoint no expone puntos individuales)" desde la versión
+original de esta spec (2026-08-13) — quedó desactualizada cuando
+010-mapa-central-unificado agregó `puntos` a `listarActivos()` (para el
+mapa consolidado) sin que nadie actualizara esta tabla. Se corrige acá de
+paso, ya que es directamente relevante para documentar correctamente el
+alcance de esta historia.
 
 ## Relación con `specs/005-chofer-estados-viaje/data-model.md`
 

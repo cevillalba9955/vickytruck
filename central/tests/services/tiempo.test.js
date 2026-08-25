@@ -5,6 +5,7 @@ import {
   formatearFechaLocal,
   formatearDuracionMin,
   primerEventoIso,
+  primerEventoConUbicacion,
   calcularTiempoTotalMin,
 } from "../../src/services/tiempo.js";
 
@@ -77,6 +78,33 @@ describe("tiempo — primerEventoIso (009-central-mejora-visual)", () => {
 
   it("sin ningún evento registrado, da null", () => {
     expect(primerEventoIso([{ estado: "pendiente" }])).toBe(null);
+  });
+});
+
+describe("tiempo — primerEventoConUbicacion (008, User Story 3, 2026-08-25)", () => {
+  it("devuelve iso/lat/lon del punto con inicioEn más temprano", () => {
+    const puntos = [
+      { inicioEn: "2026-08-13T09:00:00-03:00", inicioLat: -34.7, inicioLon: -58.5 },
+      { inicioEn: "2026-08-13T08:00:00-03:00", inicioLat: -34.6, inicioLon: -58.4 },
+    ];
+    expect(primerEventoConUbicacion(puntos)).toEqual({ iso: "2026-08-13T08:00:00-03:00", lat: -34.6, lon: -58.4 });
+  });
+
+  it("lat/lon en null si el punto no tiene ubicación de inicio registrada", () => {
+    const puntos = [{ inicioEn: "2026-08-13T08:00:00-03:00" }];
+    expect(primerEventoConUbicacion(puntos)).toEqual({ iso: "2026-08-13T08:00:00-03:00", lat: null, lon: null });
+  });
+
+  it("si ningún punto tiene inicioEn, cae al arriboEn más temprano con su ubicación", () => {
+    const puntos = [
+      { arriboEn: "2026-08-13T09:00:00-03:00", arriboLat: -34.7, arriboLon: -58.5 },
+      { arriboEn: "2026-08-13T08:30:00-03:00", arriboLat: -34.65, arriboLon: -58.45 },
+    ];
+    expect(primerEventoConUbicacion(puntos)).toEqual({ iso: "2026-08-13T08:30:00-03:00", lat: -34.65, lon: -58.45 });
+  });
+
+  it("sin ningún evento registrado, da null", () => {
+    expect(primerEventoConUbicacion([{ estado: "pendiente" }])).toBe(null);
   });
 });
 

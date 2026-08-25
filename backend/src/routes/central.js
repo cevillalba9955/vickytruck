@@ -41,6 +41,12 @@ export function createCentralRouter(repository) {
           // cierreEn (008-registro-inicio-fin-recorrido, FR-005): sin esto,
           // Central no puede calcular el tiempo de regreso a base (SC-003).
           cierreEn: d.recorrido.cierreEn,
+          // cierreLat/cierreLon (008, User Story 3, 2026-08-25): research.md
+          // Decisión 7 — sin este mapeo explícito, el repository ya las
+          // trae pero este router las recortaría igual que a cualquier otro
+          // campo no listado acá.
+          cierreLat: d.recorrido.cierreLat,
+          cierreLon: d.recorrido.cierreLon,
           puntos: d.puntos,
         })),
       });

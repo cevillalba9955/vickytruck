@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { HistorialView } from "../../src/components/HistorialView.jsx";
 import { listarHistorial } from "../../src/services/api.js";
 
@@ -61,6 +61,28 @@ describe("HistorialView — columnas de la tabla (009-central-mejora-visual)", (
 
     const fila = await waitFor(() => screen.getByText("Camión 6").closest("tr"));
     expect(fila).toHaveTextContent("—");
+  });
+
+  it("'Ver línea de tiempo' lleva cierreLat/cierreLon al detalle (008, User Story 3, 2026-08-25 — regresión: 'abrirLineaDeTiempo' arma el objeto recorrido a mano y se olvidaba de estos dos campos)", async () => {
+    listarHistorial.mockResolvedValue([
+      {
+        id: "90",
+        fleteId: "7",
+        flete: { id: "7", nombre: "Camión 7" },
+        chofer: { id: "9", nombre: "Nora Vidal" },
+        cierreEn: "2026-08-19T14:40:00-03:00",
+        cierreLat: -34.61,
+        cierreLon: -58.39,
+        puntos: [{ id: "p1", orden: 1, estado: "completado", inicioEn: "2026-08-19T08:00:00-03:00" }],
+      },
+    ]);
+
+    render(<HistorialView />);
+    const boton = await waitFor(() => screen.getByRole("button", { name: "Ver línea de tiempo" }));
+    fireEvent.click(boton);
+
+    const hora = await waitFor(() => screen.getByText("14:40:00"));
+    expect(hora.getAttribute("title")).toBe("-34.61000, -58.39000");
   });
 
   it("muestra un mensaje cuando no hay recorridos finalizados", async () => {
