@@ -37,3 +37,7 @@
   y quedaron documentadas explícitamente en la sección Assumptions del
   spec, en línea con la guía de priorizar solo bloqueadores reales.
 - Validación inicial: todos los ítems pasan en la primera iteración.
+- Sesión de clarificación 2026-09-15: 2 preguntas respondidas (nivel de
+  diagnóstico del canal directo; métrica concreta de SC-001). Ambas
+  integradas en el spec (User Story 3, FR-010, Key Entities, SC-001);
+  ningún ítem del checklist cambió de estado — se mantiene 16/16.

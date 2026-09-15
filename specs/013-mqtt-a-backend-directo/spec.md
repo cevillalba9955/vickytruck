@@ -8,6 +8,22 @@
 
 **Input**: User description: "migrar reporte de ubicacion de mqtt a directo al backend. luego de comprobar funcionamiento real no se aprecia beneficio utilizar el broker de intermediario. sin eliminar la funcionalidad hacer que pueda ser opcional, dejando como preferencia que los reportes de ubicacion se realicen directamente contra el backend"
 
+## Clarifications
+
+### Session 2026-09-15
+
+- Q: ¿Qué nivel de diagnóstico/observabilidad necesita el canal de reporte
+  directo (REST), comparado con el que ya existe para el broker (contadores
+  de mensajes recibidos/procesados/descartados)? → A: Reusar la última
+  ubicación conocida y su timestamp por chofer (ya expuesta hoy a Central)
+  como evidencia de actividad del canal directo, sin agregar contadores
+  dedicados nuevos.
+- Q: SC-001 dice que Central debe ver la posición "con la misma latencia"
+  en modo directo. ¿Cómo se mide eso de forma concreta? → A: Contra el
+  intervalo periódico ya configurado en el sistema (el mismo que hoy
+  dispara cada reporte), sin definir un umbral de segundos nuevo y
+  separado.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Central sigue viendo al chofer sin depender del broker externo (Priority: P1)
@@ -76,22 +92,29 @@ usando el broker.
 
 ---
 
-### User Story 3 - Queda claro qué modo de reporte está activo (Priority: P3)
+### User Story 3 - Queda claro qué modo de reporte está activo y si tiene actividad reciente (Priority: P3)
 
 Alguien del equipo necesita confirmar, sin ambigüedad, si el sistema está
 operando en modo directo o en modo broker en un momento dado — por ejemplo
 para verificar que una migración o un cambio de configuración realmente
 tomó efecto, o para descartar el broker como causa de un problema cuando en
-realidad está inactivo a propósito.
+realidad está inactivo a propósito. En modo directo, además necesita poder
+confirmar que el canal tiene actividad reciente sin depender de contadores
+nuevos: le alcanza con ver, para un chofer dado, que su última ubicación
+conocida en Central tiene un timestamp reciente y coherente con el
+intervalo de reporte esperado.
 
 **Why this priority**: Es una mejora de diagnóstico que facilita confirmar
 las Historias 1 y 2, pero ninguna de las dos depende de esto para funcionar
-— por eso quinta prioridad más baja, P3.
+— por eso prioridad más baja, P3.
 
 **Independent Test**: Consultar el estado del canal de mensajería estando
 el sistema en modo directo (broker no utilizado por preferencia) y
 confirmar que la respuesta indica claramente que el broker está inactivo
-por configuración, no caído por falla.
+por configuración, no caído por falla; por separado, confirmar que la
+última ubicación conocida de un chofer activo en Central tiene un
+timestamp reciente, sin necesidad de ninguna métrica adicional del canal
+directo.
 
 **Acceptance Scenarios**:
 
@@ -99,6 +122,12 @@ por configuración, no caído por falla.
    el estado del canal de mensajería, **Then** la respuesta distingue
    claramente "inactivo por preferencia de configuración" de "debería estar
    activo pero no responde".
+2. **Given** el sistema en modo directo y un chofer reportando posición con
+   normalidad, **When** alguien del equipo revisa la última ubicación
+   conocida de ese chofer en Central, **Then** ve un timestamp reciente
+   (coherente con el intervalo de reporte configurado) como evidencia
+   suficiente de que el canal directo está activo, sin necesitar contadores
+   agregados dedicados a ese canal.
 
 ---
 
@@ -161,10 +190,14 @@ por configuración, no caído por falla.
   canal de broker DEBE seguir funcionando, y DEBE indicar explícitamente
   cuando el broker está inactivo por preferencia de configuración (modo
   directo activo), diferenciándolo de una falla real del canal.
-- **FR-010**: El reporte de acciones del viaje (marcar llegada, marcar
+- **FR-010**: El canal de reporte directo NO requiere contadores agregados
+  dedicados (mensajes recibidos/procesados/descartados) como los que ya
+  existen para el broker; la evidencia de que está funcionando es la última
+  ubicación conocida por chofer y su timestamp, ya expuesta a Central hoy.
+- **FR-011**: El reporte de acciones del viaje (marcar llegada, marcar
   descarga, inicio/cierre de recorrido — ya existente y siempre directo al
   backend) NO debe verse afectado por esta migración.
-- **FR-011**: Un chofer que reporta su posición vía broker (mientras ese
+- **FR-012**: Un chofer que reporta su posición vía broker (mientras ese
   modo esté configurado o durante una transición) DEBE poder seguir
   haciéndolo sin errores, usando la misma identidad/credencial de chofer
   que ya usa para el resto de sus acciones.
@@ -180,16 +213,20 @@ por configuración, no caído por falla.
 - **Estado del canal de broker**: resumen de salud/actividad del canal de
   mensajería externo (funcionalidad ya existente), que debe seguir
   reflejando correctamente si el broker está inactivo por preferencia o
-  caído por falla.
+  caído por falla. El canal directo no tiene un resumen agregado
+  equivalente: su evidencia de actividad es la última ubicación conocida
+  por chofer y su timestamp (ver FR-010).
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: En el modo por defecto (directo), Central ve la posición del
-  chofer con la misma latencia y tasa de éxito que tenía antes de esta
-  migración — ningún reporte de posición se pierde por haber dejado de
-  pasar por el broker.
+- **SC-001**: En el modo por defecto (directo), la posición de un chofer
+  activo se refleja en Central dentro del mismo intervalo periódico de
+  reporte ya configurado en el sistema (el que hoy dispara cada ciclo de
+  reporte), con la misma tasa de éxito que tenía antes de esta migración —
+  ningún reporte de posición se pierde por haber dejado de pasar por el
+  broker.
 - **SC-002**: El equipo puede volver a operar con el broker como canal de
   reporte de ubicación cambiando solo la configuración del sistema, sin
   publicar una nueva versión de la app del chofer, y confirmar en minutos
