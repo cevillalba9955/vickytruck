@@ -13,6 +13,7 @@ import { MapaSeguimiento } from "./components/MapaSeguimiento.jsx";
 import { listarActivos, obtenerDetalle } from "./services/api.js";
 import { pollEvery } from "./services/polling.js";
 import { conectarUbicacionEnTiempoReal } from "./services/mqttClient.js";
+import { aplicarUbicacionViva } from "./services/ubicacionViva.js";
 import { construirMarcadoresFlete, construirMarcadoresMapaUnificado } from "./services/marcadores.js";
 
 // 2026-08-10 (spec.md FR-005 activado, research.md Decisión 11): MQTT pasa
@@ -40,20 +41,6 @@ function App() {
   const [error, setError] = useState(null);
   const [detalle, setDetalle] = useState(null);
   const [mqttEstado, setMqttEstado] = useState("disabled");
-
-  const aplicarUbicacionViva = (lista, evento) =>
-    lista.map((r) => {
-      if (String(r.flete?.id) !== String(evento.fleteId)) return r;
-      return {
-        ...r,
-        ultimaUbicacion: {
-          lat: evento.lat,
-          lon: evento.lon,
-          en: evento.en,
-          reciente: true,
-        },
-      };
-    });
 
   const abrirDetalle = async (id) => {
     setOrigenDetalle(vista);
