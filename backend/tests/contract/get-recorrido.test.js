@@ -82,11 +82,48 @@ test("GET /api/recorridos/:token — expone cliente/dirección/rango horario/not
   }
 });
 
-test("GET /api/recorridos/:token — expone recorrido.mqtt derivado del choferId cuando EMQX está configurado (012-ubicacion-por-chofer)", async () => {
+test("GET /api/recorridos/:token — recorrido.mqtt es null en modo directo (default, 013-mqtt-a-backend-directo) aunque haya choferId y EMQX configurado", async () => {
   const prevUrl = process.env.EMQX_WSS_URL;
   const prevSecret = process.env.EMQX_TOKEN_PASSWORD_SECRET;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
   process.env.EMQX_WSS_URL = "wss://broker-test.emqxsl.com:8084/mqtt";
   process.env.EMQX_TOKEN_PASSWORD_SECRET = "secreto-test";
+  delete process.env.UBICACION_CANAL_PREFERIDO; // default: "directo"
+
+  const repository = createInMemoryRecorridoRepository([
+    {
+      token: "tok-modo-directo",
+      fleteId: "13",
+      choferId: "CH-345",
+      estado: "activo",
+      puntos: [{ id: "p1", orden: 1, latitud: 0, longitud: 0, estado: "pendiente" }],
+    },
+  ]);
+  const server = await iniciarServidorDePrueba(repository);
+
+  try {
+    const res = await fetch(`${server.baseUrl}/tok-modo-directo`);
+    const body = await res.json();
+    assert.equal(body.recorrido.choferId, "CH-345");
+    assert.equal(body.recorrido.mqtt, null);
+  } finally {
+    if (prevUrl === undefined) delete process.env.EMQX_WSS_URL;
+    else process.env.EMQX_WSS_URL = prevUrl;
+    if (prevSecret === undefined) delete process.env.EMQX_TOKEN_PASSWORD_SECRET;
+    else process.env.EMQX_TOKEN_PASSWORD_SECRET = prevSecret;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/recorridos/:token — expone recorrido.mqtt derivado del choferId cuando EMQX está configurado y el canal preferido es 'broker' (012-ubicacion-por-chofer, 013-mqtt-a-backend-directo)", async () => {
+  const prevUrl = process.env.EMQX_WSS_URL;
+  const prevSecret = process.env.EMQX_TOKEN_PASSWORD_SECRET;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
+  process.env.EMQX_WSS_URL = "wss://broker-test.emqxsl.com:8084/mqtt";
+  process.env.EMQX_TOKEN_PASSWORD_SECRET = "secreto-test";
+  process.env.UBICACION_CANAL_PREFERIDO = "broker";
 
   const repository = createInMemoryRecorridoRepository([
     {
@@ -119,15 +156,19 @@ test("GET /api/recorridos/:token — expone recorrido.mqtt derivado del choferId
     else process.env.EMQX_WSS_URL = prevUrl;
     if (prevSecret === undefined) delete process.env.EMQX_TOKEN_PASSWORD_SECRET;
     else process.env.EMQX_TOKEN_PASSWORD_SECRET = prevSecret;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
     await server.cerrar();
   }
 });
 
-test("GET /api/recorridos/:token — recorrido.mqtt NO es null aunque falte fleteId, si hay choferId y EMQX configurado (012-ubicacion-por-chofer, FR-001)", async () => {
+test("GET /api/recorridos/:token — recorrido.mqtt NO es null aunque falte fleteId, si hay choferId, EMQX configurado y canal 'broker' (012-ubicacion-por-chofer, FR-001; 013-mqtt-a-backend-directo)", async () => {
   const prevUrl = process.env.EMQX_WSS_URL;
   const prevSecret = process.env.EMQX_TOKEN_PASSWORD_SECRET;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
   process.env.EMQX_WSS_URL = "wss://broker-test.emqxsl.com:8084/mqtt";
   process.env.EMQX_TOKEN_PASSWORD_SECRET = "secreto-test";
+  process.env.UBICACION_CANAL_PREFERIDO = "broker";
 
   const repository = createInMemoryRecorridoRepository([
     {
@@ -150,13 +191,17 @@ test("GET /api/recorridos/:token — recorrido.mqtt NO es null aunque falte flet
     else process.env.EMQX_WSS_URL = prevUrl;
     if (prevSecret === undefined) delete process.env.EMQX_TOKEN_PASSWORD_SECRET;
     else process.env.EMQX_TOKEN_PASSWORD_SECRET = prevSecret;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
     await server.cerrar();
   }
 });
 
-test("GET /api/recorridos/:token — recorrido.mqtt es null sin EMQX configurado, aunque haya choferId", async () => {
+test("GET /api/recorridos/:token — recorrido.mqtt es null sin EMQX configurado, aunque haya choferId y canal 'broker'", async () => {
   const prevUrl = process.env.EMQX_WSS_URL;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
   delete process.env.EMQX_WSS_URL;
+  process.env.UBICACION_CANAL_PREFERIDO = "broker";
 
   const repository = createInMemoryRecorridoRepository([
     { token: "tok-sin-flete", fleteId: null, choferId: "CH-1", estado: "activo", puntos: [{ id: "p1", orden: 1, latitud: 0, longitud: 0, estado: "pendiente" }] },
@@ -170,15 +215,19 @@ test("GET /api/recorridos/:token — recorrido.mqtt es null sin EMQX configurado
   } finally {
     if (prevUrl === undefined) delete process.env.EMQX_WSS_URL;
     else process.env.EMQX_WSS_URL = prevUrl;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
     await server.cerrar();
   }
 });
 
-test("GET /api/recorridos/:token — recorrido.mqtt es null con fleteId pero sin choferId todavía (2026-08-10, FR-013)", async () => {
+test("GET /api/recorridos/:token — recorrido.mqtt es null con fleteId, canal 'broker', pero sin choferId todavía (2026-08-10, FR-013)", async () => {
   const prevUrl = process.env.EMQX_WSS_URL;
   const prevSecret = process.env.EMQX_TOKEN_PASSWORD_SECRET;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
   process.env.EMQX_WSS_URL = "wss://broker-test.emqxsl.com:8084/mqtt";
   process.env.EMQX_TOKEN_PASSWORD_SECRET = "secreto-test";
+  process.env.UBICACION_CANAL_PREFERIDO = "broker";
 
   const repository = createInMemoryRecorridoRepository([
     {
@@ -200,6 +249,45 @@ test("GET /api/recorridos/:token — recorrido.mqtt es null con fleteId pero sin
     else process.env.EMQX_WSS_URL = prevUrl;
     if (prevSecret === undefined) delete process.env.EMQX_TOKEN_PASSWORD_SECRET;
     else process.env.EMQX_TOKEN_PASSWORD_SECRET = prevSecret;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/recorridos/:token — cambiar UBICACION_CANAL_PREFERIDO alterna mqtt null/no-null sin tocar el resto (013-mqtt-a-backend-directo, US2)", async () => {
+  const prevUrl = process.env.EMQX_WSS_URL;
+  const prevSecret = process.env.EMQX_TOKEN_PASSWORD_SECRET;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
+  process.env.EMQX_WSS_URL = "wss://broker-test.emqxsl.com:8084/mqtt";
+  process.env.EMQX_TOKEN_PASSWORD_SECRET = "secreto-test";
+
+  const repository = createInMemoryRecorridoRepository([
+    {
+      token: "tok-toggle",
+      choferId: "CH-TOGGLE",
+      estado: "activo",
+      puntos: [{ id: "p1", orden: 1, latitud: 0, longitud: 0, estado: "pendiente" }],
+    },
+  ]);
+  const server = await iniciarServidorDePrueba(repository);
+
+  try {
+    delete process.env.UBICACION_CANAL_PREFERIDO;
+    const resDirecto = await fetch(`${server.baseUrl}/tok-toggle`);
+    assert.equal((await resDirecto.json()).recorrido.mqtt, null);
+
+    process.env.UBICACION_CANAL_PREFERIDO = "broker";
+    const resBroker = await fetch(`${server.baseUrl}/tok-toggle`);
+    const bodyBroker = await resBroker.json();
+    assert.equal(bodyBroker.recorrido.mqtt.topic, "chofer/CH-TOGGLE/ubicacion");
+  } finally {
+    if (prevUrl === undefined) delete process.env.EMQX_WSS_URL;
+    else process.env.EMQX_WSS_URL = prevUrl;
+    if (prevSecret === undefined) delete process.env.EMQX_TOKEN_PASSWORD_SECRET;
+    else process.env.EMQX_TOKEN_PASSWORD_SECRET = prevSecret;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
     await server.cerrar();
   }
 });

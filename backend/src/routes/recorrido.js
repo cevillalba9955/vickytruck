@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { ubicacionEnMemoriaCompartida } from "../state/ubicacionEnMemoria.js";
+import { integracionStoreCompartido } from "../state/integracionStore.js";
 import { derivarCredencialChofer, topicPara } from "../mqtt/emqxProvisioning.js";
+import { canalUbicacionPreferido } from "../config/ubicacionCanal.js";
 import { ahoraLocalIso } from "../util/tiempo.js";
 
 function intervaloReporteUbicacionMs() {
@@ -11,16 +12,20 @@ function intervaloReporteUbicacionMs() {
 // Cloud (ver derivarCredencialChofer — determinística, la credencial ya se
 // aprovisionó de antemano al recibir el push de Oracle, ver
 // POST /api/integracion/recorridos en integracion.js). El topic de
-// publicación es por-choferId (chofer/{choferId}/ubicacion, 012-ubicacion-por-chofer)
-// — la credencial del chofer es permanente (FR-013, 2026-08-10) con ACL
-// amplia sobre chofer/+/ubicacion, así que ya no hace falta un fleteId
-// activo para poder reportar ubicación (ver research.md Decisión 8 y
-// specs/012-ubicacion-por-chofer/research.md Decisión 1). Degrada a `null`
-// sin romper este endpoint si todavía no hay choferId asignado o si el
-// backend corre sin EMQX configurado (dev/test) — el frontend ya trata
-// `mqtt: null` como "no reportar ubicación por MQTT" (cae al fallback REST,
-// FR-004).
+// publicación es por-choferId (chofer/{choferId}/ubicacion,
+// 012-ubicacion-por-chofer) — la credencial del chofer es permanente
+// (FR-013, 2026-08-10) con ACL amplia sobre chofer/+/ubicacion, así que ya
+// no hace falta un fleteId activo para poder reportar ubicación (ver
+// research.md Decisión 8 y specs/012-ubicacion-por-chofer/research.md
+// Decisión 1). Desde 013-mqtt-a-backend-directo, el broker pasó a ser
+// opcional: si `canalUbicacionPreferido()` no es "broker" (el default es
+// "directo"), esta función corta a `null` sin evaluar nada más — el
+// frontend ya trata `mqtt: null` como "no reportar por MQTT" y cae al POST
+// directo (ver contracts/ubicacion-canal-config.md). Fuera de ese caso,
+// sigue degradando a `null` si todavía no hay choferId asignado o si el
+// backend corre sin EMQX configurado (dev/test, o modo directo).
 function mqttConfigPara(choferId) {
+  if (canalUbicacionPreferido() !== "broker") return null;
   const url = process.env.EMQX_WSS_URL;
   if (!choferId || !url) return null;
   try {
@@ -60,7 +65,7 @@ function serializePunto(punto, totalPuntos) {
  * memoria, sin depender de una conexión Oracle real (ver
  * backend/tests/contract).
  */
-export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMemoriaCompartida) {
+export function createRecorridoRouter(repository, ubicacionStore = integracionStoreCompartido) {
   const router = Router();
 
   // GET /api/recorridos/:token — FR-002, FR-003, FR-008, FR-012
@@ -132,7 +137,14 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
   // POST /api/recorridos/:token/ubicacion — FR-014, FR-015 de 001-chofer-recorrido.
   // Reporte periódico de ubicación instantánea mientras el recorrido está
   // activo; se guarda solo en memoria (nunca en Oracle, research.md §8 de
-  // 002-panel-control-central).
+  // 002-panel-control-central). Desde 013-mqtt-a-backend-directo: este es
+  // el canal directo, y por eso alimenta el MISMO store que ya lee Central
+  // (`ubicacionStore`, en producción el `integracionStore` compartido) vía
+  // `actualizarUbicacionPorChofer` — antes escribía en un store separado
+  // (`ubicacionEnMemoria.js`, retirado) que ningún consumidor de Central
+  // leía (ver research.md Decisión 2). Sin `choferId` resoluble todavía, el
+  // reporte se descarta silenciosamente (best-effort) pero la respuesta
+  // sigue siendo 200 — no es un error del chofer.
   router.post("/:token/ubicacion", async (req, res, next) => {
     try {
       const { lat, lon } = req.body || {};
@@ -143,7 +155,9 @@ export function createRecorridoRouter(repository, ubicacionStore = ubicacionEnMe
       if (!recorrido) {
         return res.status(404).json({ error: "enlace_invalido" });
       }
-      ubicacionStore.registrar(recorrido.id, { lat, lon, en: ahoraLocalIso() });
+      if (recorrido.choferId != null) {
+        ubicacionStore.actualizarUbicacionPorChofer(recorrido.choferId, { lat, lon, en: ahoraLocalIso() });
+      }
       res.status(200).json({ ok: true });
     } catch (err) {
       next(err);

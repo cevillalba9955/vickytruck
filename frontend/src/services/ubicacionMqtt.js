@@ -17,8 +17,13 @@ function topicPara(choferId) {
  * por-fleteId, ver contracts/mqtt-topics.md); la credencial no está scoped
  * a ese único topic (ver research.md Decisión 8 — riesgo aceptado
  * explícitamente). `mqttConfig` es `null` si el backend todavía no tiene
- * `choferId` para este recorrido, o si EMQX no está configurado: en ese
- * caso, no-op (el caller cae al fallback REST, ver ubicacionPeriodica.js).
+ * `choferId` para este recorrido, si EMQX no está configurado, o si el
+ * backend tiene el reporte directo como canal preferido en vez del broker
+ * (013-mqtt-a-backend-directo, default desde esa feature — ver
+ * `UBICACION_CANAL_PREFERIDO` en `backend/src/config/ubicacionCanal.js`):
+ * en cualquiera de esos casos, no-op (el caller cae al POST directo, ver
+ * ubicacionPeriodica.js). Este archivo no cambia con esa feature — la
+ * preferencia de canal la decide el backend, no el frontend.
  */
 export function createPublisherUbicacionMqtt(choferId, mqttConfig) {
   if (!choferId || !mqttConfig?.url) {

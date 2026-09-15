@@ -62,7 +62,12 @@ if (esModuloPrincipal) {
   // specs/003-arquitectura-cloud-mqtt/contracts/integracion-api.md).
   const integracionStore = integracionStoreCompartido;
   const mqttBridge = startMqttBridge(integracionStore);
-  const app = createApp(integracionStore, integracionStore, undefined, integracionStore, undefined, mqttBridge);
+  // ubicacionStore (013-mqtt-a-backend-directo): antes `undefined` (caía al
+  // default de createRecorridoRouter, el store huérfano ubicacionEnMemoria,
+  // ver research.md Decisión 2) — ahora la MISMA instancia de
+  // integracionStore, para que el reporte directo de ubicación (POST
+  // /:token/ubicacion) alimente el store que Central efectivamente lee.
+  const app = createApp(integracionStore, integracionStore, integracionStore, integracionStore, undefined, mqttBridge);
   const port = Number(process.env.PORT || 3001);
   // Bind explícito a 0.0.0.0: en contenedores (Fly.io) el default de Node
   // puede quedar solo en IPv6, y el proxy externo espera IPv4.

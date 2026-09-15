@@ -3,12 +3,16 @@ import { createPublisherUbicacionMqtt } from "./ubicacionMqtt.js";
 
 const BASE_URL = "/api/recorridos";
 
-// MQTT es el canal primario (FR-004, actualizado 2026-08-10); el REST de
-// abajo pasa a ser fallback silencioso, invocado solo cuando la publicación
-// MQTT del ciclo no se pudo hacer (sin credencial todavía, broker caído,
-// etc.) — antes se llamaba a ambos siempre, en paralelo. `publisher.publicar`
-// resuelve `false` tanto si no hay `mqttConfig` (recorrido.mqtt === null)
-// como si el publish real falló (ver ubicacionMqtt.js).
+// Este archivo no cambió con 013-mqtt-a-backend-directo, pero su
+// comportamiento efectivo por defecto sí: desde esa feature el backend
+// devuelve `mqtt: null` salvo que `UBICACION_CANAL_PREFERIDO=broker` esté
+// configurado (default: canal directo), así que en operación normal
+// `publisher.publicar` ya resuelve `false` de entrada y el POST de abajo es
+// el único que efectivamente reporta la posición — MQTT deja de intentarse
+// siquiera, no solo de ser "primario". El código de abajo no distingue esos
+// casos: sigue intentando MQTT primero y cayendo al POST si no hay
+// `mqttConfig` (`recorrido.mqtt === null`) o si el publish real falló (ver
+// ubicacionMqtt.js) — es el mismo mecanismo, ahora ejercitado por defecto.
 async function reportarUnaVez(token, publisher) {
   const ubicacion = await obtenerUbicacionBestEffort();
   if (!ubicacion) return; // sin GPS disponible: se omite este reporte (best-effort)

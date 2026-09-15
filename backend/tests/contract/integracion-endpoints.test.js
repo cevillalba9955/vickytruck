@@ -48,24 +48,30 @@ test("GET /api/integracion/mqtt/estado — 401 sin credenciales", async () => {
   }
 });
 
-test("GET /api/integracion/mqtt/estado — habilitado:false si no se inyectó ningún mqttBridge (012-ubicacion-por-chofer)", async () => {
+test("GET /api/integracion/mqtt/estado — habilitado:false si no se inyectó ningún mqttBridge, canalPreferido:'directo' por default (012-ubicacion-por-chofer, 013-mqtt-a-backend-directo)", async () => {
   const prev = process.env.INTEGRACION_API_KEY;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
   process.env.INTEGRACION_API_KEY = "test-key";
+  delete process.env.UBICACION_CANAL_PREFERIDO;
   const server = await iniciarServidorDePrueba(undefined, undefined, undefined, createIntegracionStore());
 
   try {
     const res = await fetch(`${server.integracionBaseUrl}/mqtt/estado`, withApiKey());
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { habilitado: false });
+    assert.deepEqual(await res.json(), { habilitado: false, canalPreferido: "directo" });
   } finally {
     process.env.INTEGRACION_API_KEY = prev;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
     await server.cerrar();
   }
 });
 
-test("GET /api/integracion/mqtt/estado — refleja las métricas del mqttBridge inyectado", async () => {
+test("GET /api/integracion/mqtt/estado — refleja las métricas del mqttBridge inyectado, canalPreferido:'directo' por default", async () => {
   const prev = process.env.INTEGRACION_API_KEY;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
   process.env.INTEGRACION_API_KEY = "test-key";
+  delete process.env.UBICACION_CANAL_PREFERIDO;
   const mqttBridgeFake = {
     obtenerMetricas: () => ({
       habilitado: true,
@@ -87,8 +93,32 @@ test("GET /api/integracion/mqtt/estado — refleja las métricas del mqttBridge 
     assert.equal(body.habilitado, true);
     assert.equal(body.recibidos, 5);
     assert.equal(body.procesados, 4);
+    assert.equal(body.canalPreferido, "directo");
   } finally {
     process.env.INTEGRACION_API_KEY = prev;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
+    await server.cerrar();
+  }
+});
+
+test("GET /api/integracion/mqtt/estado — canalPreferido:'broker' cuando UBICACION_CANAL_PREFERIDO=broker, independiente de las métricas del bridge (013-mqtt-a-backend-directo, FR-009)", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  process.env.UBICACION_CANAL_PREFERIDO = "broker";
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, createIntegracionStore());
+
+  try {
+    const res = await fetch(`${server.integracionBaseUrl}/mqtt/estado`, withApiKey());
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.canalPreferido, "broker");
+    assert.equal(body.habilitado, false); // sin mqttBridge inyectado en este test
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
     await server.cerrar();
   }
 });
