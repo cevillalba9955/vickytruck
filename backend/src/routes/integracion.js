@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { validarAuthIntegracion } from "../middleware/integracionAuth.js";
 import { emqxProvisioningCompartido } from "../mqtt/emqxProvisioning.js";
+import { canalUbicacionPreferido } from "../config/ubicacionCanal.js";
 
 // Momento de inicio del RECORRIDO completo (008-registro-inicio-fin-recorrido,
 // User Story 4, 2026-08-25): no es un evento capturado aparte — es el
@@ -69,9 +70,14 @@ export function createIntegracionRouter(store, emqxProvisioning = emqxProvisioni
 
   // GET /mqtt/estado (012-ubicacion-por-chofer, FR-007/FR-008): salud del
   // canal de ubicación en vivo, consultable sin depender de la consola de
-  // EMQX Cloud — ver contracts/mqtt-estado-api.md.
+  // EMQX Cloud — ver contracts/mqtt-estado-api.md. `canalPreferido`
+  // (013-mqtt-a-backend-directo, FR-009/FR-010): siempre presente, para
+  // distinguir "el broker está inactivo por preferencia de configuración"
+  // (modo directo) de "debería estar recibiendo mensajes pero no lo hace" —
+  // independiente de si `habilitado`/`conectado` reflejan el bridge
+  // técnicamente suscripto.
   router.get("/mqtt/estado", (req, res) => {
-    res.json(mqttBridge?.obtenerMetricas?.() ?? { habilitado: false });
+    res.json({ ...(mqttBridge?.obtenerMetricas?.() ?? { habilitado: false }), canalPreferido: canalUbicacionPreferido() });
   });
 
   router.post("/recorridos", async (req, res) => {
