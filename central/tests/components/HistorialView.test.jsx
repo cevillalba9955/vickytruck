@@ -15,6 +15,10 @@ vi.mock("react-leaflet", () => ({
   TileLayer: () => null,
   CircleMarker: ({ children }) => <div data-testid="circle-marker">{children}</div>,
   Popup: ({ children }) => <div>{children}</div>,
+  // Tooltip/Marker (014-mapa-historial-hora-distancia): el mapa de Detalle
+  // ahora puede dibujar hora por punto y marcadores de inicio/cierre.
+  Tooltip: ({ children }) => <div data-testid="tooltip">{children}</div>,
+  Marker: ({ children }) => <div data-testid="extremo-marker">{children}</div>,
 }));
 
 describe("HistorialView — columnas de la tabla (009-central-mejora-visual)", () => {

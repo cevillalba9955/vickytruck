@@ -33,6 +33,24 @@ export function formatearHoraLocal(iso) {
   return formateadorHora.format(new Date(iso));
 }
 
+const formateadorHoraCorta = new Intl.DateTimeFormat("es-AR", {
+  timeZone: "America/Argentina/Buenos_Aires",
+  hour12: false,
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/**
+ * Formatea cualquier timestamp ISO 8601 como `HH:MM` (sin segundos) de
+ * Buenos Aires — 014-mapa-historial-hora-distancia: usada en el mapa de
+ * Detalle, donde la spec pide hh:mm explícitamente; distinta de
+ * `formatearHoraLocal` (HH:MM:SS), que sigue usando la tabla del Detalle.
+ * Misma reconversión desde el instante real que `formatearHoraLocal`.
+ */
+export function formatearHoraCorta(iso) {
+  return formateadorHoraCorta.format(new Date(iso));
+}
+
 const formateadorFecha = new Intl.DateTimeFormat("es-AR", {
   timeZone: "America/Argentina/Buenos_Aires",
   day: "2-digit",

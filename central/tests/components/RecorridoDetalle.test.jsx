@@ -9,6 +9,14 @@ vi.mock("react-leaflet", () => ({
   TileLayer: () => null,
   CircleMarker: ({ children }) => <div data-testid="circle-marker">{children}</div>,
   Popup: ({ children }) => <div>{children}</div>,
+  // Tooltip (014-mapa-historial-hora-distancia, US1) y Marker (US2, íconos
+  // de inicio/cierre) — mismo criterio de mock que MapaSeguimiento.test.jsx.
+  Tooltip: ({ children }) => <div data-testid="tooltip">{children}</div>,
+  Marker: ({ children, icon }) => (
+    <div data-testid="extremo-marker" data-icon-html={icon?.options?.html}>
+      {children}
+    </div>
+  ),
 }));
 
 function detalleDePrueba(overrides = {}) {
@@ -270,6 +278,102 @@ describe("RecorridoDetalle — ubicación de inicio/cierre en el encabezado (008
 
     expect(screen.getByText("08:00:00").hasAttribute("title")).toBe(false);
     expect(screen.getByText("14:40:00").hasAttribute("title")).toBe(false);
+  });
+});
+
+describe("RecorridoDetalle — hora y alerta de distancia en el mapa (014-mapa-historial-hora-distancia, US1)", () => {
+  it("el mapa recibe la hora de llegada/descarga de cada punto, visible sin abrir la tabla", () => {
+    render(
+      <RecorridoDetalle
+        detalle={detalleDePrueba({
+          puntos: [
+            {
+              id: "p1",
+              orden: 1,
+              estado: "completado",
+              lat: -34.6,
+              lon: -58.4,
+              arriboEn: "2026-08-13T08:20:00-03:00",
+              descargaEn: "2026-08-13T08:35:00-03:00",
+            },
+          ],
+        })}
+      />,
+    );
+
+    const tooltip = screen.getByTestId("tooltip");
+    expect(tooltip).toHaveTextContent("08:20");
+    expect(tooltip).toHaveTextContent("08:35");
+  });
+
+  it("el mapa marca el punto cuya posición registrada quedó fuera de la distancia mínima esperada", () => {
+    render(
+      <RecorridoDetalle
+        detalle={detalleDePrueba({
+          puntos: [
+            {
+              id: "p1",
+              orden: 1,
+              estado: "completado",
+              lat: -34.6,
+              lon: -58.4,
+              descargaEn: "2026-08-13T08:35:00-03:00",
+              // 0.01° de latitud ≈ 1.1 km — fuera del radio de 500 m (mismo caso que la tabla).
+              descargaLat: -34.61,
+              descargaLon: -58.4,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("tooltip")).toHaveTextContent("Fuera de la distancia mínima esperada");
+  });
+});
+
+describe("RecorridoDetalle — marcadores de inicio/cierre en el mapa (014-mapa-historial-hora-distancia, US2)", () => {
+  it("el mapa recibe el marcador de inicio y el de cierre cuando ambos están registrados", () => {
+    render(
+      <RecorridoDetalle
+        detalle={detalleDePrueba({
+          recorrido: {
+            id: "50",
+            estado: "finalizado",
+            fleteId: "7",
+            cierreEn: "2026-08-13T14:40:00-03:00",
+            cierreLat: -34.61,
+            cierreLon: -58.39,
+          },
+          puntos: [
+            {
+              id: "p1",
+              orden: 1,
+              estado: "completado",
+              lat: -34.6,
+              lon: -58.4,
+              inicioEn: "2026-08-13T08:00:00-03:00",
+              inicioLat: -34.601,
+              inicioLon: -58.401,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getAllByTestId("extremo-marker")).toHaveLength(2);
+  });
+
+  it("sin ubicación de inicio ni de cierre, no dibuja ningún marcador de extremo (FR-007)", () => {
+    render(
+      <RecorridoDetalle
+        detalle={detalleDePrueba({
+          recorrido: { id: "50", estado: "finalizado", fleteId: "7", cierreEn: "2026-08-13T14:40:00-03:00" },
+          puntos: [{ id: "p1", orden: 1, estado: "completado", lat: -34.6, lon: -58.4, inicioEn: "2026-08-13T08:00:00-03:00" }],
+        })}
+      />,
+    );
+
+    expect(screen.queryByTestId("extremo-marker")).not.toBeInTheDocument();
   });
 });
 

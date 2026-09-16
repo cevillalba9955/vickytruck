@@ -286,3 +286,123 @@ describe("MapaSeguimiento — modo detalle (Historia 2)", () => {
     expect(screen.getAllByTestId("circle-marker")).toHaveLength(1);
   });
 });
+
+describe("MapaSeguimiento — marcadores de inicio/cierre del recorrido (014-mapa-historial-hora-distancia, US2)", () => {
+  it("dibuja el marcador de inicio con su hora (hh:mm) en el Tooltip", () => {
+    render(
+      <MapaSeguimiento marcadorInicio={{ tipo: "inicio", iso: "2026-08-13T11:00:00Z", lat: -34.6, lon: -58.4 }} />,
+    );
+
+    expect(screen.getByTestId("flete-marker")).toBeInTheDocument();
+    expect(screen.getByTestId("tooltip")).toHaveTextContent("08:00");
+  });
+
+  it("dibuja el marcador de cierre con su hora (hh:mm) en el Tooltip", () => {
+    render(
+      <MapaSeguimiento marcadorCierre={{ tipo: "cierre", iso: "2026-08-13T17:40:00Z", lat: -34.61, lon: -58.39 }} />,
+    );
+
+    expect(screen.getByTestId("flete-marker")).toBeInTheDocument();
+    expect(screen.getByTestId("tooltip")).toHaveTextContent("14:40");
+  });
+
+  it("inicio y cierre juntos se dibujan con íconos distintos entre sí", () => {
+    render(
+      <MapaSeguimiento
+        marcadorInicio={{ tipo: "inicio", iso: "2026-08-13T11:00:00Z", lat: -34.6, lon: -58.4 }}
+        marcadorCierre={{ tipo: "cierre", iso: "2026-08-13T17:40:00Z", lat: -34.61, lon: -58.39 }}
+      />,
+    );
+
+    const [m1, m2] = screen.getAllByTestId("flete-marker");
+    expect(m1.dataset.iconHtml).not.toBe(m2.dataset.iconHtml);
+  });
+
+  it("sin marcadorInicio/marcadorCierre, no dibuja ningún marcador de extremo (FR-007)", () => {
+    render(
+      <MapaSeguimiento
+        puntos={[{ id: "P-1", orden: 1, lat: -34.61, lon: -58.41, estado: "pendiente" }]}
+      />,
+    );
+
+    expect(screen.queryByTestId("flete-marker")).not.toBeInTheDocument();
+  });
+});
+
+describe("MapaSeguimiento — hora y alerta de distancia por punto (014-mapa-historial-hora-distancia, US1)", () => {
+  it("muestra la hora (hh:mm) de llegada/descarga en el Tooltip de hover, sin necesidad de click (FR-001)", () => {
+    render(
+      <MapaSeguimiento
+        puntos={[
+          {
+            id: "P-1",
+            orden: 1,
+            lat: -34.61,
+            lon: -58.41,
+            estado: "completado",
+            arriboEn: "2026-08-06T13:00:00Z",
+            descargaEn: "2026-08-06T13:15:00Z",
+            alerta: { llegada: false, descarga: false },
+          },
+        ]}
+      />,
+    );
+
+    const tooltip = screen.getByTestId("tooltip");
+    expect(tooltip).toHaveTextContent("10:00");
+    expect(tooltip).toHaveTextContent("10:15");
+  });
+
+  it("un punto con alerta (llegada o descarga fuera de rango) se distingue visualmente de uno sin alerta (FR-002)", () => {
+    render(
+      <MapaSeguimiento
+        puntos={[
+          {
+            id: "P-1",
+            orden: 1,
+            lat: -34.61,
+            lon: -58.41,
+            estado: "completado",
+            arriboEn: "2026-08-06T13:00:00Z",
+            descargaEn: "2026-08-06T13:15:00Z",
+            alerta: { llegada: true, descarga: false },
+          },
+          {
+            id: "P-2",
+            orden: 2,
+            lat: -34.62,
+            lon: -58.42,
+            estado: "completado",
+            arriboEn: "2026-08-06T13:05:00Z",
+            descargaEn: "2026-08-06T13:20:00Z",
+            alerta: { llegada: false, descarga: false },
+          },
+        ]}
+      />,
+    );
+
+    const [conAlerta, sinAlerta] = screen.getAllByTestId("circle-marker");
+    expect(conAlerta.dataset.color).not.toBe(sinAlerta.dataset.color);
+  });
+
+  it("un punto sin ningún evento GPS registrado no muestra señal de alerta (FR-003)", () => {
+    render(
+      <MapaSeguimiento
+        puntos={[
+          { id: "P-1", orden: 1, lat: -34.61, lon: -58.41, estado: "pendiente", alerta: { llegada: null, descarga: null } },
+          {
+            id: "P-2",
+            orden: 2,
+            lat: -34.62,
+            lon: -58.42,
+            estado: "completado",
+            alerta: { llegada: false, descarga: false },
+          },
+        ]}
+      />,
+    );
+
+    const [sinEvento, sinAlerta] = screen.getAllByTestId("circle-marker");
+    expect(sinEvento.dataset.color).toBe(sinAlerta.dataset.color);
+  });
+});

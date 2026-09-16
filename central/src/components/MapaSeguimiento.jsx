@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, CircleMarker, Marker, Popup, Tooltip } from "react-leaflet";
 import L from "leaflet";
 import { Empty } from "antd";
+import { formatearHoraCorta } from "../services/tiempo.js";
 
 const CENTRO_DEFAULT = [-34.6037, -58.3816]; // Buenos Aires, si no hay ningún dato de posición todavía
 const ZOOM_DEFAULT = 12;
@@ -13,6 +14,30 @@ const COLOR_POR_ESTADO_PUNTO = {
   arribado: "#1d4ed8",
   completado: "#1a7f37",
 };
+
+// 014-mapa-historial-hora-distancia, FR-002: borde del punto de entrega en
+// modo "detalle" — independiente del color de relleno por estado
+// (COLOR_POR_ESTADO_PUNTO), para no perder esa información al señalar la
+// alerta de distancia (research.md, Decisión 6).
+const COLOR_BORDE_NEUTRAL = "#374151";
+const COLOR_ALERTA_DISTANCIA = "#c0392b";
+
+// true si algún evento registrado del punto (llegada y/o descarga) quedó
+// fuera de la distancia mínima esperada (FR-002); `alerta` puede faltar en
+// puntos que no vinieron de `construirPuntosEnMapa` (modo unificado, que no
+// usa este campo).
+function tienePuntoAlertaDistancia(alerta) {
+  return alerta?.llegada === true || alerta?.descarga === true;
+}
+
+// Texto de hora(s) para el Tooltip de un punto de entrega (FR-001): incluye
+// solo los eventos que efectivamente se registraron.
+function textoHorasPunto(arriboEn, descargaEn) {
+  const partes = [];
+  if (arriboEn) partes.push(`Llegada ${formatearHoraCorta(arriboEn)}`);
+  if (descargaEn) partes.push(`Descarga ${formatearHoraCorta(descargaEn)}`);
+  return partes;
+}
 
 // FR-009: cuando dos o más marcadores caen en coordenadas iguales o muy
 // próximas, Leaflet ya permite acceder a cada uno haciendo zoom o abriendo
@@ -53,6 +78,19 @@ function iconoSalida(color) {
   });
 }
 
+// Íconos de inicio/cierre del recorrido (014-mapa-historial-hora-distancia,
+// US2): forma propia por tipo, distinta entre sí y de las ya existentes
+// (flete/punto/salida) — sin color propio, igual que el punto de salida
+// por defecto (no pertenecen a un único flete que colorear).
+function iconoExtremo(tipo) {
+  return L.divIcon({
+    className: `marcador-${tipo}`,
+    html: `<div class="marcador-${tipo}__cuerpo"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
+}
+
 function agruparPorCoordenada(items) {
   const grupos = new Map();
   for (const item of items) {
@@ -75,8 +113,22 @@ function agruparPorCoordenada(items) {
  * (`construirMarcadoresMapaUnificado`). `marcadoresFlete`/`puntos` siguen
  * sin cambios para el mapa embebido en Detalle (un solo recorrido, sin
  * color por flete — spec.md, Assumptions).
+ *
+ * `marcadorInicio`/`marcadorCierre` (014-mapa-historial-hora-distancia,
+ * US2): opcionales — marcador de inicio/cierre del recorrido (forma de
+ * `construirMarcadorExtremo`) para el mapa de Detalle. `null`/`undefined`
+ * si ese dato no está registrado (FR-007): no se dibuja nada, sin romper
+ * el resto del mapa.
  */
-export function MapaSeguimiento({ marcadoresFlete = [], puntos = [], marcadoresUnificados = [], hayDatos = true, onSeleccionarFlete }) {
+export function MapaSeguimiento({
+  marcadoresFlete = [],
+  puntos = [],
+  marcadoresUnificados = [],
+  marcadorInicio = null,
+  marcadorCierre = null,
+  hayDatos = true,
+  onSeleccionarFlete,
+}) {
   // 010-mapa-central-unificado, US4: el punto de salida por defecto no
   // depende de que haya recorridos activos (FR-006) — si `marcadoresUnificados`
   // trae al menos ese marcador, el mapa se muestra igual aunque `hayDatos`
@@ -133,12 +185,31 @@ export function MapaSeguimiento({ marcadoresFlete = [], puntos = [], marcadoresU
           key={p.id}
           center={[p.lat, p.lon]}
           radius={6}
-          pathOptions={{ color: COLOR_POR_ESTADO_PUNTO[p.estado] ?? COLOR_POR_ESTADO_PUNTO.pendiente, fillOpacity: 0.7 }}
+          pathOptions={{
+            color: tienePuntoAlertaDistancia(p.alerta) ? COLOR_ALERTA_DISTANCIA : COLOR_BORDE_NEUTRAL,
+            fillColor: COLOR_POR_ESTADO_PUNTO[p.estado] ?? COLOR_POR_ESTADO_PUNTO.pendiente,
+            fillOpacity: 0.7,
+          }}
         >
-          <Popup>
+          {/* Tooltip (hover, 014-mapa-historial-hora-distancia, FR-001) en
+              vez de Popup (click) — mismo criterio que marcadoresUnificados:
+              la hora y la alerta de distancia deben verse con un vistazo. */}
+          <Tooltip>
             Punto {p.orden} — {p.estado}
-          </Popup>
+            {textoHorasPunto(p.arriboEn, p.descargaEn).map((linea) => (
+              <div key={linea}>{linea}</div>
+            ))}
+            {tienePuntoAlertaDistancia(p.alerta) && <div>Fuera de la distancia mínima esperada</div>}
+          </Tooltip>
         </CircleMarker>
+      ))}
+
+      {[marcadorInicio, marcadorCierre].filter(Boolean).map((m) => (
+        <Marker key={m.tipo} position={[m.lat, m.lon]} icon={iconoExtremo(m.tipo)}>
+          <Tooltip>
+            {m.tipo === "inicio" ? "Inicio del recorrido" : "Cierre del recorrido"} — {formatearHoraCorta(m.iso)}
+          </Tooltip>
+        </Marker>
       ))}
 
       {marcadoresUnificados.map((m) => {

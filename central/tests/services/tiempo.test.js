@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ahoraLocalIso,
   formatearHoraLocal,
+  formatearHoraCorta,
   formatearFechaLocal,
   formatearDuracionMin,
   primerEventoIso,
@@ -28,6 +29,16 @@ describe("tiempo — formatearHoraLocal (FR-001)", () => {
 
   it("timestamp histórico (Z, UTC) representando el mismo instante da el mismo resultado", () => {
     expect(formatearHoraLocal("2026-08-11T13:35:20.123Z")).toBe("10:35:20");
+  });
+});
+
+describe("tiempo — formatearHoraCorta (014-mapa-historial-hora-distancia)", () => {
+  it("timestamp nuevo (-03:00) da HH:MM sin segundos", () => {
+    expect(formatearHoraCorta("2026-08-11T10:35:20.123-03:00")).toBe("10:35");
+  });
+
+  it("timestamp histórico (Z, UTC) representando el mismo instante da el mismo resultado", () => {
+    expect(formatearHoraCorta("2026-08-11T13:35:20.123Z")).toBe("10:35");
   });
 });
 

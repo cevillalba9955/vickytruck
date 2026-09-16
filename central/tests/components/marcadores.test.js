@@ -2,10 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   construirMarcadoresFlete,
   construirPuntosEnMapa,
+  construirMarcadorExtremo,
   distanciaMetros,
+  RADIO_PROXIMIDAD_M,
   asignarColorPorFlete,
   construirMarcadoresMapaUnificado,
 } from "../../src/services/marcadores.js";
+
+describe("RADIO_PROXIMIDAD_M (014-mapa-historial-hora-distancia)", () => {
+  it("expone el mismo umbral (500 m) que ya usaba la tabla del Detalle", () => {
+    expect(RADIO_PROXIMIDAD_M).toBe(500);
+  });
+});
 
 describe("construirMarcadoresFlete", () => {
   it("genera un marcador por recorrido con ubicación conocida (FR-001)", () => {
@@ -57,12 +65,124 @@ describe("construirPuntosEnMapa", () => {
       { id: "P-1", orden: 1, lat: -34.6, lon: -58.4, estado: "arribado", arriboEn: "2026-08-06T10:00:00Z" },
     ]);
 
-    expect(puntos).toEqual([{ id: "P-1", orden: 1, lat: -34.6, lon: -58.4, estado: "arribado" }]);
+    expect(puntos).toEqual([
+      {
+        id: "P-1",
+        orden: 1,
+        lat: -34.6,
+        lon: -58.4,
+        estado: "arribado",
+        arriboEn: "2026-08-06T10:00:00Z",
+        descargaEn: null,
+        // Sin arriboLat/arriboLon en la entrada, no hay con qué calcular la
+        // distancia (FR-003, 014-mapa-historial-hora-distancia).
+        alerta: { llegada: null, descarga: null },
+      },
+    ]);
   });
 
   it("omite puntos sin coordenadas en vez de romper el mapa", () => {
     const puntos = construirPuntosEnMapa([{ id: "P-2", orden: 2, lat: null, lon: null, estado: "pendiente" }]);
     expect(puntos).toEqual([]);
+  });
+
+  // 014-mapa-historial-hora-distancia, US1 — FR-001/FR-002/FR-003/FR-004.
+  describe("hora y alerta de distancia (014-mapa-historial-hora-distancia)", () => {
+    it("copia arriboEn/descargaEn tal cual, para mostrarlos en el mapa (FR-001)", () => {
+      const [punto] = construirPuntosEnMapa([
+        {
+          id: "P-1",
+          orden: 1,
+          lat: -34.6,
+          lon: -58.4,
+          estado: "completado",
+          arriboEn: "2026-08-06T10:00:00Z",
+          descargaEn: "2026-08-06T10:15:00Z",
+        },
+      ]);
+      expect(punto.arriboEn).toBe("2026-08-06T10:00:00Z");
+      expect(punto.descargaEn).toBe("2026-08-06T10:15:00Z");
+    });
+
+    it("alerta.llegada en true cuando la posición de arribo cae fuera de RADIO_PROXIMIDAD_M (FR-002)", () => {
+      const [punto] = construirPuntosEnMapa([
+        {
+          id: "P-1",
+          orden: 1,
+          lat: -34.6,
+          lon: -58.4,
+          estado: "arribado",
+          arriboEn: "2026-08-06T10:00:00Z",
+          // ~1.1 km de distancia respecto de lat/lon del punto — fuera de los 500 m.
+          arriboLat: -34.61,
+          arriboLon: -58.4,
+        },
+      ]);
+      expect(punto.alerta.llegada).toBe(true);
+    });
+
+    it("alerta.llegada en false cuando la posición de arribo cae dentro de RADIO_PROXIMIDAD_M (FR-002)", () => {
+      const [punto] = construirPuntosEnMapa([
+        {
+          id: "P-1",
+          orden: 1,
+          lat: -34.6,
+          lon: -58.4,
+          estado: "arribado",
+          arriboEn: "2026-08-06T10:00:00Z",
+          arriboLat: -34.6001,
+          arriboLon: -58.4001,
+        },
+      ]);
+      expect(punto.alerta.llegada).toBe(false);
+    });
+
+    it("alerta.descarga se evalúa de forma independiente de alerta.llegada (FR-004)", () => {
+      const [punto] = construirPuntosEnMapa([
+        {
+          id: "P-1",
+          orden: 1,
+          lat: -34.6,
+          lon: -58.4,
+          estado: "completado",
+          arriboEn: "2026-08-06T10:00:00Z",
+          arriboLat: -34.6001,
+          arriboLon: -58.4001,
+          descargaEn: "2026-08-06T10:15:00Z",
+          descargaLat: -34.61,
+          descargaLon: -58.4,
+        },
+      ]);
+      expect(punto.alerta.llegada).toBe(false);
+      expect(punto.alerta.descarga).toBe(true);
+    });
+
+    it("alerta en null cuando el evento no tiene posición GPS registrada, sin confundirse con 'dentro de rango' (FR-003)", () => {
+      const [punto] = construirPuntosEnMapa([
+        { id: "P-1", orden: 1, lat: -34.6, lon: -58.4, estado: "pendiente" },
+      ]);
+      expect(punto.alerta).toEqual({ llegada: null, descarga: null });
+    });
+  });
+});
+
+describe("construirMarcadorExtremo (014-mapa-historial-hora-distancia, US2)", () => {
+  it("devuelve el marcador de inicio con tipo/iso/lat/lon cuando hay coordenadas", () => {
+    const marcador = construirMarcadorExtremo({ iso: "2026-08-13T08:00:00-03:00", lat: -34.6, lon: -58.4 }, "inicio");
+    expect(marcador).toEqual({ tipo: "inicio", iso: "2026-08-13T08:00:00-03:00", lat: -34.6, lon: -58.4 });
+  });
+
+  it("devuelve el marcador de cierre con tipo/iso/lat/lon cuando hay coordenadas", () => {
+    const marcador = construirMarcadorExtremo({ iso: "2026-08-13T14:40:00-03:00", lat: -34.61, lon: -58.39 }, "cierre");
+    expect(marcador).toEqual({ tipo: "cierre", iso: "2026-08-13T14:40:00-03:00", lat: -34.61, lon: -58.39 });
+  });
+
+  it("da null cuando falta lat/lon, sin inventar una posición (FR-007)", () => {
+    expect(construirMarcadorExtremo({ iso: "2026-08-13T08:00:00-03:00", lat: null, lon: null }, "inicio")).toBeNull();
+  });
+
+  it("da null cuando no hay evento en absoluto (entrada null)", () => {
+    expect(construirMarcadorExtremo(null, "cierre")).toBeNull();
   });
 });
 
