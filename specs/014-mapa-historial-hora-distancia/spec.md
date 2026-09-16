@@ -8,6 +8,12 @@
 
 **Input**: User description: "en Central, cuando veo el mapa del historial de un recorrido, quiero ver los puntos registrados con la hora (hh:mm) tanto de inicio y final, y ademas mostrar si un punto de entrega esta fuera de la distancia minima"
 
+## Clarifications
+
+### Session 2026-09-16
+
+- Q: El mapa de puntos vive en el componente de Detalle de un recorrido, compartido entre Monitoreo (recorrido activo) e Historial (recorrido finalizado). ¿La hora + alerta de distancia por punto debe aplicarse solo al mapa abierto desde Historial, o a cualquier mapa de Detalle? → A: Aplica a cualquier mapa de Detalle de un recorrido (activo o finalizado), sin distinguir si se llegó desde Monitoreo o desde Historial.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Hora y alerta de distancia en cada punto de entrega (Priority: P1)
@@ -136,8 +142,11 @@ de los puntos de entrega y con su hora (hh:mm) visible.
   está registrada (dato ausente), el mapa NO DEBE dibujar ese marcador ni
   inventar una posición.
 - **FR-008**: Esta funcionalidad se aplica al mapa embebido en el Detalle de
-  un recorrido tal como se accede desde el Historial de recorridos
-  finalizados (vista de solo lectura).
+  un recorrido sin distinguir si se accede desde el Historial de recorridos
+  finalizados o desde el Monitoreo de un recorrido activo — es el mismo
+  componente de mapa en ambos casos, y muestra hora y alerta de distancia
+  para cualquier punto de entrega que ya tenga eventos registrados,
+  independientemente del estado general del recorrido.
 
 ### Key Entities *(include if feature involves data)*
 
