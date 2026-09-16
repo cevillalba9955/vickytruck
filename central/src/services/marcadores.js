@@ -22,6 +22,16 @@ export function construirMarcadoresFlete(recorridosActivos = []) {
 // Radio de la Tierra en metros, para la fórmula de Haversine.
 const RADIO_TIERRA_M = 6371000;
 
+// 009-central-mejora-visual: radio de tolerancia entre la posición GPS
+// capturada al marcar arribo/descarga y el destino real del punto. Un valor
+// fuera de este radio no bloquea nada (no hay geocerca, ver
+// specs/008-registro-inicio-fin-recorrido/spec.md) — es solo una señal
+// visual para que el operador de Central revise el caso. Exportado (antes
+// vivía solo en RecorridoDetalle.jsx) para que la tabla y el mapa de
+// Detalle (014-mapa-historial-hora-distancia) usen el mismo umbral sin
+// duplicarlo.
+export const RADIO_PROXIMIDAD_M = 500;
+
 /**
  * Distancia en metros entre dos coordenadas (fórmula de Haversine),
  * 009-central-mejora-visual: usada para marcar si la posición GPS
@@ -142,10 +152,37 @@ export function construirMarcadoresMapaUnificado(recorridosActivos = [], puntoSa
   return marcadores;
 }
 
+// 014-mapa-historial-hora-distancia, FR-002/FR-003: evalúa si la posición
+// GPS de un evento (llegada/descarga) quedó fuera de RADIO_PROXIMIDAD_M
+// respecto del destino del punto. `null` cuando el evento no tiene
+// coordenadas registradas (no se puede calcular, y no debe confundirse con
+// "dentro de rango").
+function evaluarAlertaEvento(puntoLat, puntoLon, eventoLat, eventoLon) {
+  if (eventoLat == null || eventoLon == null) return null;
+  return distanciaMetros(puntoLat, puntoLon, eventoLat, eventoLon) > RADIO_PROXIMIDAD_M;
+}
+
+// 014-mapa-historial-hora-distancia, US2 (FR-005/FR-006/FR-007): marcador
+// de inicio o de cierre del recorrido para el mapa de Detalle, a partir de
+// un evento ya calculado por el llamador (`primerEventoConUbicacion` para
+// inicio, `recorrido.cierreEn/cierreLat/cierreLon` para cierre). `null`
+// cuando no hay evento o le faltan coordenadas — no se inventa una
+// posición (mismo criterio que `construirMarcadoresFlete`).
+export function construirMarcadorExtremo(evento, tipo) {
+  if (evento?.lat == null || evento?.lon == null) return null;
+  return { tipo, iso: evento.iso, lat: evento.lat, lon: evento.lon };
+}
+
 // Historia 2: puntos de entrega de un recorrido, con su estado, para
 // dibujarlos en el mapa de detalle (FR-006). Se omiten los puntos sin
 // coordenadas (no debería ocurrir, Principio II exige lat/lon válidos, pero
 // se evita romper el mapa si llegara a pasar).
+//
+// 014-mapa-historial-hora-distancia, FR-001/FR-002/FR-003/FR-004: además
+// del estado, cada punto de salida trae `arriboEn`/`descargaEn` (para
+// mostrar la hora en el mapa) y `alerta.{llegada,descarga}` (para marcar
+// visualmente cuándo esa posición quedó fuera de la distancia mínima
+// esperada), evaluados por separado por evento.
 export function construirPuntosEnMapa(puntos = []) {
   return puntos
     .filter((p) => p.lat != null && p.lon != null)
@@ -155,5 +192,11 @@ export function construirPuntosEnMapa(puntos = []) {
       lat: p.lat,
       lon: p.lon,
       estado: p.estado,
+      arriboEn: p.arriboEn ?? null,
+      descargaEn: p.descargaEn ?? null,
+      alerta: {
+        llegada: evaluarAlertaEvento(p.lat, p.lon, p.arriboLat, p.arriboLon),
+        descarga: evaluarAlertaEvento(p.lat, p.lon, p.descargaLat, p.descargaLon),
+      },
     }));
 }

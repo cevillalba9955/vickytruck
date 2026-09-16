@@ -1,6 +1,6 @@
 import { Card, Table, Tag, Descriptions, Badge, Tooltip } from "antd";
 import { MapaSeguimiento } from "./MapaSeguimiento.jsx";
-import { construirPuntosEnMapa, distanciaMetros } from "../services/marcadores.js";
+import { construirPuntosEnMapa, construirMarcadorExtremo, distanciaMetros, RADIO_PROXIMIDAD_M } from "../services/marcadores.js";
 import {
   formatearHoraLocal,
   formatearFechaLocal,
@@ -21,13 +21,6 @@ const COLOR_ESTADO_PUNTO = {
   arribado: "blue",
   completado: "green",
 };
-
-// 009-central-mejora-visual: radio de tolerancia entre la posición GPS
-// capturada al marcar arribo/descarga y el destino real del punto. Un valor
-// fuera de este radio no bloquea nada (no hay geocerca, ver
-// specs/008-registro-inicio-fin-recorrido/spec.md) — es solo una señal
-// visual para que el operador de Central revise el caso.
-const RADIO_PROXIMIDAD_M = 500;
 
 function textoPunto(p) {
   return p.cliente || `Punto ${p.orden}`;
@@ -138,6 +131,14 @@ export function RecorridoDetalle({ detalle, marcadorFlete, accionVolver }) {
   const inicioIso = primerEvento?.iso ?? null;
   const fechaIso = recorrido.cierreEn ?? inicioIso;
   const tiempoTotalMin = calcularTiempoTotalMin(puntos, recorrido.cierreEn);
+  // 014-mapa-historial-hora-distancia, US2 (FR-005/FR-006/FR-007): mismos
+  // eventos ya usados en el encabezado (Hora inicio/Final), ahora también
+  // como marcadores del mapa.
+  const marcadorInicio = construirMarcadorExtremo(primerEvento, "inicio");
+  const marcadorCierre = construirMarcadorExtremo(
+    { iso: recorrido.cierreEn, lat: recorrido.cierreLat, lon: recorrido.cierreLon },
+    "cierre",
+  );
 
   return (
     <Card
@@ -172,7 +173,12 @@ export function RecorridoDetalle({ detalle, marcadorFlete, accionVolver }) {
         style={{ marginBottom: 16 }}
       />
 
-      <MapaSeguimiento marcadoresFlete={marcadorFlete ? [marcadorFlete] : []} puntos={construirPuntosEnMapa(puntos)} />
+      <MapaSeguimiento
+        marcadoresFlete={marcadorFlete ? [marcadorFlete] : []}
+        puntos={construirPuntosEnMapa(puntos)}
+        marcadorInicio={marcadorInicio}
+        marcadorCierre={marcadorCierre}
+      />
     </Card>
   );
 }
