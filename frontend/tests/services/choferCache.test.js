@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { guardarCacheChofer, leerCacheChofer } from "../../src/services/choferCache.js";
+import { guardarCacheChofer, leerCacheChofer, resolverMqttConfig } from "../../src/services/choferCache.js";
 
 describe("choferCache", () => {
   beforeEach(() => {
@@ -43,5 +43,26 @@ describe("choferCache", () => {
     expect(() => guardarCacheChofer({ choferId: "CH-1", mqtt: { url: "a" } })).not.toThrow();
 
     spy.mockRestore();
+  });
+});
+
+describe("resolverMqttConfig", () => {
+  const cache = { choferId: "CH-1", mqtt: { url: "wss://viejo" } };
+
+  it("con el backend respondiendo mqtt: null (canal directo), no resucita la credencial cacheada", () => {
+    expect(resolverMqttConfig({ recorrido: { mqtt: null } }, cache)).toBeNull();
+  });
+
+  it("con el backend respondiendo una credencial, usa esa y no la cacheada", () => {
+    const mqtt = { url: "wss://nuevo" };
+    expect(resolverMqttConfig({ recorrido: { mqtt } }, cache)).toBe(mqtt);
+  });
+
+  it("sin recorrido cargado (404 o sin red), cae a la credencial cacheada", () => {
+    expect(resolverMqttConfig(null, cache)).toBe(cache.mqtt);
+  });
+
+  it("sin recorrido ni caché, null", () => {
+    expect(resolverMqttConfig(null, null)).toBeNull();
   });
 });
