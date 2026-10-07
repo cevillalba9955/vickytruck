@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConfigProvider, Card, Button, Alert } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
@@ -11,7 +11,7 @@ import { RecorridoDetalle } from "./components/RecorridoDetalle.jsx";
 import { HistorialView } from "./components/HistorialView.jsx";
 import { MapaSeguimiento } from "./components/MapaSeguimiento.jsx";
 import { listarActivos, obtenerDetalle } from "./services/api.js";
-import { pollEvery } from "./services/polling.js";
+import { pollEvery, calcularIntervaloPolling } from "./services/polling.js";
 import { conectarUbicacionEnTiempoReal } from "./services/mqttClient.js";
 import { aplicarUbicacionViva } from "./services/ubicacionViva.js";
 import { construirMarcadoresFlete, construirMarcadoresMapaUnificado } from "./services/marcadores.js";
@@ -23,8 +23,8 @@ import { construirMarcadoresFlete, construirMarcadoresMapaUnificado } from "./se
 // historial) — pero baja de cadencia cuando MQTT está conectado, actuando
 // como respaldo de reconciliación en vez de la vía principal. Si MQTT se
 // cae/reconecta, vuelve a la cadencia rápida original.
-const INTERVALO_POLLING_MQTT_CONECTADO_MS = 30000;
-const INTERVALO_POLLING_RESPALDO_MS = 5000;
+// Sin eventos MQTT durante este tiempo, se vuelve al polling rápido.
+const VENTANA_EVENTOS_MQTT_MS = 120000;
 
 function App() {
   const [vista, setVista] = useState("monitor");
@@ -41,6 +41,8 @@ function App() {
   const [error, setError] = useState(null);
   const [detalle, setDetalle] = useState(null);
   const [mqttEstado, setMqttEstado] = useState("disabled");
+  const [recibiendoEventosMqtt, setRecibiendoEventosMqtt] = useState(false);
+  const timerEventosMqtt = useRef(null);
 
   const abrirDetalle = async (id) => {
     setOrigenDetalle(vista);
@@ -51,7 +53,7 @@ function App() {
   // Historia 1 (FR-001, FR-002): refresco automático por polling, sin
   // recarga manual de la página. Cadencia dinámica: respaldo lento mientras
   // MQTT esté conectado (FR-005), vuelve a la cadencia rápida si no.
-  const intervaloPolling = mqttEstado === "connected" ? INTERVALO_POLLING_MQTT_CONECTADO_MS : INTERVALO_POLLING_RESPALDO_MS;
+  const intervaloPolling = calcularIntervaloPolling({ mqttEstado, recibiendoEventosMqtt });
   const idDetalleAbierto = vista === "detalle" ? detalle?.recorrido?.id : null;
   useEffect(() => {
     return pollEvery(intervaloPolling, async () => {
@@ -79,6 +81,9 @@ function App() {
       onEstado: setMqttEstado,
       onEvento: (evento) => {
         setActivos((prev) => aplicarUbicacionViva(prev, evento));
+        setRecibiendoEventosMqtt(true);
+        clearTimeout(timerEventosMqtt.current);
+        timerEventosMqtt.current = setTimeout(() => setRecibiendoEventosMqtt(false), VENTANA_EVENTOS_MQTT_MS);
       },
     });
   }, []);

@@ -25,3 +25,14 @@ export function leerCacheChofer() {
     return null;
   }
 }
+
+// Config MQTT a usar para el reporte de ubicación. Si el backend respondió
+// (hay recorrido cargado), manda su `mqtt` tal cual — incluido `null`, que
+// desde 013-mqtt-a-backend-directo significa "canal directo, no usar broker".
+// La credencial cacheada solo se usa cuando el backend no respondió (404 por
+// store vaciado, o sin red): antes `null ?? cache` la resucitaba igual y un
+// teléfono con credencial vieja intentaba MQTT aun en modo directo.
+export function resolverMqttConfig(recorrido, cache) {
+  if (recorrido?.recorrido) return recorrido.recorrido.mqtt ?? null;
+  return cache?.mqtt ?? null;
+}

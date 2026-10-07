@@ -3,6 +3,12 @@ import { ahoraLocalIso } from "./tiempo.js";
 
 const TOPIC_TEMPLATE = "chofer/{choferId}/ubicacion";
 
+// Si el broker no confirma el publish en este tiempo (conexión que no se
+// establece: credencial vieja, red bloqueada), mqtt.js deja el mensaje en cola
+// y nunca llama al callback — sin este tope `publicar` quedaba colgado y el
+// caller jamás caía al POST directo.
+const PUBLISH_TIMEOUT_MS = 4000;
+
 function topicPara(choferId) {
   return TOPIC_TEMPLATE.replace("{choferId}", encodeURIComponent(String(choferId)));
 }
@@ -49,6 +55,7 @@ export function createPublisherUbicacionMqtt(choferId, mqttConfig) {
   return {
     publicar({ lat, lon, recorridoId }) {
       return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(false), PUBLISH_TIMEOUT_MS);
         const payload = JSON.stringify({
           eventId: crypto.randomUUID(),
           choferId: String(choferId),
@@ -57,7 +64,10 @@ export function createPublisherUbicacionMqtt(choferId, mqttConfig) {
           lon,
           en: ahoraLocalIso(),
         });
-        client.publish(topic, payload, { qos: 1 }, (err) => resolve(!err));
+        client.publish(topic, payload, { qos: 1 }, (err) => {
+          clearTimeout(timer);
+          resolve(!err);
+        });
       });
     },
     cerrar() {

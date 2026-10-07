@@ -17,7 +17,7 @@ import {
 } from "./services/api.js";
 import { iniciarReportePeriodico } from "./services/ubicacionPeriodica.js";
 import { guardarCacheRecorrido, leerCacheRecorrido } from "./services/recorridoCache.js";
-import { guardarCacheChofer, leerCacheChofer } from "./services/choferCache.js";
+import { guardarCacheChofer, leerCacheChofer, resolverMqttConfig } from "./services/choferCache.js";
 
 const INTERVALO_UBICACION_DEFAULT_MS = 60000;
 
@@ -140,7 +140,7 @@ export function App() {
   const intervaloUbicacionMs = recorrido?.recorrido?.intervaloUbicacionMs ?? INTERVALO_UBICACION_DEFAULT_MS;
   const cacheChofer = leerCacheChofer();
   const choferId = recorrido?.recorrido?.choferId ?? cacheChofer?.choferId ?? null;
-  const mqttConfig = recorrido?.recorrido?.mqtt ?? cacheChofer?.mqtt ?? null;
+  const mqttConfig = resolverMqttConfig(recorrido, cacheChofer);
   useEffect(() => {
     // Gate solo en token/choferId (no en mqttConfig): sin credencial MQTT
     // (EMQX no configurado, o mqttConfig null por cualquier motivo) el
