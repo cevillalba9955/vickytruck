@@ -66,6 +66,10 @@ hace fallar este POST si EMQX Cloud está lento o caído (se reintenta solo en
 el próximo push del mismo recorrido, la operación es idempotente). El
 resultado se expone al chofer en `GET /api/recorridos/:token` →
 `recorrido.mqtt` (ver `chofer-api.md` de 001-chofer-recorrido).
+*(Actualizado 2026-10-09, 015-cierre-desde-oracle)*: solo ocurre si
+`UBICACION_CANAL_PREFERIDO=broker`. En modo `directo` (default) no se llama a
+EMQX Cloud — nadie usaría esa credencial (`GET /:token` devuelve
+`mqtt: null`).
 
 ### Response 200
 
@@ -100,6 +104,7 @@ resultado se expone al chofer en `GET /api/recorridos/:token` →
       "cierreEn": null,
       "cierreLat": null,
       "cierreLon": null,
+      "cierreOrigen": null,
       "puntos": [
         {
           "id": "P-1",
@@ -145,10 +150,17 @@ efectivamente resultó ser el primero en iniciarse). `null` hasta que se
 tocó INICIAR sobre algún punto.
 
 Oracle/APEX consume los cuatro (los tres por punto y los dos de recorrido)
-vía `INTEGRACION_CLOUD_API.leer_estado_puntos` y los escribe sobre
-`T_PUNTOS_ENTREGA` (inicio, por punto) y `T_RECORRIDOS` (cierre e inicio del
-recorrido completo) — ver
+vía `INTEGRACION_CLOUD_API.leer_estado_puntos`. *(Actualizado 2026-10-09,
+probado contra Oracle real)*: el cierre y el inicio del recorrido completo
+se escriben sobre `T_FLT_VIAJES` (la tabla real de viajes, no
+`T_RECORRIDOS`); el `inicioEn` por punto no se persiste en
+`T_PUNTOS_ENTREGA`, que solo recibe estado, arribo y descarga — ver
 `backend/sql/integracion-cloud/integracion_cloud_api.pkb.sql`.
+
+**`cierreOrigen`** (a nivel `recorrido`, 015-cierre-desde-oracle,
+2026-10-09): `"chofer"` si el recorrido se cerró con FINALIZAR desde la app,
+`"oracle"` si se forzó con el Endpoint 3 (en ese caso `cierreLat`/
+`cierreLon` vienen en `null`), `null` mientras sigue abierto.
 
 ### Response 200 (sin `recorridoId`, paginado)
 
@@ -165,6 +177,41 @@ recorrido completo) — ver
   }
 }
 ```
+
+## Endpoint 3: Finalizar recorrido desde Oracle/APEX
+
+*(Agregado 2026-10-09, 015-cierre-desde-oracle)*
+
+- Método: `POST`
+- Path: `/api/integracion/recorridos/:id/finalizar`
+- Auth: la misma que el resto de `/api/integracion`
+- Body: ninguno (o `{}`)
+
+Cierre forzado para cuando el chofer no toca FINALIZAR. Central sigue
+siendo de solo lectura: este es el único camino de cierre fuera de la app
+del chofer. No exige puntos completados; el cierre queda con
+`cierreOrigen: "oracle"` y sin GPS. Idempotente: si ya estaba finalizado
+(por el chofer o por Oracle), responde `200` con el cierre original sin
+pisarlo. Después del cierre, las acciones de viaje del chofer sobre ese
+recorrido responden `409` y un re-push del Endpoint 1 no lo reactiva.
+
+Oracle lo invoca con `INTEGRACION_CLOUD_API.finalizar_recorrido`, que ante
+un `200` encadena `leer_estado_puntos` para persistir `CIERRE_EN` en
+`T_FLT_VIAJES`.
+
+### Response 200
+
+```json
+{
+  "id": "3834",
+  "estado": "finalizado",
+  "cierreEn": "2026-10-09T18:05:12.345-03:00",
+  "cierreOrigen": "oracle"
+}
+```
+
+`404 recorrido_no_encontrado` si el cloud no tiene ese recorrido (nunca se
+sincronizó, o el backend se reinició y vació su store en memoria).
 
 ## Errores
 

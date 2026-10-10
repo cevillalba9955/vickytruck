@@ -293,56 +293,27 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
   END sincronizar_recorrido;
 
   -- Trae de GET /api/integracion/estado?recorridoId=<id> el estado actual de
-  -- cada punto (estado + inicioEn/inicioLat/inicioLon +
-  -- arriboEn/arriboLat/arriboLon + descargaEn/descargaLat/descargaLon, ver
-  -- serializarEstado en backend/src/routes/integracion.js) y lo escribe
-  -- sobre T_PUNTOS_ENTREGA, más dos eventos del recorrido completo (no de un
-  -- punto puntual): el cierre (cierreEn/cierreLat/cierreLon, evento de
-  -- FINALIZAR) y el inicio del recorrido en su conjunto
-  -- (recorrido.inicioEn/inicioLat/inicioLon — distinto de
-  -- puntos[*].inicioEn: es el inicioEn más temprano entre los puntos, el
-  -- momento en que arrancó el recorrido, ya calculado por
-  -- serializarEstado()/primerInicio() del lado cloud, User Story 4) — ambos
-  -- sobre T_RECORRIDOS (T_PUNTOS_ENTREGA y T_RECORRIDOS, ambas propias del
-  -- esquema VIC, dueño de este paquete — sin privilegio cross-schema que
-  -- otorgar). El cloud es la fuente de verdad de estos eventos mientras el
-  -- recorrido está en curso (el chofer nunca escribe directo a Oracle en
-  -- esta arquitectura, ver README.md de esta carpeta) — por eso pisa sin
-  -- comparar versiones, siempre gana el último estado leído.
+  -- cada punto (estado + arriboEn/arriboLat/arriboLon +
+  -- descargaEn/descargaLat/descargaLon, ver serializarEstado en
+  -- backend/src/routes/integracion.js) y lo escribe sobre T_PUNTOS_ENTREGA,
+  -- más dos eventos del recorrido completo que escribe sobre T_FLT_VIAJES
+  -- (la tabla real de viajes de este esquema): el cierre
+  -- (cierreEn/cierreLat/cierreLon — FINALIZAR del chofer, o el cierre forzado
+  -- de finalizar_recorrido, sin GPS) y el inicio del recorrido en su conjunto
+  -- (recorrido.inicioEn/inicioLat/inicioLon: el inicioEn más temprano entre
+  -- los puntos, ya calculado por serializarEstado()/primerInicio() del lado
+  -- cloud). El inicio POR PUNTO (puntos[*].inicioEn) no se persiste en
+  -- T_PUNTOS_ENTREGA. El cloud es la fuente de verdad de estos eventos
+  -- mientras el recorrido está en curso (el chofer nunca escribe directo a
+  -- Oracle en esta arquitectura, ver README.md de esta carpeta) — por eso
+  -- pisa sin comparar versiones, siempre gana el último estado leído.
   --
-  -- INICIO_EN/INICIO_LAT/INICIO_LON (en T_PUNTOS_ENTREGA, por punto, Y en
-  -- T_RECORRIDOS, del recorrido completo — mismo nombre de columna, tablas
-  -- distintas, sin colisión) y CIERRE_EN/CIERRE_LAT/CIERRE_LON (solo en
-  -- T_RECORRIDOS) — 008-registro-inicio-fin-recorrido, 2026-08-25: columnas
-  -- nuevas, nullable, mismo tipo que sus pares ARRIBO_*/DESCARGA_* — si la
-  -- tabla real todavía no las tiene, agregarlas (nombres elegidos acá, sin
-  -- restricción del lado cloud más que "opcionales"). CIERRE_*/el
-  -- INICIO_* de T_RECORRIDOS van ahí (no en T_PUNTOS_ENTREGA) porque son
-  -- eventos del recorrido completo, no de un punto puntual — mismo
-  -- precedente que COLOR/PUNTO_SALIDA_LATITUD/PUNTO_SALIDA_LONGITUD, ya
-  -- agregadas ahí por 010-mapa-central-unificado.
+  -- 006-normalizar-formato-horario (research.md Decisión 3-4): los
+  -- TIMESTAMP se escriben como hora de pared de Argentina — el cloud manda
+  -- `-03:00` explícito, acá TO_TIMESTAMP_TZ + CAST a TIMESTAMP.
   --
-  -- 006-normalizar-formato-horario (research.md Decisión 3-4): resuelto —
-  -- ARRIBO_EN/DESCARGA_EN sigue siendo TIMESTAMP a secas (sin zona horaria,
-  -- sin migración de esquema), pero ahora ambos caminos escriben la misma
-  -- hora de pared de Argentina de forma explícita: RECORRIDO_API vía
-  -- `SYSTIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'`, y acá vía
-  -- `TO_TIMESTAMP_TZ` (el cloud manda `-03:00` explícito, no UTC) + CAST a
-  -- TIMESTAMP. Ya no depende de confirmar DBTIMEZONE del server. Mismo
-  -- criterio se aplica ahora a INICIO_EN/CIERRE_EN (por punto y de
-  -- recorrido).
-  --
-  -- NO PROBADO TODAVÍA CONTRA ORACLE REAL (2026-08-25): el resto de este
-  -- package sí tiene validación confirmada contra la instancia real (ver
-  -- comentarios "CONFIRMADO CONTRA ORACLE REAL" más arriba), pero el
-  -- agregado de INICIO_*/CIERRE_* (columnas nuevas + el UPDATE T_RECORRIDOS,
-  -- primera vez que este procedure escribe una tabla distinta de
-  -- T_PUNTOS_ENTREGA, y el uso de JSON_VALUE(...RETURNING NUMBER), primer
-  -- uso de esa función en este package) todavía no se corrió contra la
-  -- instancia real. Antes de dar esto por cerrado: confirmar que
-  -- T_PUNTOS_ENTREGA/T_RECORRIDOS tienen (o se les agregaron) las columnas
-  -- nuevas, y correr el bloque de "Probar" del README.md de esta carpeta
-  -- contra un recorrido con INICIAR y FINALIZAR ya tocados.
+  -- CONFIRMADO CONTRA ORACLE REAL (2026-10-09), con las tablas reales
+  -- T_PUNTOS_ENTREGA y T_FLT_VIAJES.
   PROCEDURE leer_estado_puntos(
     p_recorrido_id IN  NUMBER,
     p_resultado    OUT VARCHAR2,
@@ -406,10 +377,6 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
     ) LOOP
       UPDATE T_PUNTOS_ENTREGA
          SET estado       = rec.estado,
-             inicio_en    = CASE WHEN rec.inicio_en IS NOT NULL
-                                  THEN CAST(TO_TIMESTAMP_TZ(rec.inicio_en, c_mascara_iso_local) AS TIMESTAMP) END,
-             inicio_lat   = rec.inicio_lat,
-             inicio_lon   = rec.inicio_lon,
              arribo_en    = CASE WHEN rec.arribo_en IS NOT NULL
                                   THEN CAST(TO_TIMESTAMP_TZ(rec.arribo_en, c_mascara_iso_local) AS TIMESTAMP) END,
              arribo_lat   = rec.arribo_lat,
@@ -428,8 +395,7 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
     -- nivel): eventos del recorrido completo (FINALIZAR, y el momento de
     -- inicio del recorrido — 008, User Story 4), no de un punto — se leen
     -- una sola vez de $.recorridos[0], no del array de puntos, y se
-    -- escriben sobre T_RECORRIDOS en vez de T_PUNTOS_ENTREGA. Distinto de
-    -- $.recorridos[0].puntos[*].inicioEn (por punto, ya leído arriba).
+    -- escriben sobre T_FLT_VIAJES.
     v_cierre_en  := JSON_VALUE(v_response, '$.recorridos[0].cierreEn');
     v_cierre_lat := JSON_VALUE(v_response, '$.recorridos[0].cierreLat' RETURNING NUMBER);
     v_cierre_lon := JSON_VALUE(v_response, '$.recorridos[0].cierreLon' RETURNING NUMBER);
@@ -437,7 +403,7 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
     v_inicio_rec_lat := JSON_VALUE(v_response, '$.recorridos[0].inicioLat' RETURNING NUMBER);
     v_inicio_rec_lon := JSON_VALUE(v_response, '$.recorridos[0].inicioLon' RETURNING NUMBER);
 
-    UPDATE T_RECORRIDOS
+    UPDATE T_FLT_VIAJES
        SET cierre_en  = CASE WHEN v_cierre_en IS NOT NULL
                               THEN CAST(TO_TIMESTAMP_TZ(v_cierre_en, c_mascara_iso_local) AS TIMESTAMP) END,
            cierre_lat = v_cierre_lat,
@@ -463,8 +429,8 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
       p_respuesta   := armar_error_encadenado;
   END leer_estado_puntos;
 
-  -- Cierre forzado: ver comentario en el spec. NO PROBADO TODAVÍA CONTRA
-  -- ORACLE REAL (2026-10-09) — misma mecánica HTTP que sincronizar_recorrido
+  -- Cierre forzado: ver comentario en el spec. CONFIRMADO CONTRA ORACLE
+  -- REAL (2026-10-09) — misma mecánica HTTP que sincronizar_recorrido
   -- (APEX_WEB_SERVICE + relay nginx, cuya location /api/integracion/ ya
   -- cubre esta ruta sin cambios).
   PROCEDURE finalizar_recorrido(
