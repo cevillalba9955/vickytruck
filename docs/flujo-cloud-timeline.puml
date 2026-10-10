@@ -1,5 +1,5 @@
-@startuml VickyTruck - Timeline operativo cloud, Oracle/APEX y MQTT
-title VickyTruck - Timeline operativo cloud, Oracle/APEX y MQTT
+@startuml VickyTruck - Timeline operativo cloud
+title VickyTruck - Timeline operativo cloud, Oracle/APEX y ubicación
 
 skinparam shadowing false
 skinparam defaultFontName Segoe UI
@@ -13,40 +13,48 @@ concise "Central" as CE
 ORA is Preparando
 BE is Esperando
 CH is Inicio
-CE is Polling
+CE is Polling5s
 
 @1
 ORA is Sincronizando
 BE is Validando
 
 @2
+ORA is Esperando
 BE is Aprovisionando
-CH is Conectando
+CH is AbriendoApp
 
 @3
-CH is Publicando
-BE is Persistiendo
+CH is ReportandoUbicacion
+BE is ActualizandoUbicacion
 
 @4
-CE is Actualizando
+CH is AccionesViaje
+BE is RegistrandoEventos
+CE is MostrandoEnVivo
 
 @5
 ORA is Consultando
-CE is EnVivo
+BE is ConfirmandoSync
 
 @6
-CH is FallbackREST
+ORA is Persistiendo
+CH is Finalizado
 BE is Historial
+CE is Historial
 
 legend right
 == Lectura del timeline ==
-0. Inicio: estado base de cada actor.
-1. Oracle/APEX sincroniza; backend valida y hace upsert.
-2. Backend aprovisiona credencial MQTT; chofer la obtiene.
-3. Chofer publica ubicacion; backend persiste.
-4. Central consume por polling o MQTT directo.
-5. Oracle/APEX consulta estado; Central muestra en vivo.
-6. Si MQTT falla: chofer usa fallback REST silencioso.
+0. Inicio: estado base; Central hace polling cada 5 s.
+1. Oracle/APEX sincroniza (relay nginx); backend valida y hace upsert.
+2. Backend aprovisiona credencial MQTT; chofer abre la app (GET /:token).
+3. Chofer reporta ubicación al abrir y por intervalo:
+   POST directo (default) o MQTT con fallback a POST.
+4. Chofer inicia/llega/descarga; Central muestra en vivo
+   (polling 5 s, o 30 s si recibe eventos MQTT).
+5. Oracle/APEX consulta GET /estado; backend confirma sincronización.
+6. Oracle persiste estado y GPS; el recorrido pasa a historial
+   (FINALIZAR del chofer, o finalizar_recorrido desde Oracle).
 endlegend
 
 @enduml

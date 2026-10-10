@@ -1,5 +1,5 @@
-@startuml VickyTruck - Flujo operativo cloud, Oracle/APEX y MQTT
-title VickyTruck - Flujo operativo cloud, Oracle/APEX y MQTT
+@startuml VickyTruck - Flujo operativo cloud
+title VickyTruck - Flujo operativo cloud, Oracle/APEX y ubicación
 
 skinparam shadowing false
 skinparam defaultFontName Segoe UI
@@ -15,65 +15,77 @@ skinparam activity {
 start
 
 partition "Oracle/APEX local" {
-  :1. Prepara o actualiza recorrido;
-  :2. Invoca POST /api/integracion/recorridos;
+  :1. Prepara o actualiza recorrido\n(choferId, color, puntoSalida, puntos);
+  :2. POST /api/integracion/recorridos\nvía relay nginx local;
 }
 
 partition "Backend cloud" {
-  :3. Valida credenciales tecnicas;
-  :4. Hace upsert del recorrido en el store en memoria;
-  :5. Aprovisiona o reusa credencial MQTT del chofer;
+  :3. Valida INTEGRACION_API_KEY;
+  :4. Upsert del recorrido en el store en memoria;
+  :5. Aprovisiona o refresca credencial MQTT\nchofer-{choferId} (fire-and-forget);
 }
 
 partition "Chofer" {
-  :6. GET /api/recorridos/:token;
-  :7. Obtiene credencial MQTT y topic;
-  :8. Publica ubicacion periodica por MQTT;
+  :6. Abre la app: GET /api/recorridos/:token;
+  :7. Recibe recorrido, intervalo y mqtt (o null);
+  :8. Cachea {choferId, mqtt} en localStorage;
+  :9. Reporta ubicación al abrir y en cada intervalo;
+  if (¿recorrido.mqtt != null?) then (sí: modo broker)
+    :Publish chofer/{choferId}/ubicacion;
+    if (¿confirmado en 4 s?) then (sí)
+      :Bridge MQTT del backend\nactualiza la ubicación;
+    else (no)
+      :Fallback POST /:token/ubicacion;
+    endif
+  else (no: canal directo, default)
+    :POST /:token/ubicacion;
+  endif
+  :10. Acciones de viaje: iniciar, llegue,\ndescarga-completa, ir-primero,\ncancelar, finalizar (con GPS);
 }
 
 partition "Backend cloud" {
-  :9. Suscripcion MQTT del bridge;
-  :10. Persiste la ultima ubicacion;
+  :11. Actualiza ubicación por choferId\ny estados de puntos (con GPS);
 }
 
 partition "Central" {
-  :11. Consulta estado por polling REST;
-  :12. Opcionalmente se suscribe al broker MQTT;
-  :13. Muestra ubicacion y progreso;
+  :12. Polling REST de activos (y Detalle abierto);
+  if (¿recibe eventos MQTT en los últimos 2 min?) then (sí)
+    :Polling cada 30 s + push en vivo por MQTT;
+  else (no)
+    :Polling cada 5 s;
+  endif
+  :13. Muestra mapa, progreso, hora y\nalerta de distancia mínima;
 }
 
 partition "Oracle/APEX local" {
-  :14. Consulta GET /api/integracion/estado;
+  :14. GET /api/integracion/estado;
+  :15. Persiste estado y GPS de inicio/arribo/\ndescarga/cierre (leer_estado_puntos);
+  if (¿el chofer tocó FINALIZAR?) then (no)
+    :16. finalizar_recorrido:\nPOST /api/integracion/recorridos/:id/finalizar\n(cierre sin GPS, cierreOrigen=oracle);
+  else (sí)
+  endif
 }
-
-if (Publicacion MQTT correcta?) then (si)
-  partition "Central" {
-    :15. Recibe actualizacion en vivo;
-  }
-else (no)
-  partition "Chofer" {
-    :15. Usa fallback REST silencioso;
-  }
-endif
 
 stop
 
 note right
 Flujo vigente, de extremo a extremo:
-1. Oracle/APEX sincroniza recorridos sin acceso directo desde cloud.
-2. El backend valida, guarda y aprovisiona credencial MQTT.
-3. El chofer publica ubicacion por MQTT; fallback REST si falla.
-4. El backend persiste la ultima posicion via bridge.
-5. Central consume por polling REST y opcionalmente por MQTT directo.
+1. Oracle/APEX sincroniza recorridos; el cloud nunca accede a Oracle.
+2. El backend guarda en memoria y aprovisiona credencial MQTT.
+3. El chofer reporta ubicación por POST directo (default) o por MQTT
+   si UBICACION_CANAL_PREFERIDO=broker, con fallback a POST.
+4. Central consume por polling REST; MQTT es un acelerador opcional.
+5. Oracle/APEX consulta el estado y lo persiste; si el chofer no
+   finaliza, lo cierra Oracle. Central es de solo lectura.
 end note
 
 legend right
-== Lectura rapida ==
-1. Oracle/APEX inicia la sincronizacion.
+== Lectura rápida ==
+1. Oracle/APEX inicia la sincronización.
 2. Backend valida, guarda y aprovisiona.
-3. Chofer publica ubicacion.
-4. Backend persiste.
-5. Central visualiza el estado.
+3. Chofer reporta ubicación y acciones.
+4. Central visualiza el estado.
+5. Oracle/APEX recupera el estado.
 end legend
 
 @enduml

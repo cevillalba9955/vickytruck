@@ -5,106 +5,134 @@ skinparam shadowing false
 skinparam defaultFontName Segoe UI
 skinparam packageStyle rectangle
 skinparam componentStyle rectangle
-skinparam linetype ortho
+skinparam linetype polyline
 
 left to right direction
 
 actor "Chofer" as Chofer
 actor "Operador Central" as Operador
+actor "Operador Oracle/APEX" as OperadorLocal
 
 rectangle "Cliente Web Chofer\n(frontend/)" as FrontChofer {
-	component "UI React\nRouteView, DeliveryPointCard,\nProgressSummary" as CH_UI
+	component "UI React\nRouteView, DeliveryPointCard,\nAppHeader" as CH_UI
 	component "API Client\nservices/api.js" as CH_API
 	component "GPS\nservices/geolocation.js" as CH_GPS
 	component "Reporte periódico\nservices/ubicacionPeriodica.js" as CH_UBI
+	component "Publisher MQTT (opcional)\nservices/ubicacionMqtt.js" as CH_MQTT
 	component "Cola offline\nservices/offlineQueue.js" as CH_OFF
+	component "Caché local\nchoferCache.js, recorridoCache.js" as CH_CACHE
 }
 
 rectangle "Panel Web Central\n(central/)" as FrontCentral {
-	component "UI React\nMonitorView, AsignacionForm,\nRecorridoDetalle, HistorialView" as CE_UI
+	component "UI React\nAppShell, MonitorView + MapaSeguimiento,\nRecorridoDetalle, HistorialView" as CE_UI
 	component "API Client\nservices/api.js" as CE_API
-	component "Polling\nservices/polling.js" as CE_POLL
+	component "Polling adaptativo\nservices/polling.js" as CE_POLL
+	component "MQTT Client (opcional)\nservices/mqttClient.js\nservices/ubicacionViva.js" as CE_MQTT
 }
 
 rectangle "Backend Node.js / Express\n(backend/src)" as Backend {
 	component "server.js\ncreateApp()" as BE_APP
 
+	package "Middleware" as BE_MW {
+		component "middleware/cors.js" as BE_CORS
+		component "middleware/integracionAuth.js\nINTEGRACION_API_KEY" as BE_AUTH
+	}
+
 	package "Rutas HTTP" as BE_ROUTES {
-		component "routes/recorrido.js\n/api/recorridos" as BE_R_REC
-		component "routes/central.js\n/api/central" as BE_R_CEN
+		component "routes/recorrido.js\n/api/recorridos/:token\n(GET, arribo, descarga, ubicacion)" as BE_R_REC
+		component "routes/viaje.js\n/api/recorridos/:token/viaje/*\n(iniciar, llegue, descarga-completa,\nir-primero, finalizar, cancelar)" as BE_R_VIA
+		component "routes/central.js\n/api/central/recorridos\n(activos, historial, :id)" as BE_R_CEN
+		component "routes/integracion.js\n/api/integracion\n(recorridos, recorridos/:id/finalizar,\nestado, mqtt/estado)" as BE_R_INT
 	}
 
-	package "Repositorios" as BE_REPOS {
-		component "db/recorridoRepository.js" as BE_REPO_REC
-		component "db/centralRepository.js" as BE_REPO_CEN
+	package "Estado y servicios" as BE_STATE {
+		component "state/integracionStore.js\nStore único EN MEMORIA" as BE_STORE
 		component "db/ubicacionResolver.js" as BE_RESOLVER
-	}
-
-	package "Infraestructura" as BE_INFRA {
-		component "db/pool.js\nOracle Pool" as BE_POOL
-		component "state/ubicacionEnMemoria.js\nMap en memoria compartido" as BE_MEM
+		component "services/mqttBridge.js\n(suscripción + métricas)" as BE_BRIDGE
+		component "mqtt/emqxProvisioning.js\ncredencial chofer-{choferId}" as BE_PROV
+		component "config/ubicacionCanal.js\nUBICACION_CANAL_PREFERIDO" as BE_CANAL
+		component "util/tiempo.js\nISO 8601 -03:00" as BE_TIEMPO
 	}
 }
 
-database "Oracle" as ORACLE {
-	component "Vistas/Tablas\nRECORRIDOS, PUNTOS_ENTREGA, V_FLETES" as ORA_DATA
-	component "PL/SQL\nRECORRIDO_API" as ORA_PKG_REC
-	component "PL/SQL\nCENTRAL_API" as ORA_PKG_CEN
+cloud "EMQX Cloud\n(opcional)" as EMQX
+
+database "Oracle (sitio local)" as ORACLE {
+	component "APEX / Jobs" as ORA_APEX
+	component "PL/SQL\nINTEGRACION_CLOUD_API\n(sincronizar_recorrido,\nleer_estado_puntos,\nfinalizar_recorrido)" as ORA_INT
+	component "Tablas\nT_RECORRIDOS, T_PUNTOS_ENTREGA,\nV_FLETES, V_CHOFERES" as ORA_DATA
+	component "Relay nginx local\n(relay-rocky)" as ORA_RELAY
 }
 
 Chofer --> CH_UI : Usa app de recorrido
-Operador --> CE_UI : Monitorea y asigna
+Operador --> CE_UI : Monitorea e historial
+OperadorLocal --> ORA_APEX : Despacha viajes
 
-CH_UI --> CH_API : Lecturas y eventos
-CH_API --> CH_GPS : Obtiene lat/lon
-CH_UI --> CH_UBI : Inicia reporte periódico
+CH_UI --> CH_API : Lecturas y acciones de viaje
+CH_API --> CH_GPS : lat/lon best-effort
 CH_API --> CH_OFF : Encola/reintenta si offline
+CH_UI --> CH_UBI : Disparo inmediato + periódico
+CH_UBI --> CH_MQTT : Solo si recorrido.mqtt != null
+CH_UI --> CH_CACHE : {choferId, mqtt}, último recorrido
 
-CE_UI --> CE_API : Consulta/acciones
 CE_UI --> CE_POLL : Refresco automático
-CE_POLL --> CE_API : GET periódicos
+CE_POLL --> CE_API : 5 s (30 s si llegan eventos MQTT)
+CE_UI --> CE_MQTT : Ubicación en vivo
 
-CH_API --> BE_APP : HTTP /api/recorridos
-CE_API --> BE_APP : HTTP /api/central
+CH_API --> BE_APP : HTTPS /api/recorridos
+CH_UBI --> BE_APP : POST /:token/ubicacion\n(canal directo, default)
+CE_API --> BE_APP : HTTPS /api/central
+ORA_RELAY --> BE_APP : HTTPS /api/integracion
 
-BE_APP --> BE_R_REC : Routing
-BE_APP --> BE_R_CEN : Routing
+BE_APP --> BE_CORS
+BE_APP --> BE_R_REC
+BE_APP --> BE_R_VIA
+BE_APP --> BE_R_CEN
+BE_APP --> BE_R_INT
+BE_R_INT --> BE_AUTH
 
-BE_R_REC --> BE_REPO_REC : obtenerPorToken(),\nmarcarArribo(), marcarDescarga()
-BE_R_REC --> BE_MEM : registrar() / obtener()
+BE_R_REC --> BE_STORE : obtenerPorToken(), marcarArribo(),\nmarcarDescarga(), actualizarUbicacionPorChofer()
+BE_R_REC --> BE_CANAL : ¿config MQTT?
+BE_R_REC --> BE_PROV : derivarCredencialChofer()
+BE_R_VIA --> BE_STORE : iniciarViaje(), registrarLlegue(),\nregistrarDescargaCompleta(), moverPrimero(),\nfinalizarRecorrido(), cancelarUltimaOperacion()
+BE_R_CEN --> BE_STORE : listarActivos(), listarHistorial(),\nobtenerDetalle()
+BE_R_INT --> BE_STORE : upsertRecorridos(), listarEstado(),\nconfirmarSincronizacion(), finalizarDesdeOracle()
+BE_R_INT ..> BE_PROV : provisionarCredencialChofer()\n(fire-and-forget)
+BE_R_INT --> BE_BRIDGE : obtenerMetricas()
+BE_STORE --> BE_RESOLVER : resolverUbicacion()
+BE_STORE --> BE_TIEMPO
 
-BE_R_CEN --> BE_REPO_CEN : listar, asignar,\nreasignar, detalle, historial
+BE_PROV ..> EMQX : Admin API HTTP
+EMQX ..> BE_BRIDGE : subscribe chofer/+/ubicacion
+CH_MQTT ..> EMQX : publish chofer/{choferId}/ubicacion
+EMQX ..> CE_MQTT : subscribe chofer/+/ubicacion
+BE_BRIDGE --> BE_STORE : actualizarUbicacionPorChofer()
 
-BE_REPO_CEN --> BE_RESOLVER : resolverUbicacion()
-BE_REPO_CEN --> BE_MEM : ultima ubicación en vivo
+ORA_APEX --> ORA_INT
+ORA_INT --> ORA_DATA : lee payload / persiste estado
+ORA_INT --> ORA_RELAY : UTL_HTTP (localhost:8090)
 
-BE_REPO_REC --> BE_POOL : withConnection()
-BE_REPO_CEN --> BE_POOL : withConnection()
-
-BE_POOL --> ORA_DATA : SELECT
-BE_REPO_REC --> ORA_PKG_REC : marcar_arribo(),\nmarcar_descarga()
-BE_REPO_CEN --> ORA_PKG_CEN : asignar_recorrido(),\nreasignar_recorrido()
-
-ORA_PKG_REC --> ORA_DATA : UPDATE transaccional
-ORA_PKG_CEN --> ORA_DATA : UPDATE transaccional
-
-note bottom of BE_MEM
-Estado efimero en proceso Node.js.
-Se pierde al reiniciar; Oracle mantiene
-el estado persistente de negocio.
+note bottom of BE_STORE
+Estado efímero en el proceso Node.js (Fly.io).
+Se pierde en cada deploy/restart: Oracle/APEX
+debe re-sincronizar (sincronizar_recorrido).
+El backend cloud NO tiene acceso a Oracle.
 end note
 
 note right of BE_RESOLVER
 Prioridad de ubicación:
-1) en memoria (tiempo real)
-2) ultimo evento persistido en Oracle
+1) última ubicación en vivo (POST directo o MQTT)
+2) último arribo/descarga con GPS
+Umbral de antigüedad -> flag "reciente"
 end note
 
 legend right
 == Convenciones ==
-Linea solida: llamada sincrona/logica principal
-Oracle: fuente persistente de verdad
-Memoria backend: cache efimero de ubicacion
+Línea sólida: flujo principal (canal directo)
+Línea punteada: opcional / asíncrono (broker MQTT,
+  activo solo con UBICACION_CANAL_PREFERIDO=broker)
+Oracle: fuente persistente de verdad del negocio
+Backend cloud: store operacional en memoria
 endlegend
 
 @enduml

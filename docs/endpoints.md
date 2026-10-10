@@ -356,6 +356,45 @@ Notas:
 - `404 { "error": "recorrido_no_encontrado" }` cuando se envia `recorridoId` inexistente.
 - `503 { "error": "integracion_auth_no_configurada" }`
 
+Cada recorrido incluye ademas `cierreEn`, `cierreLat`, `cierreLon` y
+`cierreOrigen` (`"chofer"` si lo cerro el chofer con FINALIZAR, `"oracle"` si
+se forzo con el endpoint 10, `null` si sigue abierto).
+
+## 10) Finalizar recorrido desde Oracle/APEX
+
+Cierre forzado para cuando el chofer no toca FINALIZAR en la app. Central sigue
+siendo de solo lectura: el cierre solo se dispara desde Oracle
+(`INTEGRACION_CLOUD_API.finalizar_recorrido`).
+
+- Metodo: `POST`
+- Path: `/api/integracion/recorridos/:id/finalizar`
+- Body: ninguno (o `{}`)
+- No exige puntos completados. El cierre queda sin GPS (`cierreLat`/`cierreLon`
+  en `null`) y con `cierreOrigen: "oracle"`.
+- Idempotente: si ya estaba finalizado (por el chofer o por Oracle) devuelve
+  `200` con el cierre original, sin pisarlo.
+- Despues del cierre, el recorrido sale de activos y pasa al historial de
+  Central; las acciones de viaje del chofer sobre ese recorrido responden `409`,
+  y un re-push de `sincronizar_recorrido` no lo reactiva.
+
+### Response 200
+
+```json
+{
+  "id": "3834",
+  "estado": "finalizado",
+  "cierreEn": "2026-10-09T18:05:12.345-03:00",
+  "cierreOrigen": "oracle"
+}
+```
+
+### Errores
+
+- `401 { "error": "unauthorized" }`
+- `404 { "error": "recorrido_no_encontrado" }` si el cloud no tiene ese recorrido
+  (nunca se sincronizo, o el backend se reinicio).
+- `503 { "error": "integracion_auth_no_configurada" }`
+
 ## Curl rapido
 
 ```bash

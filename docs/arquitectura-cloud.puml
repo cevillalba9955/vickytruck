@@ -1,11 +1,11 @@
-@startuml VickyTruck - Arquitectura Cloud Rediseñada (sin acceso Oracle desde cloud)
-title VickyTruck - Arquitectura Cloud Rediseñada (sin acceso Oracle desde cloud)
+@startuml VickyTruck - Arquitectura Cloud (sin acceso Oracle desde cloud)
+title VickyTruck - Arquitectura Cloud (sin acceso Oracle desde cloud)
 
 skinparam shadowing false
 skinparam defaultFontName Segoe UI
 skinparam packageStyle rectangle
 skinparam componentStyle rectangle
-skinparam linetype ortho
+skinparam linetype polyline
 
 left to right direction
 
@@ -13,117 +13,137 @@ actor "Chofer" as Chofer
 actor "Operador Central" as Operador
 actor "Operador Local Oracle/APEX" as OperadorLocal
 
-node "CloudFlare (vite)" as FRONTEND {
+node "Cloudflare Workers (Vite)" as FRONTEND {
   rectangle "Frontend Chofer (vickytruck)" as FrontChofer {
 	component "UI React" as CH_UI
 	component "API Client\nservices/api.js" as CH_API
 	component "GPS\nservices/geolocation.js" as CH_GPS
-	component "Reporte periódico\nservices/ubicacionPeriodica.js" as CH_UBI
+	component "Reporte periódico\nservices/ubicacionPeriodica.js\n(disparo inmediato + intervalo)" as CH_UBI
+	component "Publisher MQTT (opcional)\nservices/ubicacionMqtt.js\n(timeout 4 s)" as CH_MQTT
 	component "Cola offline\nservices/offlineQueue.js" as CH_OFF
+	component "Caché\nservices/choferCache.js" as CH_CACHE
   }
-
 
   rectangle "Frontend Central (vickytruck-central)" as FrontCentral {
-    component "App React Central" as CE_UI
-  	component "API Client\nservices/api.js" as CE_API
-  	component "Polling\nservices/polling.js" as CE_POLL
-	component "MQTT Client\nWebSocket MQTT" as CE_MQTT
+	component "App React Central\nMonitoreo + Mapa / Historial / Detalle" as CE_UI
+	component "API Client\nservices/api.js" as CE_API
+	component "Polling adaptativo\nservices/polling.js" as CE_POLL
+	component "MQTT Client (opcional)\nservices/mqttClient.js" as CE_MQTT
   }
 }
 
-node "Cloud (Internet/VPC)" as BACKEND {
+node "Fly.io (vickytruck.fly.dev)" as BACKEND {
   rectangle "Backend API\n(backend/)" as Backend {
-    component "REST API Recorridos\n/api/recorridos\n(GET :token incluye recorrido.mqtt)" as BE_REC
-    component "REST API Central\n/api/central" as BE_CEN
+    component "REST API Chofer\n/api/recorridos/:token\n(GET incluye recorrido.mqtt | null)\nPOST /:token/ubicacion" as BE_REC
+    component "REST API Viaje\n/api/recorridos/:token/viaje/*" as BE_VIA
+    component "REST API Central\n/api/central/recorridos\n(activos, historial, :id)" as BE_CEN
 
-    component "Endpoint Integracion Inbound\n/api/integracion/recorridos\n(Alta/actualizacion desde Oracle/APEX local)" as BE_IN_RECORRIDOS
-    component "Endpoint Integracion Query\n/api/integracion/estado\n(Consulta arribo/descarga + GPS de auditoria)" as BE_IN_ESTADO
+    component "Integración Inbound\nPOST /api/integracion/recorridos\n(alta/actualización desde Oracle/APEX)" as BE_IN_RECORRIDOS
+    component "Integración Query\nGET /api/integracion/estado\n(estado + GPS de inicio/arribo/\ndescarga/cierre)" as BE_IN_ESTADO
+    component "Cierre forzado\nPOST /api/integracion/recorridos/:id/finalizar\n(chofer no tocó FINALIZAR)" as BE_IN_FIN
+    component "Diagnóstico\nGET /api/integracion/mqtt/estado" as BE_IN_MQTT
 
-    component "Store Operacional Cloud\n(EN MEMORIA - se pierde en cada\nrestart/deploy del proceso)" as BE_STORE
-    component "Servicio MQTT Bridge\nservices/mqttBridge.js" as BE_MQ_BRIDGE
-    component "Aprovisionamiento MQTT por-flete\nmqtt/emqxProvisioning.js" as BE_PROV
+    component "Store Operacional Cloud\nstate/integracionStore.js\n(EN MEMORIA)" as BE_STORE
+    component "Canal de ubicación\nconfig/ubicacionCanal.js\n(directo | broker)" as BE_CANAL
+    component "MQTT Bridge\nservices/mqttBridge.js" as BE_MQ_BRIDGE
+    component "Aprovisionamiento MQTT\npor-chofer\nmqtt/emqxProvisioning.js" as BE_PROV
   }
-
 }
 
-cloud "EMQX Cloud" as EMQX {
+cloud "EMQX Cloud\n(opcional)" as EMQX {
   queue "broker MQTT" as MQTT
+  component "Admin API v5" as EMQX_ADMIN
 }
 
-node "Sitio Local (Datacenter/PC)" as LOCAL {
+node "Sitio Local (Rocky Linux)" as LOCAL {
   rectangle "Oracle + APEX" as ORACLE_LOCAL {
     database "Oracle DB" as ORA_DB
-    component "APEX / SQLcl / Jobs" as ORA_APEX
+    component "APEX / Jobs\nINTEGRACION_CLOUD_API" as ORA_APEX
   }
+  component "Relay nginx\nlocalhost:8090" as RELAY
 }
 
-Chofer --> CH_UI 
+Chofer --> CH_UI
 Operador --> CE_UI
+OperadorLocal --> ORA_APEX : Carga/consulta operativa
 
-CH_UI -> CH_API 
+CH_UI --> CH_API
 CH_API --> CH_GPS
-CH_UI --> CH_UBI 
-CH_API --> CH_OFF 
+CH_API --> CH_OFF
+CH_UI --> CH_UBI
+CH_UBI ..> CH_MQTT : Solo si recorrido.mqtt != null
+CH_UI --> CH_CACHE : {choferId, mqtt}
 
 CE_UI --> CE_API
 CE_UI --> CE_POLL : Refresco automático
-CE_UI -> CE_MQTT
-CE_POLL -> CE_API : GET periódicos
+CE_UI ..> CE_MQTT
+CE_POLL --> CE_API : 5 s (30 s si llegan eventos MQTT)
 
-FrontChofer --> Backend : get /api/recorridos/:token\nincluye recorrido.mqtt
-FrontCentral --> BE_CEN 
+' --- Chofer
+CH_API --> BE_REC : GET /:token\narribo / descarga
+CH_API --> BE_VIA : iniciar, llegue, descarga-completa,\nir-primero, finalizar, cancelar
+CH_UBI --> BE_REC : POST /:token/ubicacion\n(canal directo, default)
+BE_REC --> BE_CANAL : ¿incluir config MQTT?
+BE_REC ..> BE_PROV : derivarCredencialChofer()\n(determinística, sin llamar a EMQX)
+BE_REC --> BE_STORE : actualizarUbicacionPorChofer()
+BE_VIA --> BE_STORE : transiciones de viaje (con GPS)
 
-OperadorLocal --> ORA_APEX : Carga/consulta operativa
-ORA_APEX --> BE_IN_RECORRIDOS : HTTPS POST/PUT\nPublica recorridos a cloud
-ORA_APEX ---> BE_IN_ESTADO : HTTPS GET\nConsulta estado arribos/descargas
+' --- Central
+CE_API --> BE_CEN
+BE_CEN --> BE_STORE : estado, progreso, ubicación
 
-BE_IN_RECORRIDOS --> BE_STORE : Upsert recorridos/puntos
-BE_IN_ESTADO --> BE_STORE : Lee estados actuales (incl. GPS arribo/descarga)
+' --- Oracle/APEX
+ORA_APEX --> ORA_DB
+ORA_APEX --> RELAY : UTL_HTTP
+RELAY --> BE_IN_RECORRIDOS : HTTPS POST\nsincronizar_recorrido\n(INTEGRACION_API_KEY)
+RELAY --> BE_IN_ESTADO : HTTPS GET\nleer_estado_puntos
+BE_IN_RECORRIDOS --> BE_STORE : upsertRecorridos()
+BE_IN_ESTADO --> BE_STORE : listarEstado() +\nconfirmarSincronizacion()
+RELAY --> BE_IN_FIN : HTTPS POST\nfinalizar_recorrido
+BE_IN_FIN --> BE_STORE : finalizarDesdeOracle()
+BE_IN_MQTT --> BE_MQ_BRIDGE : métricas + canalPreferido
 
-' Aprovisionamiento de credencial MQTT por-flete (2026-08-06)
-BE_IN_RECORRIDOS ..> BE_PROV : Dispara al recibir\nfleteId (fire-and-forget)
-FrontCentral ..> EMQX : Admin API HTTP (v5)\ncrea usuario publish-only\n"chofer-{fleteId}" + regla ACL\nscoped a chofer/{fleteId}/ubicacion
-BE_REC ..> BE_PROV : Deriva credencial\n(determinística, sin llamar a EMQX)
-
-' Ubicacion en tiempo real por MQTT
-FrontChofer --> MQTT 
-
-CE_POLL --> BE_CEN : Polling para estado/progreso
-BE_CEN --> BE_STORE : Lee estado y progreso
-
-FrontCentral --> EMQX : MQTT Subscribe\nchofer/+/ubicacion\n(implementado, SIN credenciales\nconfiguradas en produccion)
-
-' Backend sigue suscribiendo para persistencia/analytics
-MQTT --> BE_MQ_BRIDGE : MQTT Subscribe\nchofer/+/ubicacion
-BE_MQ_BRIDGE --> BE_STORE : Persistencia de ubicacion
+' --- MQTT (opcional, UBICACION_CANAL_PREFERIDO=broker)
+BE_IN_RECORRIDOS ..> BE_PROV : provisionarCredencialChofer()\n(fire-and-forget)
+BE_PROV ..> EMQX_ADMIN : usuario publish-only\n"chofer-{choferId}" + ACL\nchofer/+/ubicacion
+CH_MQTT ..> MQTT : publish\nchofer/{choferId}/ubicacion
+MQTT ..> BE_MQ_BRIDGE : subscribe chofer/+/ubicacion
+BE_MQ_BRIDGE ..> BE_STORE : actualizarUbicacionPorChofer()
+MQTT ..> CE_MQTT : subscribe chofer/+/ubicacion\n(matching por choferId)
 
 note right of FRONTEND
-Frontend NO se conecta a Oracle local.
-Toda sincronizacion Oracle/APEX <-> cloud
-se hace via endpoints HTTPS del backend.
+Los frontends NO se conectan a Oracle local.
+Toda sincronización Oracle/APEX <-> cloud
+se hace vía endpoints HTTPS del backend,
+iniciada siempre desde el sitio local.
 end note
 
 note bottom of BE_STORE
-Efimero: un "fly deploy" o rotacion de
-secrets reinicia el proceso y vacia
+Efímero: un "fly deploy" o rotación de
+secrets reinicia el proceso y vacía
 el store. Oracle/APEX debe re-sincronizar
-(sincronizar_recorrido) despues.
+(sincronizar_recorrido) después.
+El chofer sigue identificado por la
+caché local {choferId, mqtt}.
 end note
 
 legend right
 == Flujos clave ==
-1. Oracle/APEX local envia recorridos al backend cloud.
-2. Ese mismo push dispara el aprovisionamiento de una
-   credencial MQTT publish-only para el fleteId recibido
-   (EMQX Cloud Admin API, backend/src/mqtt/emqxProvisioning.js).
-3. Oracle/APEX local consulta estado de arribo/descarga
-   (incluye GPS del chofer en cada evento) al backend cloud.
-4. Chofer obtiene su credencial MQTT de GET /:token y
-   publica ubicacion periodica en su propio topico.
-5. Backend consume MQTT (credencial propia) para
-   persistencia y consultas historicas via polling REST.
-6. Central se suscribe directo al broker MQTT (codigo
-   implementado, sin desplegar credenciales en produccion).
+1. Oracle/APEX (vía relay nginx) envía recorridos al backend
+   cloud, incluyendo choferId, color y puntoSalida.
+2. Ese push dispara el aprovisionamiento de la credencial
+   MQTT permanente del chofer (solo relevante en modo broker).
+3. El chofer reporta ubicación al abrir la app y luego en cada
+   intervalo. Default (canal "directo"): POST /:token/ubicacion.
+   Modo "broker": publish MQTT, con fallback a POST si falla.
+4. Central consulta por polling REST cada 5 s; solo lo relaja
+   a 30 s si está recibiendo eventos MQTT (ventana de 2 min).
+5. Oracle/APEX consulta GET /estado (estado + GPS de inicio,
+   arribo, descarga y cierre) y lo persiste en sus tablas.
+6. Si el chofer no toca FINALIZAR, Oracle/APEX lo cierra
+   (finalizar_recorrido). Central es de solo lectura.
+== Convenciones ==
+Línea punteada: camino opcional (broker MQTT)
 endlegend
 
 @enduml

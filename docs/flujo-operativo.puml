@@ -1,61 +1,105 @@
-@startuml VickyTruck - Flujo operativo cloud, Oracle/APEX y MQTT
-title VickyTruck - Flujo operativo cloud, Oracle/APEX y MQTT
+@startuml
+title VickyTruck - Flujo operativo cloud, Oracle/APEX y ubicación
 
-database "Oracle APEX" as apex
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+
+database "Oracle APEX\n(+ relay nginx)" as apex
 participant "Backend cloud\nFly.io" as backend
+participant "Central\nCloudflare" as central
+queue "EMQX broker\n(opcional)" as mqtt
+actor "Chofer\nApp web" as chofer
 
-participant "Central\nCloudFlare" as central
-queue "EMQX broker" as mqtt
+== Sincronización de recorrido ==
 
-actor "Chofer\nAppMovil" as chofer
-
-== Sincronizacion de recorrido ==
-
-note right of apex : Despacha Viaje
-apex --> backend : POST /api/integracion/recorridos\nsincronizar_recorrido
-note right of backend : valida INTEGRACION_API_KEY
-backend --> apex : 200 OK recorrido guardado
-backend --> mqtt : aprovisionar_credencial(choferId)
-
-== Inicio de recorrido por el chofer ==
-
-chofer --> backend : GET /api/recorridos/:token
-backend --> chofer : recorrido + credencial MQTT\n{url, username, password, topic}
-
-== Reporte periodico de ubicacion ==
-
-loop cada ciclo de ubicacion
-  chofer --> mqtt : publish chofer/{fleteId}/ubicacion\n{eventId, lat, lon, en}
-  mqtt --> backend : subscribe chofer/+/ubicacion\npersistir_ubicacion
-  mqtt --> central : subscribe chofer/+/ubicacion\nubicacion en vivo 
+note right of apex : Despacha viaje
+apex -> backend : POST /api/integracion/recorridos\nsincronizar_recorrido\n{choferId, color, puntoSalida, puntos}
+note right of backend : valida INTEGRACION_API_KEY\nupsert en store en memoria
+backend --> apex : 200 OK {upserted, rejected}
+opt choferId presente (fire-and-forget)
+  backend ->> mqtt : Admin API: aprovisionar\nchofer-{choferId}
 end
 
-== Acciones de chofer ==
+== Apertura de la app por el chofer ==
 
-chofer --> backend : POST /api/recorridos/:token/iniciar
-note right of backend : marca recorrido en_curso
+chofer -> backend : GET /api/recorridos/:token
+alt UBICACION_CANAL_PREFERIDO=broker
+  backend --> chofer : recorrido + mqtt {url, username, password, topic}
+else canal directo (default)
+  backend --> chofer : recorrido + mqtt: null
+end
+note left of chofer : cachea {choferId, mqtt}\n(caché solo si el backend no responde)
+
+== Reporte de ubicación (al abrir la app y en cada intervalo) ==
+
+loop cada UBICACION_REPORTE_INTERVALO_MS (default 60 s)
+  alt mqtt != null
+    chofer ->> mqtt : publish chofer/{choferId}/ubicacion\n{eventId, choferId, lat, lon, en}
+    mqtt ->> backend : chofer/+/ubicacion -> mqttBridge\nactualizarUbicacionPorChofer
+    mqtt ->> central : chofer/+/ubicacion\nubicación en vivo
+    opt publish sin confirmar en 4 s
+      chofer -> backend : POST /api/recorridos/:token/ubicacion {lat, lon}
+    end
+  else canal directo (default)
+    chofer -> backend : POST /api/recorridos/:token/ubicacion {lat, lon}
+    note right of backend : actualizarUbicacionPorChofer\n(mismo store que lee Central)
+    backend --> chofer : 200 OK
+  end
+end
+
+== Acciones de viaje del chofer (con GPS y clienteEn; encolables offline) ==
+
+chofer -> backend : POST /:token/viaje/iniciar
+note right of backend : recorrido en_curso\ninicioEn/Lat/Lon del punto
 backend --> chofer : 200 OK
 
-chofer --> backend : POST /api/recorridos/:token/puntos/:puntoId/arribo
-note right of backend : marca punto arribado
+opt reordenar
+  chofer -> backend : POST /:token/viaje/ir-primero {puntoId}
+  backend --> chofer : 200 OK
+end
+
+chofer -> backend : POST /:token/viaje/llegue
+note right of backend : punto arribado\narriboEn/Lat/Lon
 backend --> chofer : 200 OK
 
-chofer --> backend : POST /api/recorridos/:token/puntos/:puntoId/descarga
-note right of backend : marca punto completado
+chofer -> backend : POST /:token/viaje/descarga-completa
+note right of backend : punto completado\ndescargaEn/Lat/Lon
 backend --> chofer : 200 OK
+
+opt deshacer última operación (antes de sincronizar con Oracle)
+  chofer -> backend : POST /:token/viaje/cancelar
+  backend --> chofer : 200 OK
+end
+
+chofer -> backend : POST /:token/viaje/finalizar
+note right of backend : cierreEn/Lat/Lon
+backend --> chofer : 200 OK
+
+opt el chofer no toca FINALIZAR
+  apex -> backend : POST /api/integracion/recorridos/:id/finalizar\nfinalizar_recorrido
+  note right of backend : estado finalizado, cierreOrigen=oracle\nsin GPS; bloquea acciones del chofer
+  backend --> apex : 200 OK {estado, cierreEn, cierreOrigen}
+end
 
 == Consulta de estado por Central ==
 
-loop pooling REST cada 5s
-    central --> backend : GET /api/central/recorridos/activos
-    backend --> central : estado + ultima ubicacion
+loop polling REST: 5 s (30 s si recibe eventos MQTT en los últimos 2 min)
+  central -> backend : GET /api/central/recorridos/activos
+  backend --> central : estado + progreso + última ubicación\n+ puntoSalidaDefault
+  opt Detalle abierto
+    central -> backend : GET /api/central/recorridos/:id
+    backend --> central : puntos + GPS de inicio/arribo/descarga/cierre
+  end
 end
+
+central -> backend : GET /api/central/recorridos/historial
+backend --> central : recorridos finalizados
 
 == Consulta de estado por Oracle APEX ==
 
-apex --> backend : GET /api/integracion/estado
-backend --> apex : estado puntos + GPS auditoria
+apex -> backend : GET /api/integracion/estado[?recorridoId]
+note right of backend : confirmarSincronizacion\n(cierra la ventana de CANCELAR)
+backend --> apex : estado puntos + orden vigente\n+ GPS inicio/arribo/descarga/cierre + cierreOrigen
+note right of apex : leer_estado_puntos persiste en\nT_PUNTOS_ENTREGA y T_RECORRIDOS
 
 @enduml
-
-
