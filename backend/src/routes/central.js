@@ -47,6 +47,7 @@ export function createCentralRouter(repository) {
           // campo no listado acá.
           cierreLat: d.recorrido.cierreLat,
           cierreLon: d.recorrido.cierreLon,
+          cierreOrigen: d.recorrido.cierreOrigen,
           puntos: d.puntos,
         })),
       });

@@ -51,5 +51,18 @@ CREATE OR REPLACE PACKAGE VIC.INTEGRACION_CLOUD_API AS
     p_respuesta    OUT VARCHAR2   -- 'puntos_actualizados: N, recorrido_actualizado: 0|1', o el motivo si ERROR/NOT_FOUND
   );
 
+  -- Cierre forzado del recorrido en el cloud (POST
+  -- /api/integracion/recorridos/:id/finalizar), para cuando el chofer no
+  -- toca FINALIZAR en la app. No exige puntos completados; el cierre queda
+  -- sin GPS y con cierreOrigen = 'oracle'. Idempotente. Si el POST sale
+  -- bien, encadena leer_estado_puntos para que CIERRE_EN quede escrito en
+  -- T_RECORRIDOS en la misma llamada.
+  PROCEDURE finalizar_recorrido(
+    p_recorrido_id IN  NUMBER,
+    p_resultado    OUT VARCHAR2,  -- 'OK' | 'NOT_FOUND' | 'ERROR'
+    p_http_status  OUT NUMBER,
+    p_respuesta    OUT VARCHAR2   -- body del backend + resultado de leer_estado_puntos, o el motivo si ERROR/NOT_FOUND
+  );
+
 END INTEGRACION_CLOUD_API;
 /

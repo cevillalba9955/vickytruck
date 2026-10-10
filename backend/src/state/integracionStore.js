@@ -101,10 +101,9 @@ function camposInformativos(entrante, previo) {
 
 export function createIntegracionStore() {
   const recorridos = new Map();
-  // recorridoPorChofer (012-ubicacion-por-chofer): reemplaza al viejo
-  // recorridoPorFlete — la ubicación en vivo ahora se rutea por choferId
-  // (identidad estable), no por fleteId (ver research.md Decisión 1).
-  const recorridoPorChofer = new Map();
+  // La ubicación en vivo se rutea por choferId (012-ubicacion-por-chofer),
+  // pero ya sin un índice choferId -> recorrido: se busca en el momento entre
+  // los recorridos activos (ver actualizarUbicacionPorChofer).
   const recorridoPorToken = new Map();
   // ultimaUbicacionPorChofer (012-ubicacion-por-chofer): retención en
   // memoria de la última posición de un chofer sin recorrido activo
@@ -115,9 +114,6 @@ export function createIntegracionStore() {
 
   function indexarRecorrido(recorrido) {
     recorridos.set(String(recorrido.id), recorrido);
-    if (recorrido.choferId != null && recorrido.estado === "activo") {
-      recorridoPorChofer.set(String(recorrido.choferId), String(recorrido.id));
-    }
     if (recorrido.token) {
       recorridoPorToken.set(recorrido.token, String(recorrido.id));
     }
@@ -171,6 +167,8 @@ export function createIntegracionStore() {
           cierreEn: previo?.cierreEn ?? null,
           cierreLat: previo?.cierreLat ?? null,
           cierreLon: previo?.cierreLon ?? null,
+          // cierreOrigen: "chofer" (FINALIZAR) | "oracle" (finalizarDesdeOracle).
+          cierreOrigen: previo?.cierreOrigen ?? null,
         };
 
         indexarRecorrido(normalizado);
@@ -190,8 +188,11 @@ export function createIntegracionStore() {
     // actualizarUbicacionPorChofer (012-ubicacion-por-chofer): reemplaza a
     // actualizarUbicacionPorFlete. Siempre retiene el snapshot por-chofer
     // (ultimaUbicacionPorChofer, excepción acotada de la Constitución
-    // v5.0.0 Principio VII), y además actualiza el recorrido activo de ese
-    // chofer si existe uno (recorridoPorChofer).
+    // v5.0.0 Principio VII), y además actualiza TODOS los recorridos activos
+    // de ese chofer. Antes se usaba un índice choferId -> último recorrido
+    // activo recibido, que quedaba apuntando a un recorrido ya finalizado
+    // cuando el chofer tenía dos activos a la vez (uno sin FINALIZAR + uno
+    // nuevo): la ubicación caía fuera del mapa (producción, 2026-10-09).
     actualizarUbicacionPorChofer(choferId, ubicacion) {
       const registro = {
         lat: ubicacion.lat,
@@ -201,12 +202,14 @@ export function createIntegracionStore() {
       };
       ultimaUbicacionPorChofer.set(String(choferId), registro);
 
-      const recorridoId = recorridoPorChofer.get(String(choferId));
-      const recorrido = recorridoId ? recorridos.get(recorridoId) : null;
-      if (!recorrido) return false;
-      recorrido.ultimaUbicacion = registro;
-      recorrido.updatedAt = ahoraLocalIso();
-      return true;
+      let aplicado = false;
+      for (const recorrido of recorridos.values()) {
+        if (recorrido.estado !== "activo" || recorrido.choferId !== String(choferId)) continue;
+        recorrido.ultimaUbicacion = registro;
+        recorrido.updatedAt = ahoraLocalIso();
+        aplicado = true;
+      }
+      return aplicado;
     },
 
     // Contrato compatible con `repository` de createRecorridoRouter (ver
@@ -280,7 +283,7 @@ export function createIntegracionStore() {
     async iniciarViaje(token, ubicacion, clienteEn) {
       const r = recorridoDeToken(recorridoPorToken, recorridos, token);
       if (!r) return { outcome: "invalid_token" };
-      if (r.viajeEstado !== "detenido") {
+      if (r.viajeEstado !== "detenido" || recorridoCerrado(r)) {
         return { outcome: "conflict", viajeEstado: r.viajeEstado, puntoActivoId: r.puntoActivoId };
       }
       const primerPendiente = [...r.puntos].filter((p) => p.estado === "pendiente").sort((a, b) => a.orden - b.orden)[0];
@@ -371,11 +374,36 @@ export function createIntegracionStore() {
       }
       r.estado = "finalizado";
       r.cierreEn = ahoraLocalIso(parsearClienteEn(clienteEn) ?? undefined);
+      r.cierreOrigen = "chofer";
       if (ubicacion?.lat != null && ubicacion?.lon != null) {
         r.cierreLat = ubicacion.lat;
         r.cierreLon = ubicacion.lon;
       }
       return { outcome: "ok", estado: r.estado, cierreEn: r.cierreEn };
+    },
+
+    // Cierre forzado desde Oracle/APEX (POST /api/integracion/recorridos/:id/
+    // finalizar): para el chofer que no toca FINALIZAR. Oracle es la
+    // autoridad, así que no exige puntos completados ni viaje detenido; sin
+    // GPS de cierre (no hay celular de por medio). Deja el viaje detenido y
+    // sin operación cancelable, y los mutadores del chofer rechazan cualquier
+    // acción posterior sobre el recorrido (ver `recorridoCerrado`).
+    // Idempotente: si ya estaba finalizado, no pisa el cierre original.
+    finalizarDesdeOracle(recorridoId) {
+      const r = recorridos.get(String(recorridoId));
+      if (!r) return { outcome: "not_found" };
+      if (r.estado !== "finalizado") {
+        r.estado = "finalizado";
+        r.cierreEn = ahoraLocalIso();
+        r.cierreLat = null;
+        r.cierreLon = null;
+        r.cierreOrigen = "oracle";
+        r.viajeEstado = "detenido";
+        r.puntoActivoId = null;
+        r.ultimaOperacion = null;
+        r.updatedAt = ahoraLocalIso();
+      }
+      return { outcome: "ok", estado: r.estado, cierreEn: r.cierreEn, cierreOrigen: r.cierreOrigen ?? null };
     },
 
     // CANCELAR (005-chofer-estados-viaje, FR-017 a FR-020): revierte
@@ -435,6 +463,9 @@ export function createIntegracionStore() {
     async moverPrimero(token, puntoId) {
       const r = recorridoDeToken(recorridoPorToken, recorridos, token);
       if (!r) return { outcome: "invalid_token" };
+      if (recorridoCerrado(r)) {
+        return { outcome: "conflict", motivo: "recorrido_finalizado" };
+      }
       if (r.viajeEstado !== "detenido") {
         return { outcome: "conflict", motivo: "viaje_no_detenido" };
       }
@@ -571,6 +602,7 @@ export function createIntegracionStore() {
             // Decisión 7 — mismo nivel de visibilidad que cierreEn.
             cierreLat: r.cierreLat ?? null,
             cierreLon: r.cierreLon ?? null,
+            cierreOrigen: r.cierreOrigen ?? null,
           },
           puntos: serializarPuntosCentral(r.puntos),
         });
@@ -597,6 +629,7 @@ export function createIntegracionStore() {
           // Decisión 7 — mismo nivel de visibilidad que cierreEn.
           cierreLat: r.cierreLat ?? null,
           cierreLon: r.cierreLon ?? null,
+          cierreOrigen: r.cierreOrigen ?? null,
         },
         puntos: serializarPuntosCentral(r.puntos),
       };
@@ -640,6 +673,13 @@ function serializarPuntosCentral(puntos) {
     .sort((a, b) => a.orden - b.orden);
 }
 
+// Un recorrido finalizado (por el chofer o forzado desde Oracle) ya no acepta
+// acciones de viaje que cambien su progreso — relevante sobre todo para el
+// cierre de Oracle, que puede dejar puntos pendientes.
+function recorridoCerrado(r) {
+  return r.estado === "finalizado";
+}
+
 function recorridoDeToken(recorridoPorToken, recorridos, token) {
   const id = recorridoPorToken.get(token);
   return id ? recorridos.get(id) : null;
@@ -668,6 +708,9 @@ function transicionarPunto(recorridoPorToken, recorridos, token, puntoId, ubicac
   const punto = r.puntos.find((p) => p.id === String(puntoId));
   if (!punto) return { outcome: "not_found" };
 
+  if (punto.estado === estadoOrigen && recorridoCerrado(r)) {
+    return { outcome: "conflict", punto: serializarPuntoTransicion(punto) };
+  }
   if (punto.estado === estadoOrigen) {
     punto.estado = estadoDestino;
     // Usa la hora capturada por el chofer al momento del press si es válida

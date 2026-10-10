@@ -40,6 +40,9 @@ function serializarEstado(recorrido) {
     cierreEn: recorrido.cierreEn ?? null,
     cierreLat: recorrido.cierreLat ?? null,
     cierreLon: recorrido.cierreLon ?? null,
+    // cierreOrigen: "chofer" (FINALIZAR en la app) | "oracle" (POST
+    // /recorridos/:id/finalizar, cierre forzado sin GPS) | null (abierto).
+    cierreOrigen: recorrido.cierreOrigen ?? null,
     puntos: recorrido.puntos.map((p) => ({
       id: p.id,
       // `orden` (005-chofer-estados-viaje, FR-016): antes ausente de este
@@ -107,6 +110,22 @@ export function createIntegracionRouter(store, emqxProvisioning = emqxProvisioni
     }
 
     return res.status(200).json({ ok: true, upserted, rejected: payload.recorridos.length - upserted });
+  });
+
+  // POST /recorridos/:id/finalizar: cierre forzado desde Oracle/APEX cuando
+  // el chofer no toca FINALIZAR (Central sigue siendo de solo lectura). No
+  // exige puntos completados — Oracle es la autoridad. Idempotente.
+  router.post("/recorridos/:id/finalizar", (req, res) => {
+    const resultado = store.finalizarDesdeOracle(req.params.id);
+    if (resultado.outcome === "not_found") {
+      return res.status(404).json({ error: "recorrido_no_encontrado" });
+    }
+    return res.status(200).json({
+      id: String(req.params.id),
+      estado: resultado.estado,
+      cierreEn: resultado.cierreEn,
+      cierreOrigen: resultado.cierreOrigen,
+    });
   });
 
   router.get("/estado", async (req, res) => {

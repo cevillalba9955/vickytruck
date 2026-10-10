@@ -92,6 +92,43 @@ test("actualizarUbicacionPorChofer — retiene la última ubicación de un chofe
   assert.equal(aplicado, false);
 });
 
+// Regresión (producción 2026-10-09): un chofer con dos recorridos activos a la
+// vez (A sin FINALIZAR + B nuevo). El índice choferId -> recorrido quedaba
+// apuntando a B; al finalizar B, todo reporte de ubicación posterior del
+// chofer caía en B (ya fuera del mapa) y A nunca mostraba el ícono del chofer.
+test("actualizarUbicacionPorChofer — llega al recorrido activo aunque otro recorrido del mismo chofer se haya finalizado", async () => {
+  const store = createIntegracionStore();
+  store.upsertRecorridos([
+    { id: "A", token: "tok-A", fleteId: "F-1", choferId: "CH-1", estado: "activo", puntos: [{ id: "a1", orden: 1, estado: "completado" }] },
+  ]);
+  store.upsertRecorridos([
+    { id: "B", token: "tok-B", fleteId: "F-1", choferId: "CH-1", estado: "activo", puntos: [{ id: "b1", orden: 1, estado: "completado" }] },
+  ]);
+  const fin = await store.finalizarRecorrido("tok-B");
+  assert.equal(fin.outcome, "ok");
+
+  const aplicado = store.actualizarUbicacionPorChofer("CH-1", { lat: -34.6, lon: -58.4, en: new Date().toISOString() });
+  assert.equal(aplicado, true);
+
+  const activos = await store.listarActivos();
+  assert.deepEqual(activos.map((r) => r.id), ["A"]);
+  assert.equal(activos[0].ultimaUbicacion.lat, -34.6);
+});
+
+test("actualizarUbicacionPorChofer — con dos recorridos activos del mismo chofer, actualiza ambos", async () => {
+  const store = createIntegracionStore();
+  store.upsertRecorridos([
+    { id: "A", fleteId: "F-1", choferId: "CH-1", estado: "activo", puntos: [] },
+    { id: "B", fleteId: "F-1", choferId: "CH-1", estado: "activo", puntos: [] },
+    { id: "C", fleteId: "F-2", choferId: "CH-2", estado: "activo", puntos: [] },
+  ]);
+
+  store.actualizarUbicacionPorChofer("CH-1", { lat: -34.6, lon: -58.4, en: new Date().toISOString() });
+
+  const porId = Object.fromEntries((await store.listarActivos()).map((r) => [r.id, r.ultimaUbicacion.lat]));
+  assert.deepEqual(porId, { A: -34.6, B: -34.6, C: null });
+});
+
 test("obtenerDetalle — recorrido inexistente devuelve null", async () => {
   const store = createIntegracionStore();
   assert.equal(await store.obtenerDetalle("no-existe"), null);

@@ -276,3 +276,42 @@ END;
 - `resultado = 'ERROR'` → mismos motivos posibles que `sincronizar_recorrido`
   (ACL, wallet, `unauthorized`). `v_respuesta` trae el stack completo (ver
   `armar_error_encadenado` en la sección de arriba).
+
+## Finalizar un recorrido desde Oracle (`finalizar_recorrido`)
+
+Para cuando el chofer no toca FINALIZAR en la app (Central es de solo
+lectura y no puede cerrarlo). Llama a
+`POST /api/integracion/recorridos/<id>/finalizar` y, si sale bien, encadena
+`leer_estado_puntos` para que `CIERRE_EN` quede escrito en `T_RECORRIDOS`.
+No exige puntos completados; el cierre queda sin GPS (`CIERRE_LAT`/`CIERRE_LON`
+en NULL). Es idempotente. **No probado todavía contra Oracle real.**
+
+```sql
+DECLARE
+  v_resultado    VARCHAR2(20);
+  v_http_status  NUMBER;
+  v_respuesta    VARCHAR2(4000);
+BEGIN
+  INTEGRACION_CLOUD_API.finalizar_recorrido(
+    p_recorrido_id => 3834,
+    p_resultado    => v_resultado,
+    p_http_status  => v_http_status,
+    p_respuesta    => v_respuesta
+  );
+  DBMS_OUTPUT.PUT_LINE('resultado: ' || v_resultado);
+  DBMS_OUTPUT.PUT_LINE('http_status: ' || v_http_status);
+  DBMS_OUTPUT.PUT_LINE('respuesta: ' || v_respuesta);
+END;
+/
+```
+
+- `resultado = 'OK'` → cerrado en el cloud y `CIERRE_EN` actualizado en
+  `T_RECORRIDOS`.
+- `resultado = 'NOT_FOUND'` → el cloud no tiene ese recorrido (nunca se
+  sincronizó, o el backend se reinició y vació su store).
+- `resultado = 'ERROR'` → falló el POST o el `leer_estado_puntos` posterior;
+  `v_respuesta` trae el detalle de ambos pasos.
+
+El estado propio del recorrido en Oracle (`T_RECORRIDOS`) no se toca acá: si
+APEX lleva su propio estado de "finalizado", actualizarlo en el mismo proceso
+que llama a este procedure.

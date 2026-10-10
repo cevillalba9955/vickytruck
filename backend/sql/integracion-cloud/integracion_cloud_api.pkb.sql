@@ -463,5 +463,59 @@ CREATE OR REPLACE PACKAGE BODY VIC.INTEGRACION_CLOUD_API AS
       p_respuesta   := armar_error_encadenado;
   END leer_estado_puntos;
 
+  -- Cierre forzado: ver comentario en el spec. NO PROBADO TODAVÍA CONTRA
+  -- ORACLE REAL (2026-10-09) — misma mecánica HTTP que sincronizar_recorrido
+  -- (APEX_WEB_SERVICE + relay nginx, cuya location /api/integracion/ ya
+  -- cubre esta ruta sin cambios).
+  PROCEDURE finalizar_recorrido(
+    p_recorrido_id IN  NUMBER,
+    p_resultado    OUT VARCHAR2,
+    p_http_status  OUT NUMBER,
+    p_respuesta    OUT VARCHAR2
+  ) IS
+    v_response       CLOB;
+    v_resp_finalizar VARCHAR2(4000);
+    v_res_estado     VARCHAR2(20);
+    v_http_estado    NUMBER;
+    v_resp_estado    VARCHAR2(4000);
+  BEGIN
+    APEX_WEB_SERVICE.g_request_headers.DELETE;
+    APEX_WEB_SERVICE.g_request_headers(1).name := 'Content-Type';
+    APEX_WEB_SERVICE.g_request_headers(1).value := 'application/json';
+    APEX_WEB_SERVICE.g_request_headers(2).name := 'x-api-key';
+    APEX_WEB_SERVICE.g_request_headers(2).value := c_api_key;
+
+    v_response := APEX_WEB_SERVICE.MAKE_REST_REQUEST(
+      p_url         => c_backend_url || '/' || TO_CHAR(p_recorrido_id) || '/finalizar',
+      p_http_method => 'POST',
+      p_body        => '{}'
+    );
+
+    p_http_status    := APEX_WEB_SERVICE.g_status_code;
+    v_resp_finalizar := DBMS_LOB.SUBSTR(v_response, 2000, 1);
+
+    IF p_http_status = 404 THEN
+      -- El cloud no tiene el recorrido (nunca se sincronizó, o el backend se
+      -- reinició y vació su store en memoria): no hay nada que cerrar allá.
+      p_resultado := 'NOT_FOUND';
+      p_respuesta := v_resp_finalizar;
+      RETURN;
+    ELSIF p_http_status NOT BETWEEN 200 AND 299 THEN
+      p_resultado := 'ERROR';
+      p_respuesta := v_resp_finalizar;
+      RETURN;
+    END IF;
+
+    leer_estado_puntos(p_recorrido_id, v_res_estado, v_http_estado, v_resp_estado);
+
+    p_resultado := CASE WHEN v_res_estado = 'OK' THEN 'OK' ELSE 'ERROR' END;
+    p_respuesta := SUBSTR(v_resp_finalizar || ' | leer_estado_puntos: ' || v_res_estado || ' ' || v_resp_estado, 1, 4000);
+  EXCEPTION
+    WHEN OTHERS THEN
+      p_resultado   := 'ERROR';
+      p_http_status := NULL;
+      p_respuesta   := armar_error_encadenado;
+  END finalizar_recorrido;
+
 END INTEGRACION_CLOUD_API;
 /

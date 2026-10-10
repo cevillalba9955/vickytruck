@@ -456,3 +456,108 @@ test("GET /api/integracion/estado — 404 para recorrido inexistente", async () 
     await server.cerrar();
   }
 });
+
+// Cierre forzado desde Oracle/APEX cuando el chofer no toca FINALIZAR.
+async function conRecorridoActivo(fn) {
+  const prev = process.env.INTEGRACION_API_KEY;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  const store = createIntegracionStore();
+  store.upsertRecorridos([
+    {
+      id: "R-1",
+      token: "tok-1",
+      fleteId: "F-1",
+      choferId: "CH-1",
+      estado: "activo",
+      puntos: [
+        { id: "p1", orden: 1, estado: "completado" },
+        { id: "p2", orden: 2, estado: "pendiente" },
+      ],
+    },
+  ]);
+  const server = await iniciarServidorDePrueba(store, store, store, store, createFakeEmqxProvisioning());
+  try {
+    await fn(server);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    await server.cerrar();
+  }
+}
+
+test("POST /api/integracion/recorridos/:id/finalizar — 401 sin credenciales", async () => {
+  await conRecorridoActivo(async (server) => {
+    const res = await fetch(`${server.integracionBaseUrl}/recorridos/R-1/finalizar`, { method: "POST" });
+    assert.equal(res.status, 401);
+  });
+});
+
+test("POST /api/integracion/recorridos/:id/finalizar — 404 si el recorrido no existe", async () => {
+  await conRecorridoActivo(async (server) => {
+    const res = await fetch(`${server.integracionBaseUrl}/recorridos/NO-EXISTE/finalizar`, withApiKey({ method: "POST" }));
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: "recorrido_no_encontrado" });
+  });
+});
+
+test("POST /api/integracion/recorridos/:id/finalizar — cierra aunque haya puntos pendientes, sale de activos y queda en historial", async () => {
+  await conRecorridoActivo(async (server) => {
+    const res = await fetch(`${server.integracionBaseUrl}/recorridos/R-1/finalizar`, withApiKey({ method: "POST" }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.estado, "finalizado");
+    assert.equal(body.cierreOrigen, "oracle");
+    assert.match(body.cierreEn, /-03:00$/);
+
+    const activos = await (await fetch(`${server.centralBaseUrl}/recorridos/activos`)).json();
+    assert.equal(activos.recorridos.length, 0);
+
+    const historial = await (await fetch(`${server.centralBaseUrl}/recorridos/historial`)).json();
+    assert.equal(historial.recorridos[0].id, "R-1");
+    assert.equal(historial.recorridos[0].cierreOrigen, "oracle");
+    assert.equal(historial.recorridos[0].cierreLat, null);
+
+    const estado = await (await fetch(`${server.integracionBaseUrl}/estado?recorridoId=R-1`, withApiKey())).json();
+    assert.equal(estado.recorridos[0].estado, "finalizado");
+    assert.equal(estado.recorridos[0].cierreEn, body.cierreEn);
+    assert.equal(estado.recorridos[0].cierreOrigen, "oracle");
+  });
+});
+
+test("POST /api/integracion/recorridos/:id/finalizar — idempotente: no pisa el cierre original", async () => {
+  await conRecorridoActivo(async (server) => {
+    const url = `${server.integracionBaseUrl}/recorridos/R-1/finalizar`;
+    const primero = await (await fetch(url, withApiKey({ method: "POST" }))).json();
+    await new Promise((r) => setTimeout(r, 5));
+    const segundo = await (await fetch(url, withApiKey({ method: "POST" }))).json();
+    assert.equal(segundo.cierreEn, primero.cierreEn);
+  });
+});
+
+test("POST /api/integracion/recorridos/:id/finalizar — el chofer ya no puede avanzar el recorrido ni Oracle reactivarlo", async () => {
+  await conRecorridoActivo(async (server) => {
+    await fetch(`${server.integracionBaseUrl}/recorridos/R-1/finalizar`, withApiKey({ method: "POST" }));
+
+    const iniciar = await fetch(`${server.baseUrl}/tok-1/viaje/iniciar`, { method: "POST" });
+    assert.equal(iniciar.status, 409);
+    const irPrimero = await fetch(`${server.baseUrl}/tok-1/viaje/ir-primero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntoId: "p2" }),
+    });
+    assert.equal(irPrimero.status, 409);
+    const arribo = await fetch(`${server.baseUrl}/tok-1/puntos/p2/arribo`, { method: "POST" });
+    assert.equal(arribo.status, 409);
+
+    const chofer = await (await fetch(`${server.baseUrl}/tok-1`)).json();
+    assert.equal(chofer.recorrido.estado, "finalizado");
+    assert.equal(chofer.recorrido.puedeCancelar, false);
+
+    // Re-push de Oracle con 'activo' hardcodeado (armar_payload): no lo reabre.
+    await fetch(`${server.integracionBaseUrl}/recorridos`, withApiKey({
+      method: "POST",
+      body: JSON.stringify({ recorridos: [{ id: "R-1", estado: "activo", puntos: [] }] }),
+    }));
+    const activos = await (await fetch(`${server.centralBaseUrl}/recorridos/activos`)).json();
+    assert.equal(activos.recorridos.length, 0);
+  });
+});
