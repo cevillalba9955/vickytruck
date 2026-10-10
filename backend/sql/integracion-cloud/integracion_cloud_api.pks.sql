@@ -7,7 +7,7 @@
 -- Primera versión: sincronización manual, un recorrido por vez. No está
 -- atada a ningún trigger/job — se llama a mano (o desde un botón/proceso de
 -- APEX) mientras se valida que el POST funciona end-to-end. Automatizar el
--- disparo (trigger sobre T_RECORRIDOS/T_PUNTOS_ENTREGA, job programado, etc.)
+-- disparo (trigger sobre T_FLT_VIAJES/T_PUNTOS_ENTREGA, job programado, etc.)
 -- queda para una iteración posterior.
 --
 -- Se crea en el esquema VIC. El usuario VICKYTRUCK (que en la primera
@@ -43,7 +43,7 @@ CREATE OR REPLACE PACKAGE VIC.INTEGRACION_CLOUD_API AS
   -- completo (008-registro-inicio-fin-recorrido, User Story 4): el cierre
   -- (FINALIZAR) y el momento de inicio del recorrido en su conjunto (el
   -- inicioEn más temprano entre los puntos) — y los escribe sobre
-  -- T_RECORRIDOS.
+  -- T_FLT_VIAJES.
   PROCEDURE leer_estado_puntos(
     p_recorrido_id IN  NUMBER,
     p_resultado    OUT VARCHAR2,  -- 'OK' | 'NOT_FOUND' | 'ERROR'
@@ -56,7 +56,7 @@ CREATE OR REPLACE PACKAGE VIC.INTEGRACION_CLOUD_API AS
   -- toca FINALIZAR en la app. No exige puntos completados; el cierre queda
   -- sin GPS y con cierreOrigen = 'oracle'. Idempotente. Si el POST sale
   -- bien, encadena leer_estado_puntos para que CIERRE_EN quede escrito en
-  -- T_RECORRIDOS en la misma llamada.
+  -- T_FLT_VIAJES en la misma llamada.
   PROCEDURE finalizar_recorrido(
     p_recorrido_id IN  NUMBER,
     p_resultado    OUT VARCHAR2,  -- 'OK' | 'NOT_FOUND' | 'ERROR'

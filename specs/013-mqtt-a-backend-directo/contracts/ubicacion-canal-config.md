@@ -64,3 +64,17 @@ frecuente por ser un fallback poco ejercitado).
 Ver [mqtt-estado-api.md](./mqtt-estado-api.md) para el contrato completo
 actualizado. Resumen del cambio: se agrega `canalPreferido` (mismo valor
 resuelto que gobierna `GET /:token`), siempre presente en la respuesta.
+
+## Efectos adicionales del modo directo (2026-10-09, 015-cierre-desde-oracle)
+
+- `POST /api/integracion/recorridos` ya no aprovisiona credenciales MQTT en
+  EMQX Cloud en modo `"directo"` — solo lo hace con
+  `UBICACION_CANAL_PREFERIDO=broker`.
+- `actualizarUbicacionPorChofer` (usado por `POST /:token/ubicacion` y por
+  el bridge MQTT) actualiza **todos** los recorridos `activo` del chofer, en
+  vez de un índice choferId → recorrido que podía quedar apuntando a un
+  recorrido ya finalizado.
+- Central se publica sin `VITE_MQTT_*` (estado `disabled`, polling REST
+  cada 5 s). Volver al modo broker requiere: `UBICACION_CANAL_PREFERIDO=broker`
+  y `MQTT_BROKER_URL` en el backend, y una credencial nueva de
+  solo-suscripción para Central en `central/.env.production`.

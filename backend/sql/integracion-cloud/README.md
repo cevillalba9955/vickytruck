@@ -195,25 +195,20 @@ en `armar_payload`, `integracion_cloud_api.pkb.sql`).
 `sincronizar_recorrido`: llama a `GET /api/integracion/estado?recorridoId=<id>`
 y escribe sobre `T_PUNTOS_ENTREGA` (propia del esquema `VIC`, dueño del
 paquete — sin GRANT cross-schema que otorgar) el `estado` de cada punto y la
-ubicación/fechahora que capturó el celular del chofer al tocar INICIAR,
-marcar arribo y marcar descarga (`INICIO_EN`/`INICIO_LAT`/`INICIO_LON`,
-`ARRIBO_EN`/`ARRIBO_LAT`/`ARRIBO_LON`,
-`DESCARGA_EN`/`DESCARGA_LAT`/`DESCARGA_LON` — `ARRIBO_*`/`DESCARGA_*` son las
-mismas columnas que ya usa `RECORRIDO_API`, ver
-`backend/sql/recorrido_api.pkb.sql`; `INICIO_*` son nuevas, agregadas por
-008-registro-inicio-fin-recorrido, 2026-08-25).
+ubicación/fechahora que capturó el celular del chofer al marcar arribo y
+descarga (`ARRIBO_EN`/`ARRIBO_LAT`/`ARRIBO_LON`,
+`DESCARGA_EN`/`DESCARGA_LAT`/`DESCARGA_LON` — las mismas columnas que ya usa
+`RECORRIDO_API`, ver `backend/sql/recorrido_api.pkb.sql`). El INICIAR por
+punto no se guarda en `T_PUNTOS_ENTREGA`: solo se persiste el inicio del
+recorrido completo, en `T_FLT_VIAJES` (abajo).
 
-Además escribe sobre `T_RECORRIDOS` dos eventos del recorrido completo
+Además escribe sobre `T_FLT_VIAJES` dos eventos del recorrido completo
 (ambos también nuevos de 008-registro-inicio-fin-recorrido, User Story 4):
 el cierre (`CIERRE_EN`/`CIERRE_LAT`/`CIERRE_LON`, evento de FINALIZAR) y el
 momento de inicio del recorrido en su conjunto (`INICIO_EN`/`INICIO_LAT`/
-`INICIO_LON` — mismo nombre de columna que en `T_PUNTOS_ENTREGA`, pero acá
-es el `inicioEn` más temprano entre los puntos, ya calculado del lado cloud
-antes de mandarlo, no el de un punto puntual). A diferencia de
-inicio-por-punto/arribo/descarga, estos dos son eventos del recorrido en su
-conjunto, no de un punto puntual, así que no encajan en `T_PUNTOS_ENTREGA`;
-mismo precedente que `COLOR`/`PUNTO_SALIDA_LATITUD`/`PUNTO_SALIDA_LONGITUD`,
-ya agregadas ahí por 010-mapa-central-unificado.
+`INICIO_LON` — el `inicioEn` más temprano entre los puntos, ya calculado del
+lado cloud antes de mandarlo). Si el recorrido se cerró desde Oracle con
+`finalizar_recorrido`, `CIERRE_LAT`/`CIERRE_LON` quedan en NULL.
 
 **Resuelto (006-normalizar-formato-horario)**: `ARRIBO_EN`/`DESCARGA_EN`
 sigue siendo `TIMESTAMP` sin zona horaria — no se migró el esquema — pero
@@ -225,23 +220,8 @@ no UTC) + `CAST(... AS TIMESTAMP)`. Ver
 `specs/006-normalizar-formato-horario/research.md` Decisión 3-4. Mismo
 criterio se aplica ahora a `INICIO_EN`/`CIERRE_EN`.
 
-**No probado todavía contra Oracle real (2026-08-25)**: a diferencia del
-resto de este package, el agregado de `INICIO_*`/`CIERRE_*` — incluyendo el
-`UPDATE T_RECORRIDOS` (primera vez que este procedure escribe una tabla
-distinta de `T_PUNTOS_ENTREGA`) y el uso de `JSON_VALUE(...RETURNING NUMBER)`
-— todavía no se corrió contra la instancia real. Antes de dar esto por
-cerrado: confirmar que `T_PUNTOS_ENTREGA` tiene (o se le agregaron)
-`INICIO_EN`/`INICIO_LAT`/`INICIO_LON`, y que `T_RECORRIDOS` tiene (o se le
-agregaron) tanto `CIERRE_EN`/`CIERRE_LAT`/`CIERRE_LON` **como**
-`INICIO_EN`/`INICIO_LAT`/`INICIO_LON` (mismo nombre que en
-`T_PUNTOS_ENTREGA`, pero es una columna distinta en una tabla distinta —
-confirmar que Oracle no se queja de nada al tener el mismo nombre de
-columna en dos tablas del mismo esquema, lo cual no debería ser un
-problema pero no está confirmado contra la instancia real), y correr el
-bloque de "Probar" de abajo contra un recorrido con INICIAR (sobre el
-primer punto y sobre algún otro punto más) y FINALIZAR ya tocados desde el
-chofer — confirmar que `T_RECORRIDOS.INICIO_EN` termina con la hora del
-INICIAR más temprano (el del primer punto), no la del último tocado.
+**Confirmado contra Oracle real (2026-10-09)** sobre las tablas reales
+`T_PUNTOS_ENTREGA` y `T_FLT_VIAJES`.
 
 ### Probar
 
@@ -270,7 +250,7 @@ END;
   se actualizaron (`puntos_actualizados: N, recorrido_actualizado: 0|1`).
   Confirmar con
   `SELECT id, estado, inicio_en, inicio_lat, inicio_lon, arribo_en, arribo_lat, arribo_lon, descarga_en, descarga_lat, descarga_lon FROM VIC.T_PUNTOS_ENTREGA WHERE flt_viaje_id = 3716;`
-  y `SELECT id, inicio_en, inicio_lat, inicio_lon, cierre_en, cierre_lat, cierre_lon FROM VIC.T_RECORRIDOS WHERE id = 3716;`
+  y `SELECT id, inicio_en, inicio_lat, inicio_lon, cierre_en, cierre_lat, cierre_lon FROM VIC.T_FLT_VIAJES WHERE id = 3716;`
 - `resultado = 'NOT_FOUND'` → no hay ningún recorrido con ese ID en el store
   cloud (nunca se pusheó, o el ID no coincide).
 - `resultado = 'ERROR'` → mismos motivos posibles que `sincronizar_recorrido`
@@ -282,9 +262,9 @@ END;
 Para cuando el chofer no toca FINALIZAR en la app (Central es de solo
 lectura y no puede cerrarlo). Llama a
 `POST /api/integracion/recorridos/<id>/finalizar` y, si sale bien, encadena
-`leer_estado_puntos` para que `CIERRE_EN` quede escrito en `T_RECORRIDOS`.
+`leer_estado_puntos` para que `CIERRE_EN` quede escrito en `T_FLT_VIAJES`.
 No exige puntos completados; el cierre queda sin GPS (`CIERRE_LAT`/`CIERRE_LON`
-en NULL). Es idempotente. **No probado todavía contra Oracle real.**
+en NULL). Es idempotente. Confirmado contra Oracle real (2026-10-09).
 
 ```sql
 DECLARE
@@ -306,12 +286,12 @@ END;
 ```
 
 - `resultado = 'OK'` → cerrado en el cloud y `CIERRE_EN` actualizado en
-  `T_RECORRIDOS`.
+  `T_FLT_VIAJES`.
 - `resultado = 'NOT_FOUND'` → el cloud no tiene ese recorrido (nunca se
   sincronizó, o el backend se reinició y vació su store).
 - `resultado = 'ERROR'` → falló el POST o el `leer_estado_puntos` posterior;
   `v_respuesta` trae el detalle de ambos pasos.
 
-El estado propio del recorrido en Oracle (`T_RECORRIDOS`) no se toca acá: si
+El estado propio del recorrido en Oracle (`T_FLT_VIAJES`) no se toca acá: si
 APEX lleva su propio estado de "finalizado", actualizarlo en el mismo proceso
 que llama a este procedure.
