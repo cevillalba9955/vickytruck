@@ -331,9 +331,11 @@ test("GET /api/integracion/estado — recorrido.inicioEn es null si todavía no 
   }
 });
 
-test("POST /api/integracion/recorridos — aprovisiona la credencial MQTT permanente del choferId recibido (2026-08-10, FR-013)", async () => {
+test("POST /api/integracion/recorridos — en modo broker aprovisiona la credencial MQTT permanente del choferId recibido (2026-08-10, FR-013)", async () => {
   const prev = process.env.INTEGRACION_API_KEY;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
   process.env.INTEGRACION_API_KEY = "test-key";
+  process.env.UBICACION_CANAL_PREFERIDO = "broker";
   const store = createIntegracionStore();
   const emqxProvisioning = createFakeEmqxProvisioning();
   const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store, emqxProvisioning);
@@ -361,6 +363,36 @@ test("POST /api/integracion/recorridos — aprovisiona la credencial MQTT perman
     assert.equal(emqxProvisioning._tieneCredencialChofer(null), false);
   } finally {
     process.env.INTEGRACION_API_KEY = prev;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
+    await server.cerrar();
+  }
+});
+
+test("POST /api/integracion/recorridos — en modo directo (default) no aprovisiona credencial MQTT", async () => {
+  const prev = process.env.INTEGRACION_API_KEY;
+  const prevCanal = process.env.UBICACION_CANAL_PREFERIDO;
+  process.env.INTEGRACION_API_KEY = "test-key";
+  delete process.env.UBICACION_CANAL_PREFERIDO;
+  const store = createIntegracionStore();
+  const emqxProvisioning = createFakeEmqxProvisioning();
+  const server = await iniciarServidorDePrueba(undefined, undefined, undefined, store, emqxProvisioning);
+
+  try {
+    const res = await fetch(
+      `${server.integracionBaseUrl}/recorridos`,
+      withApiKey({
+        method: "POST",
+        body: JSON.stringify({ recorridos: [{ id: "R-3101", fleteId: "13", choferId: "CH-345", estado: "activo", puntos: [] }] }),
+      }),
+    );
+    assert.equal(res.status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(emqxProvisioning._tieneCredencialChofer("CH-345"), false);
+  } finally {
+    process.env.INTEGRACION_API_KEY = prev;
+    if (prevCanal === undefined) delete process.env.UBICACION_CANAL_PREFERIDO;
+    else process.env.UBICACION_CANAL_PREFERIDO = prevCanal;
     await server.cerrar();
   }
 });

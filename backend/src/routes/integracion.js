@@ -99,8 +99,11 @@ export function createIntegracionRouter(store, emqxProvisioning = emqxProvisioni
     // Oracle/APEX — se reintenta solo en el próximo push del mismo
     // recorrido (idempotente). Sin `choferId` (payloads viejos de Oracle
     // que todavía no lo envían), el recorrido queda cargado y operable pero
-    // sin credencial MQTT — ver spec.md FR-013.
-    for (const raw of payload.recorridos) {
+    // sin credencial MQTT — ver spec.md FR-013. En modo "directo" (default)
+    // nadie usa esa credencial (GET /:token devuelve mqtt: null), así que no
+    // se llama a la Admin API de EMQX Cloud.
+    const aprovisionarMqtt = canalUbicacionPreferido() === "broker";
+    for (const raw of aprovisionarMqtt ? payload.recorridos : []) {
       if (!raw?.id) continue;
       const [actual] = store.listarEstado(String(raw.id));
       if (!actual?.choferId) continue;
